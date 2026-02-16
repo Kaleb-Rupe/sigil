@@ -243,8 +243,10 @@
 | Core (Phase 1) | `tests/agent-shield.ts` | 39 |
 | Jupiter (Phase 2) | `tests/jupiter-integration.ts` | 9 |
 | Flash Trade (Phase 3) | `tests/flash-trade-integration.ts` | 9 |
-| Wrapper SDK (Phase A) | `sdk/wrapper/tests/wrapper.test.ts` | 41 |
-| **Total** | | **98** |
+| Wrapper SDK (Phase A) | `sdk/wrapper/tests/wrapper.test.ts` | 49 |
+| SAK Plugin (Phase B) | `plugins/solana-agent-kit/tests/plugin.test.ts` | 23 |
+| ElizaOS Plugin (Phase B) | `plugins/elizaos/tests/plugin.test.ts` | 30 |
+| **Total** | | **159** |
 
 ---
 
@@ -370,16 +372,24 @@
 
 > **Goal:** Rewrite plugins to use `shield()` wrapper internally (Level 1 by default), add new framework support, and improve ShieldedWallet API.
 
-### B.1 Plugin Rewrites
-- [ ] Rewrite Solana Agent Kit plugin → `shield()` wrapper internally (Level 1 default)
-- [ ] Rewrite ElizaOS plugin → `shield()` wrapper internally (Level 1 default)
+### B.1 Plugin Rewrites ✅
+- [x] Rewrite Solana Agent Kit plugin → `shield()` wrapper internally (Level 1 default)
+- [x] Rewrite ElizaOS plugin → `shield()` wrapper internally (Level 1 default)
+- [x] Add factory convenience function (`createShieldedWallet`) for SAK plugin
+- [x] Add `resolveWallet()` helper — accepts either `wallet` or `rawWallet` + policies
+- [x] Add `SHIELD_PAUSE_RESUME` action to ElizaOS plugin (feature parity with SAK)
+- [x] Add `shield_transaction_history` tool (SAK) and `SHIELD_TRANSACTION_HISTORY` action (ElizaOS)
+- [x] Wire event callbacks (`onDenied`, `onApproved`, `onPause`, `onResume`, `onPolicyUpdate`) in both plugins
+- [x] Plugin tests: SAK (23 tests), ElizaOS (30 tests)
+- [x] CI pipeline updated with plugin test steps
+- [x] Both plugins bumped to v0.3.0
 - [ ] Optional vault upgrade path in both plugins (Level 3 when configured)
 
-### B.2 ShieldedWallet API Improvements
-- [ ] Add `pause()` / `resume()` to ShieldedWallet (temporary policy bypass for owner)
-- [ ] Add event emitter: `onDenied`, `onApproved`, `onPolicyUpdate`, `onPause`, `onResume`
-- [ ] Add `getSpendingSummary()` — current 24h spend, remaining budget, rate limit status
-- [ ] Tests for new ShieldedWallet features
+### B.2 ShieldedWallet API Improvements ✅
+- [x] Add `pause()` / `resume()` to ShieldedWallet (temporary policy bypass for owner)
+- [x] Add event emitter: `onDenied`, `onApproved`, `onPolicyUpdate`, `onPause`, `onResume`
+- [x] Add `getSpendingSummary()` — current 24h spend, remaining budget, rate limit status
+- [x] Tests for new ShieldedWallet features
 
 ### B.3 Upstream PRs
 - [ ] Submit PR to Solana Agent Kit repo

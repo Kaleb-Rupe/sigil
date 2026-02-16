@@ -61,6 +61,14 @@ jobs:
         working-directory: sdk/wrapper
         run: pnpm test
 
+      - name: SAK plugin tests (23 tests)
+        working-directory: plugins/solana-agent-kit
+        run: pnpm test
+
+      - name: ElizaOS plugin tests (30 tests)
+        working-directory: plugins/elizaos
+        run: pnpm test
+
   # ──────────────────────────────────────────────────────────────
   # Job 2: Rust formatting and linting
   # ──────────────────────────────────────────────────────────────

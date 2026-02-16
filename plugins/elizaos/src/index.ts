@@ -1,7 +1,12 @@
 export { agentShieldPlugin } from "./plugin";
 export { ENV_KEYS, type AgentShieldElizaConfig } from "./types";
 export { getOrCreateShieldedWallet, getConfig } from "./client-factory";
-export { statusAction, updatePolicyAction } from "./actions";
+export {
+  statusAction,
+  updatePolicyAction,
+  pauseResumeAction,
+  transactionHistoryAction,
+} from "./actions";
 export { shieldStatusProvider, spendTrackingProvider } from "./providers";
 export { policyCheckEvaluator } from "./evaluators";
 

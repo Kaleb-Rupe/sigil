@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ShieldPolicies } from "@agent-shield/solana";
-import type { AgentShieldPluginConfig } from "../types";
+import type { ResolvedConfig } from "../types";
 
 export const updatePolicySchema = z.object({
   maxSpend: z
@@ -19,7 +19,7 @@ export type UpdatePolicyInput = z.infer<typeof updatePolicySchema>;
 
 export async function updatePolicy(
   _agent: any,
-  config: AgentShieldPluginConfig,
+  config: ResolvedConfig,
   input: UpdatePolicyInput,
 ): Promise<string> {
   const newPolicies: ShieldPolicies = {};

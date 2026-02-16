@@ -1,4 +1,4 @@
-import { AgentShieldPluginConfig } from "./types";
+import { AgentShieldPluginConfig, resolveWallet } from "./types";
 import {
   status,
   statusSchema,
@@ -6,15 +6,22 @@ import {
   updatePolicySchema,
   pauseResume,
   pauseResumeSchema,
+  transactionHistory,
+  transactionHistorySchema,
 } from "./tools";
 
-export { AgentShieldPluginConfig } from "./types";
+export {
+  AgentShieldPluginConfig,
+  ResolvedConfig,
+  resolveWallet,
+} from "./types";
+export { createShieldedWallet, type FactoryConfig } from "./factory";
 export * from "./tools";
 
 /**
  * Creates the AgentShield plugin for Solana Agent Kit.
  *
- * Usage:
+ * Usage with pre-created wallet:
  * ```ts
  * import { shield } from '@agent-shield/solana';
  * import { createAgentShieldPlugin } from '@agent-shield/plugin-solana-agent-kit';
@@ -23,14 +30,26 @@ export * from "./tools";
  * const plugin = createAgentShieldPlugin({ wallet: protectedWallet });
  * const agent = new SolanaAgentKit(protectedWallet, RPC_URL, { plugins: [plugin] });
  * ```
+ *
+ * Usage with factory (auto-creates ShieldedWallet):
+ * ```ts
+ * const plugin = createAgentShieldPlugin({
+ *   rawWallet: keypairWallet,
+ *   policies: { maxSpend: '500 USDC/day' },
+ *   logger: console,
+ * });
+ * ```
  */
 export function createAgentShieldPlugin(config: AgentShieldPluginConfig) {
+  const resolved = resolveWallet(config);
+
   return {
     name: "agent-shield",
     description:
       "AgentShield — Client-side spending controls for AI agents on Solana. " +
       "Provides monitoring tools to check spending status, update policies, " +
-      "and pause/resume enforcement. Shield wraps signing transparently.",
+      "pause/resume enforcement, and view transaction history. " +
+      "Shield wraps signing transparently.",
 
     methods: {
       shield_status: {
@@ -38,7 +57,7 @@ export function createAgentShieldPlugin(config: AgentShieldPluginConfig) {
           "Check current shield status: spending vs limits, rate limit usage, " +
           "and whether enforcement is paused.",
         schema: statusSchema,
-        handler: (agent: any, input: any) => status(agent, config, input),
+        handler: (agent: any, input: any) => status(agent, resolved, input),
       },
       shield_update_policy: {
         description:
@@ -46,7 +65,7 @@ export function createAgentShieldPlugin(config: AgentShieldPluginConfig) {
           "and unknown program blocking.",
         schema: updatePolicySchema,
         handler: (agent: any, input: any) =>
-          updatePolicy(agent, config, input),
+          updatePolicy(agent, resolved, input),
       },
       shield_pause_resume: {
         description:
@@ -54,7 +73,15 @@ export function createAgentShieldPlugin(config: AgentShieldPluginConfig) {
           "pass through without policy checks or spend recording.",
         schema: pauseResumeSchema,
         handler: (agent: any, input: any) =>
-          pauseResume(agent, config, input),
+          pauseResume(agent, resolved, input),
+      },
+      shield_transaction_history: {
+        description:
+          "View recent transaction activity summary — per-token usage " +
+          "percentages and rate limit status.",
+        schema: transactionHistorySchema,
+        handler: (agent: any, input: any) =>
+          transactionHistory(agent, resolved, input),
       },
     },
   };

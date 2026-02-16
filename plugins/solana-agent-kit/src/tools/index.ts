@@ -9,3 +9,8 @@ export {
   pauseResumeSchema,
   type PauseResumeInput,
 } from "./pauseResume";
+export {
+  transactionHistory,
+  transactionHistorySchema,
+  type TransactionHistoryInput,
+} from "./transactionHistory";

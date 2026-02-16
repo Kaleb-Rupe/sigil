@@ -83,10 +83,38 @@ export function getOrCreateShieldedWallet(runtime: any): {
   const keypair = parseKeypair(config.walletPrivateKey);
   const innerWallet = new KeypairWallet(keypair);
 
-  const shielded = shield(innerWallet, {
-    maxSpend: config.maxSpend,
-    blockUnknownPrograms: config.blockUnknown,
-  });
+  const logger = runtime.logger ?? console;
+
+  const shielded = shield(
+    innerWallet,
+    {
+      maxSpend: config.maxSpend,
+      blockUnknownPrograms: config.blockUnknown,
+    },
+    {
+      onDenied: (error) => {
+        (logger.warn ?? console.warn)(
+          "[AgentShield] Transaction denied:",
+          error.message,
+        );
+      },
+      onApproved: (txHash) => {
+        (logger.info ?? console.info)(
+          "[AgentShield] Transaction approved",
+          txHash ?? "",
+        );
+      },
+      onPause: () => {
+        (logger.info ?? console.info)("[AgentShield] Enforcement paused");
+      },
+      onResume: () => {
+        (logger.info ?? console.info)("[AgentShield] Enforcement resumed");
+      },
+      onPolicyUpdate: () => {
+        (logger.info ?? console.info)("[AgentShield] Policies updated");
+      },
+    },
+  );
 
   const result = { wallet: shielded, publicKey: keypair.publicKey };
   walletCache.set(runtime, result);

@@ -1,12 +1,13 @@
 {
   "name": "@agent-shield/plugin-solana-agent-kit",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "AgentShield plugin for Solana Agent Kit — shield() wrapper monitoring and management tools",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
+    "test": "mocha --require ts-node/register tests/**/*.test.ts --timeout 30000",
     "prepublishOnly": "npm run build"
   },
   "files": [
@@ -23,7 +24,12 @@
     "solana-agent-kit": "^2.0.0",
     "@solana/web3.js": "^1.95.0",
     "typescript": "^5.3.3",
-    "zod": "^3.22.0"
+    "zod": "^3.22.0",
+    "@types/chai": "^4.3.11",
+    "@types/mocha": "^10.0.6",
+    "chai": "^4.4.1",
+    "mocha": "^10.3.0",
+    "ts-node": "^10.9.2"
   },
   "dependencies": {
     "zod": "^3.22.0"

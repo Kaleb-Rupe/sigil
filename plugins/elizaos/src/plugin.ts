@@ -1,4 +1,9 @@
-import { statusAction, updatePolicyAction } from "./actions";
+import {
+  statusAction,
+  updatePolicyAction,
+  pauseResumeAction,
+  transactionHistoryAction,
+} from "./actions";
 import { shieldStatusProvider, spendTrackingProvider } from "./providers";
 import { policyCheckEvaluator } from "./evaluators";
 
@@ -6,7 +11,7 @@ import { policyCheckEvaluator } from "./evaluators";
  * AgentShield Plugin for ElizaOS.
  *
  * Provides:
- * - Actions: SHIELD_STATUS, SHIELD_UPDATE_POLICY
+ * - Actions: SHIELD_STATUS, SHIELD_UPDATE_POLICY, SHIELD_PAUSE_RESUME, SHIELD_TRANSACTION_HISTORY
  * - Providers: shield status, spend tracking (injected into agent context)
  * - Evaluators: policy cap warning (runs after actions)
  *
@@ -24,7 +29,12 @@ export const agentShieldPlugin = {
     "Wraps wallet signing with policy enforcement, spending caps, " +
     "and rate limiting. Zero on-chain setup required.",
 
-  actions: [statusAction, updatePolicyAction],
+  actions: [
+    statusAction,
+    updatePolicyAction,
+    pauseResumeAction,
+    transactionHistoryAction,
+  ],
 
   providers: [shieldStatusProvider, spendTrackingProvider],
 

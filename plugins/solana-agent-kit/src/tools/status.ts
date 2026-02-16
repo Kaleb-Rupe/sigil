@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { AgentShieldPluginConfig } from "../types";
+import type { ResolvedConfig } from "../types";
 
 export const statusSchema = z.object({});
 
@@ -7,7 +7,7 @@ export type StatusInput = z.infer<typeof statusSchema>;
 
 export async function status(
   _agent: any,
-  config: AgentShieldPluginConfig,
+  config: ResolvedConfig,
   _input: StatusInput,
 ): Promise<string> {
   const summary = config.wallet.getSpendingSummary();

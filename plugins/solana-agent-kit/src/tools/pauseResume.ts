@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { AgentShieldPluginConfig } from "../types";
+import type { ResolvedConfig } from "../types";
 
 export const pauseResumeSchema = z.object({
   action: z
@@ -11,7 +11,7 @@ export type PauseResumeInput = z.infer<typeof pauseResumeSchema>;
 
 export async function pauseResume(
   _agent: any,
-  config: AgentShieldPluginConfig,
+  config: ResolvedConfig,
   input: PauseResumeInput,
 ): Promise<string> {
   if (input.action === "pause") {

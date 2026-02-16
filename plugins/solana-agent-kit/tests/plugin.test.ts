@@ -1,0 +1,249 @@
+import { expect } from "chai";
+import { Keypair, Transaction, VersionedTransaction } from "@solana/web3.js";
+import type { WalletLike, ShieldedWallet } from "@agent-shield/solana";
+import { shield } from "@agent-shield/solana";
+import {
+  createAgentShieldPlugin,
+  createShieldedWallet,
+  resolveWallet,
+  status,
+  statusSchema,
+  updatePolicy,
+  updatePolicySchema,
+  pauseResume,
+  pauseResumeSchema,
+  transactionHistory,
+  transactionHistorySchema,
+} from "../src";
+
+// --- Test Helpers ---
+
+function createMockWallet(): WalletLike {
+  const kp = Keypair.generate();
+  return {
+    publicKey: kp.publicKey,
+    async signTransaction<T extends Transaction | VersionedTransaction>(
+      tx: T,
+    ): Promise<T> {
+      return tx;
+    },
+  };
+}
+
+describe("SAK Plugin", () => {
+  describe("createAgentShieldPlugin", () => {
+    it("creates plugin with pre-created ShieldedWallet", () => {
+      const wallet = shield(createMockWallet(), { maxSpend: "100 USDC/day" });
+      const plugin = createAgentShieldPlugin({ wallet });
+
+      expect(plugin.name).to.equal("agent-shield");
+      expect(plugin.methods).to.have.property("shield_status");
+      expect(plugin.methods).to.have.property("shield_update_policy");
+      expect(plugin.methods).to.have.property("shield_pause_resume");
+      expect(plugin.methods).to.have.property("shield_transaction_history");
+    });
+
+    it("creates plugin with rawWallet + policies (factory)", () => {
+      const plugin = createAgentShieldPlugin({
+        rawWallet: createMockWallet(),
+        policies: { maxSpend: "500 USDC/day" },
+      });
+
+      expect(plugin.name).to.equal("agent-shield");
+      expect(plugin.methods).to.have.property("shield_status");
+      expect(plugin.methods).to.have.property("shield_transaction_history");
+    });
+
+    it("throws if neither wallet nor rawWallet provided", () => {
+      expect(() => createAgentShieldPlugin({} as any)).to.throw(
+        "config must provide either",
+      );
+    });
+
+    it("has 4 methods", () => {
+      const wallet = shield(createMockWallet());
+      const plugin = createAgentShieldPlugin({ wallet });
+      expect(Object.keys(plugin.methods)).to.have.length(4);
+    });
+  });
+
+  describe("resolveWallet", () => {
+    it("returns wallet directly if provided", () => {
+      const wallet = shield(createMockWallet());
+      const resolved = resolveWallet({ wallet });
+      expect(resolved.wallet).to.equal(wallet);
+    });
+
+    it("creates ShieldedWallet from rawWallet", () => {
+      const raw = createMockWallet();
+      const resolved = resolveWallet({
+        rawWallet: raw,
+        policies: { maxSpend: "100 USDC/day" },
+      });
+      expect(resolved.wallet).to.have.property("isPaused");
+      expect(resolved.wallet).to.have.property("innerWallet");
+      expect(resolved.wallet.innerWallet).to.equal(raw);
+    });
+
+    it("throws without wallet or rawWallet", () => {
+      expect(() => resolveWallet({} as any)).to.throw();
+    });
+  });
+
+  describe("createShieldedWallet (factory)", () => {
+    it("creates a ShieldedWallet from raw wallet", () => {
+      const raw = createMockWallet();
+      const wallet = createShieldedWallet({ wallet: raw });
+      expect(wallet.publicKey.equals(raw.publicKey)).to.be.true;
+      expect(wallet.isPaused).to.be.false;
+    });
+
+    it("wires event callbacks to logger", () => {
+      const logs: string[] = [];
+      const logger = {
+        info: (...args: any[]) => logs.push(args.join(" ")),
+        warn: (...args: any[]) => logs.push("WARN:" + args.join(" ")),
+      };
+
+      const wallet = createShieldedWallet({
+        wallet: createMockWallet(),
+        policies: { maxSpend: "100 USDC/day" },
+        logger,
+      });
+
+      wallet.pause();
+      expect(logs.some((l) => l.includes("paused"))).to.be.true;
+
+      wallet.resume();
+      expect(logs.some((l) => l.includes("resumed"))).to.be.true;
+
+      wallet.updatePolicies({ maxSpend: "200 USDC/day" });
+      expect(logs.some((l) => l.includes("updated"))).to.be.true;
+    });
+
+    it("applies policies correctly", () => {
+      const wallet = createShieldedWallet({
+        wallet: createMockWallet(),
+        policies: { maxSpend: "500 USDC/day" },
+      });
+
+      const summary = wallet.getSpendingSummary();
+      expect(summary.tokens.length).to.be.greaterThan(0);
+    });
+  });
+
+  describe("shield_status tool", () => {
+    it("returns formatted status string", async () => {
+      const wallet = shield(createMockWallet(), {
+        maxSpend: "100 USDC/day",
+      });
+      const config = { wallet };
+
+      const result = await status(null, config, {});
+      expect(result).to.include("AgentShield Status");
+      expect(result).to.include("Spending Limits");
+      expect(result).to.include("Rate Limit");
+    });
+
+    it("shows paused state", async () => {
+      const wallet = shield(createMockWallet());
+      wallet.pause();
+      const result = await status(null, { wallet }, {});
+      expect(result).to.include("Paused: true");
+    });
+
+    it("validates schema", () => {
+      const parsed = statusSchema.safeParse({});
+      expect(parsed.success).to.be.true;
+    });
+  });
+
+  describe("shield_update_policy tool", () => {
+    it("updates maxSpend", async () => {
+      const wallet = shield(createMockWallet(), {
+        maxSpend: "100 USDC/day",
+      });
+      const result = await updatePolicy(null, { wallet }, {
+        maxSpend: "500 USDC/day",
+      });
+      expect(result).to.include("policies updated");
+      expect(result).to.include("500 USDC/day");
+    });
+
+    it("updates blockUnknownPrograms", async () => {
+      const wallet = shield(createMockWallet());
+      const result = await updatePolicy(null, { wallet }, {
+        blockUnknownPrograms: false,
+      });
+      expect(result).to.include("blockUnknownPrograms: false");
+    });
+
+    it("validates schema", () => {
+      const parsed = updatePolicySchema.safeParse({
+        maxSpend: "500 USDC/day",
+      });
+      expect(parsed.success).to.be.true;
+    });
+  });
+
+  describe("shield_pause_resume tool", () => {
+    it("pauses enforcement", async () => {
+      const wallet = shield(createMockWallet());
+      const result = await pauseResume(null, { wallet }, {
+        action: "pause",
+      });
+      expect(result).to.include("paused");
+      expect(wallet.isPaused).to.be.true;
+    });
+
+    it("resumes enforcement", async () => {
+      const wallet = shield(createMockWallet());
+      wallet.pause();
+      const result = await pauseResume(null, { wallet }, {
+        action: "resume",
+      });
+      expect(result).to.include("resumed");
+      expect(wallet.isPaused).to.be.false;
+    });
+
+    it("validates schema", () => {
+      const valid = pauseResumeSchema.safeParse({ action: "pause" });
+      expect(valid.success).to.be.true;
+
+      const invalid = pauseResumeSchema.safeParse({ action: "toggle" });
+      expect(invalid.success).to.be.false;
+    });
+  });
+
+  describe("shield_transaction_history tool", () => {
+    it("returns formatted transaction history", async () => {
+      const wallet = shield(createMockWallet(), {
+        maxSpend: "100 USDC/day",
+      });
+      const result = await transactionHistory(null, { wallet }, {});
+      expect(result).to.include("Transaction History");
+      expect(result).to.include("Per-Token Usage");
+      expect(result).to.include("Rate Limit");
+    });
+
+    it("shows enforcement state", async () => {
+      const wallet = shield(createMockWallet());
+      const result = await transactionHistory(null, { wallet }, {});
+      expect(result).to.include("Enforcement: ACTIVE");
+    });
+
+    it("handles no spending limits", async () => {
+      const wallet = shield(createMockWallet(), {
+        maxSpend: [],
+        blockUnknownPrograms: false,
+      });
+      const result = await transactionHistory(null, { wallet }, {});
+      expect(result).to.include("No spending limits configured");
+    });
+
+    it("validates schema", () => {
+      const parsed = transactionHistorySchema.safeParse({});
+      expect(parsed.success).to.be.true;
+    });
+  });
+});

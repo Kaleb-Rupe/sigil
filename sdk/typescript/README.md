@@ -1,6 +1,8 @@
 # @agent-shield/sdk
 
-TypeScript SDK for AgentShield — permission-guarded DeFi access for AI agents on Solana.
+TypeScript SDK for AgentShield — permission-guarded DeFi access for AI agents on Solana. This is the **Level 3 (on-chain vault)** tier of AgentShield's security model, providing cryptographic guarantees via PDA vaults, on-chain policy enforcement, and atomic transaction composition.
+
+For most use cases, start with [`@agent-shield/solana`](https://www.npmjs.com/package/@agent-shield/solana) (Level 1 — client-side wrapper). Upgrade to this SDK when you need on-chain enforcement that cannot be bypassed even by compromised agent software.
 
 ## Installation
 
@@ -55,27 +57,53 @@ const sig = await client.executeJupiterSwap({
 });
 ```
 
+## On-Chain Account Model
+
+AgentShield uses 4 PDA account types:
+
+| Account | Seeds | Description |
+|---------|-------|-------------|
+| **AgentVault** | `[b"vault", owner, vault_id]` | Holds owner/agent pubkeys, vault status, fee destination |
+| **PolicyConfig** | `[b"policy", vault]` | Spending caps, token/protocol whitelists, leverage limits |
+| **SpendTracker** | `[b"tracker", vault]` | Rolling 24h spend entries + bounded audit log (max 50 txs) |
+| **SessionAuthority** | `[b"session", vault, agent]` | Ephemeral PDA for atomic transaction validation (expires after 20 slots) |
+
+## Instruction Composition Pattern
+
+The SDK uses **atomic multi-instruction transactions** to avoid Solana's 4-level CPI depth limit:
+
+```
+Transaction = [
+  SetComputeUnitLimit(1_400_000),
+  ValidateAndAuthorize,    // AgentShield: check policy, create session PDA
+  ...DeFi instructions,    // Jupiter swap / Flash Trade open / etc.
+  FinalizeSession          // AgentShield: audit, fees, close session PDA
+]
+```
+
+All instructions succeed or fail atomically. If the DeFi instruction fails, the session is never finalized and no spend is recorded.
+
 ## API Reference
 
 ### Vault Management
 
-| Method | Description |
-|--------|-------------|
-| `createVault(params)` | Create a new vault with policy, tracker, and fee destination |
-| `deposit(vault, mint, amount)` | Deposit SPL tokens into the vault |
-| `registerAgent(vault, agent)` | Register an agent signing key on the vault |
-| `updatePolicy(vault, params)` | Update policy fields (owner only) |
-| `revokeAgent(vault)` | Freeze the vault — kill switch |
-| `reactivateVault(vault, newAgent?)` | Unfreeze and optionally rotate agent key |
-| `withdraw(vault, mint, amount)` | Withdraw tokens to owner (owner only) |
-| `closeVault(vault)` | Close vault and reclaim rent |
+| Method | Description | Signer |
+|--------|-------------|--------|
+| `createVault(params)` | Create a new vault with policy, tracker, and fee destination | Owner |
+| `deposit(vault, mint, amount)` | Deposit SPL tokens into the vault | Owner |
+| `registerAgent(vault, agent)` | Register an agent signing key on the vault | Owner |
+| `updatePolicy(vault, params)` | Update policy fields (partial update — only set fields change) | Owner |
+| `revokeAgent(vault)` | Freeze the vault (kill switch) | Owner |
+| `reactivateVault(vault, newAgent?)` | Unfreeze vault and optionally rotate agent key | Owner |
+| `withdraw(vault, mint, amount)` | Withdraw tokens to owner | Owner |
+| `closeVault(vault)` | Close vault and reclaim rent | Owner |
 
 ### Permission Engine
 
-| Method | Description |
-|--------|-------------|
-| `authorizeAction(vault, params)` | Validate an agent action against policy and create a session |
-| `finalizeSession(vault, agent, success, ...)` | Close session, record audit, collect fees |
+| Method | Description | Signer |
+|--------|-------------|--------|
+| `authorizeAction(vault, params)` | Validate agent action against policy, create session PDA | Agent |
+| `finalizeSession(vault, agent, success, ...)` | Close session, record audit, collect fees | Agent |
 
 ### Transaction Composition
 
@@ -94,7 +122,7 @@ These methods build atomic transactions in the pattern `[ValidateAndAuthorize, D
 |--------|-------------|
 | `getJupiterQuote(params)` | Fetch a swap quote from Jupiter V6 API |
 | `jupiterSwap(params)` | Build an unsigned `VersionedTransaction` for a Jupiter swap |
-| `executeJupiterSwap(params, signers?)` | Quote, compose, sign, send, and confirm |
+| `executeJupiterSwap(params, signers?)` | Quote, compose, sign, send, and confirm in one call |
 
 ### Flash Trade Integration
 
@@ -120,11 +148,12 @@ const [sessionPDA] = client.getSessionPDA(vaultPDA, agent);
 ### Account Fetchers
 
 ```typescript
+// Fetch by owner + vault ID
 const vault = await client.fetchVault(owner, vaultId);
 const policy = await client.fetchPolicy(vaultPDA);
 const tracker = await client.fetchTracker(vaultPDA);
 
-// Or fetch by address directly
+// Fetch by PDA address directly
 const vault = await client.fetchVaultByAddress(vaultPDA);
 const policy = await client.fetchPolicyByAddress(policyPDA);
 const tracker = await client.fetchTrackerByAddress(trackerPDA);
@@ -141,15 +170,28 @@ const tracker = await client.fetchTrackerByAddress(trackerPDA);
 
 ### Account Types
 
-- **`AgentVaultAccount`** — owner, agent, feeDestination, vaultId, status, stats
-- **`PolicyConfigAccount`** — caps, whitelists, leverage limits, fee BPS
-- **`SpendTrackerAccount`** — rolling spends, recent transactions
-- **`SessionAuthorityAccount`** — ephemeral session with action type and expiry
+- **`AgentVaultAccount`** — owner, agent, feeDestination, vaultId, status, stats (totalTransactions, totalVolume)
+- **`PolicyConfigAccount`** — dailySpendingCap, maxTransactionSize, allowedTokens, allowedProtocols, maxLeverageBps, maxConcurrentPositions, developerFeeRate
+- **`SpendTrackerAccount`** — spendEntries (rolling), recentTransactions (audit log, max 50)
+- **`SessionAuthorityAccount`** — vault, agent, actionType, expiresAt
 
 ### Enums
 
-- **`VaultStatus`** — `{ active: {} }`, `{ frozen: {} }`, `{ closed: {} }`
-- **`ActionType`** — `{ swap: {} }`, `{ openPosition: {} }`, `{ closePosition: {} }`, `{ increasePosition: {} }`, `{ decreasePosition: {} }`, `{ deposit: {} }`, `{ withdraw: {} }`
+```typescript
+// Vault status
+VaultStatus.active    // Normal operation
+VaultStatus.frozen    // Kill switch activated
+VaultStatus.closed    // Vault closed
+
+// Action types (for validation + audit)
+ActionType.swap
+ActionType.openPosition
+ActionType.closePosition
+ActionType.increasePosition
+ActionType.decreasePosition
+ActionType.deposit
+ActionType.withdraw
+```
 
 ## Constants
 
@@ -164,18 +206,91 @@ import {
 
 ## Architecture
 
-The SDK uses **instruction composition** rather than CPI wrapping. This avoids Solana's 4-level CPI depth limit and keeps the compute budget manageable:
+```
+Owner creates vault with policy → Agent operates within policy constraints
+
+┌─────────────────────────────────────────────────────────────┐
+│  Transaction (atomic — all succeed or all revert)           │
+│                                                              │
+│  1. SetComputeUnitLimit(1,400,000)                          │
+│  2. ValidateAndAuthorize                                     │
+│     • Check vault status (Active)                           │
+│     • Check agent is registered                             │
+│     • Check token/protocol whitelists                       │
+│     • Check spending cap (rolling 24h)                      │
+│     • Check leverage limits (if perp)                       │
+│     • Create SessionAuthority PDA                           │
+│  3. DeFi Instruction (Jupiter swap, Flash Trade, etc.)      │
+│  4. FinalizeSession                                         │
+│     • Record in audit log                                   │
+│     • Update open positions counter                         │
+│     • Collect protocol + developer fees                     │
+│     • Close SessionAuthority PDA (reclaim rent)             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Key Design Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| One agent per vault | Multiple agents = multiple vaults. Simplifies permission model. |
+| Rolling 24h window | Not calendar-day. Prevents edge-case burst at midnight. |
+| Fees at finalization only | Not at authorization. Prevents fee charging on failed txs. |
+| Immutable fee destination | Prevents owner from changing fee recipient after vault creation. |
+| Bounded vectors | Max 10 tokens, 10 protocols, 100 spend entries, 50 audit records. |
+
+### Policy Constraints
+
+| Field | Range | Description |
+|-------|-------|-------------|
+| `dailySpendingCap` | `u64` | Max total spend in rolling 24h window |
+| `maxTransactionSize` | `u64` | Max single transaction value |
+| `allowedTokens` | max 10 | Token mint whitelist |
+| `allowedProtocols` | max 10 | Program ID whitelist |
+| `maxLeverageBps` | `u16` | Max leverage in basis points |
+| `maxConcurrentPositions` | `u8` | Max open positions |
+| `developerFeeRate` | 0–500 | Developer fee in BPS (max 5%) |
+
+## Security Model
+
+This is **Level 3** in AgentShield's three-tier architecture:
 
 ```
-Transaction = [
-  SetComputeUnitLimit(1_400_000),
-  ValidateAndAuthorize,    // AgentShield: check policy, create session
-  ...DeFi instructions,    // Jupiter swap / Flash Trade open / etc.
-  FinalizeSession          // AgentShield: audit, fees, close session
-]
+Level 1: Client-Side Wrapper (@agent-shield/solana)
+  → Intercepted signTransaction, client-side policy checks
+  → Can be bypassed by determined attacker with key access
+
+Level 2: TEE-Backed Signing (coming soon)
+  → Private keys in Trusted Execution Environment
+  → Agent code never touches keys
+
+Level 3: On-Chain Vault (this package)
+  → PDA vault with on-chain PolicyConfig
+  → Cannot be bypassed — policy enforced by Solana validators
+  → Cryptographic guarantees via atomic transactions
 ```
 
-All instructions in the transaction succeed or fail atomically.
+**On-chain enforcement means:**
+- Agent cannot exceed spending caps even if the agent software is compromised
+- Owner can freeze the vault at any time (kill switch)
+- All transactions are audited in the SpendTracker
+- Session PDAs expire after 20 slots (~8 seconds)
+- Fee destination is immutable after creation
+
+## Devnet
+
+Program deployed to devnet at: `4ZeVCqnjUgUtFrHHPG7jELUxvJeoVGHhGNgPrhBPwrHL`
+
+IDL account: `Ev3gSzxLw6RwExAMpTHUKvn2o9YVULxiWehrHee7aepP`
+
+## Related Packages
+
+| Package | Description |
+|---------|-------------|
+| [`@agent-shield/solana`](https://www.npmjs.com/package/@agent-shield/solana) | Client-side wallet wrapper (Level 1) |
+| [`@agent-shield/core`](https://www.npmjs.com/package/@agent-shield/core) | Pure TypeScript policy engine |
+| [`@agent-shield/plugin-solana-agent-kit`](https://www.npmjs.com/package/@agent-shield/plugin-solana-agent-kit) | Solana Agent Kit integration |
+| [`@agent-shield/plugin-elizaos`](https://www.npmjs.com/package/@agent-shield/plugin-elizaos) | ElizaOS integration |
 
 ## License
 
