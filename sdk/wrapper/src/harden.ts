@@ -65,6 +65,6 @@ export async function harden(
   void sdk;
   throw new Error(
     "shield.harden() is not yet implemented. Use shield() for client-side protection. " +
-    "On-chain vault enforcement will be available in a future release.",
+      "On-chain vault enforcement will be available in a future release.",
   );
 }

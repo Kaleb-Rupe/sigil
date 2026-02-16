@@ -1,5 +1,5 @@
-use anchor_lang::prelude::*;
 use super::VaultStatus;
+use anchor_lang::prelude::*;
 
 #[account]
 pub struct AgentVault {
@@ -42,7 +42,7 @@ pub struct AgentVault {
 
 impl AgentVault {
     /// Account discriminator (8) + owner (32) + agent (32) + fee_destination (32) +
-    /// vault_id (8) + status (1) + bump (1) + created_at (8) + total_transactions (8) + 
+    /// vault_id (8) + status (1) + bump (1) + created_at (8) + total_transactions (8) +
     /// total_volume (8) + open_positions (1) + total_fees_collected (8)
     pub const SIZE: usize = 8 + 32 + 32 + 32 + 8 + 1 + 1 + 8 + 8 + 8 + 1 + 8;
 

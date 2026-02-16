@@ -4,7 +4,11 @@ import {
 } from "@agent-shield/core";
 import type { PolicyViolation } from "@agent-shield/core";
 import { ShieldDeniedError } from "./errors";
-import { ResolvedPolicies, TransactionAnalysis, toCoreAnalysis } from "./policies";
+import {
+  ResolvedPolicies,
+  TransactionAnalysis,
+  toCoreAnalysis,
+} from "./policies";
 import { ShieldState } from "./state";
 
 /**

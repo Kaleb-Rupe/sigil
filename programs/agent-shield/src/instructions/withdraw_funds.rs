@@ -1,9 +1,9 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Token, TokenAccount, Mint, Transfer};
+use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 
-use crate::state::*;
 use crate::errors::AgentShieldError;
 use crate::events::FundsWithdrawn;
+use crate::state::*;
 
 #[derive(Accounts)]
 pub struct WithdrawFunds<'info> {

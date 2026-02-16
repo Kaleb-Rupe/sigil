@@ -1,8 +1,8 @@
 use anchor_lang::prelude::*;
 
-use crate::state::*;
 use crate::errors::AgentShieldError;
 use crate::events::VaultClosed;
+use crate::state::*;
 
 #[derive(Accounts)]
 pub struct CloseVault<'info> {

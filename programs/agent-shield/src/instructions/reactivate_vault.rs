@@ -1,8 +1,8 @@
 use anchor_lang::prelude::*;
 
-use crate::state::*;
 use crate::errors::AgentShieldError;
 use crate::events::VaultReactivated;
+use crate::state::*;
 
 #[derive(Accounts)]
 pub struct ReactivateVault<'info> {
@@ -32,10 +32,7 @@ pub fn handler(ctx: Context<ReactivateVault>, new_agent: Option<Pubkey>) -> Resu
             agent_key != Pubkey::default(),
             AgentShieldError::InvalidAgentKey
         );
-        require!(
-            agent_key != vault.owner,
-            AgentShieldError::AgentIsOwner
-        );
+        require!(agent_key != vault.owner, AgentShieldError::AgentIsOwner);
         vault.agent = agent_key;
     }
 

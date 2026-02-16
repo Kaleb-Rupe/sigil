@@ -1,8 +1,8 @@
 use anchor_lang::prelude::*;
 
-use crate::state::*;
 use crate::errors::AgentShieldError;
 use crate::events::AgentRegistered;
+use crate::state::*;
 
 #[derive(Accounts)]
 pub struct RegisterAgent<'info> {
@@ -24,18 +24,12 @@ pub fn handler(ctx: Context<RegisterAgent>, agent: Pubkey) -> Result<()> {
         vault.status != VaultStatus::Closed,
         AgentShieldError::VaultAlreadyClosed
     );
-    require!(
-        !vault.has_agent(),
-        AgentShieldError::AgentAlreadyRegistered
-    );
+    require!(!vault.has_agent(), AgentShieldError::AgentAlreadyRegistered);
     require!(
         agent != Pubkey::default(),
         AgentShieldError::InvalidAgentKey
     );
-    require!(
-        agent != vault.owner,
-        AgentShieldError::AgentIsOwner
-    );
+    require!(agent != vault.owner, AgentShieldError::AgentIsOwner);
 
     vault.agent = agent;
 

@@ -1,6 +1,6 @@
-use anchor_lang::prelude::*;
-use super::{ActionType, MAX_SPEND_ENTRIES, MAX_RECENT_TRANSACTIONS, ROLLING_WINDOW_SECONDS};
+use super::{ActionType, MAX_RECENT_TRANSACTIONS, MAX_SPEND_ENTRIES, ROLLING_WINDOW_SECONDS};
 use crate::errors::AgentShieldError;
+use anchor_lang::prelude::*;
 
 #[account]
 pub struct SpendTracker {
@@ -21,20 +21,21 @@ pub struct SpendTracker {
 
 impl SpendTracker {
     /// Conservative size estimate:
-    /// discriminator (8) + vault (32) + 
+    /// discriminator (8) + vault (32) +
     /// rolling_spends vec (4 + SpendEntry::SIZE * MAX_SPEND_ENTRIES) +
     /// recent_transactions vec (4 + TransactionRecord::SIZE * MAX_RECENT_TRANSACTIONS) +
     /// bump (1)
-    pub const SIZE: usize = 8 + 32 
-        + (4 + SpendEntry::SIZE * MAX_SPEND_ENTRIES) 
+    pub const SIZE: usize = 8
+        + 32
+        + (4 + SpendEntry::SIZE * MAX_SPEND_ENTRIES)
         + (4 + TransactionRecord::SIZE * MAX_RECENT_TRANSACTIONS)
         + 1;
 
     /// Prune expired entries and return the total spend for a given token
     /// within the rolling window.
     pub fn get_rolling_spend(
-        &mut self, 
-        token_mint: &Pubkey, 
+        &mut self,
+        token_mint: &Pubkey,
         current_timestamp: i64,
     ) -> Result<u64> {
         let window_start = current_timestamp
@@ -42,10 +43,12 @@ impl SpendTracker {
             .ok_or(AgentShieldError::Overflow)?;
 
         // Remove expired entries
-        self.rolling_spends.retain(|entry| entry.timestamp >= window_start);
+        self.rolling_spends
+            .retain(|entry| entry.timestamp >= window_start);
 
         // Sum remaining entries for this token
-        let total = self.rolling_spends
+        let total = self
+            .rolling_spends
             .iter()
             .filter(|entry| entry.token_mint == *token_mint)
             .try_fold(0u64, |acc, entry| {
@@ -59,17 +62,13 @@ impl SpendTracker {
     /// Record a new spend entry. Prune expired entries first to make room.
     /// If the vector is full after pruning (all entries are still within
     /// the rolling window), reject the transaction to prevent spend cap bypass.
-    pub fn record_spend(
-        &mut self,
-        token_mint: Pubkey,
-        amount: u64,
-        timestamp: i64,
-    ) -> Result<()> {
+    pub fn record_spend(&mut self, token_mint: Pubkey, amount: u64, timestamp: i64) -> Result<()> {
         // Prune expired entries before checking capacity
         let window_start = timestamp
             .checked_sub(ROLLING_WINDOW_SECONDS)
             .ok_or(AgentShieldError::Overflow)?;
-        self.rolling_spends.retain(|entry| entry.timestamp >= window_start);
+        self.rolling_spends
+            .retain(|entry| entry.timestamp >= window_start);
 
         // Reject if still at capacity (all entries are active)
         require!(

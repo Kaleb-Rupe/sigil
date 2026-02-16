@@ -6,7 +6,11 @@ import {
   isKnownProtocol as coreIsKnownProtocol,
 } from "@agent-shield/core";
 
-export { KNOWN_PROTOCOLS, KNOWN_TOKENS, SYSTEM_PROGRAMS } from "@agent-shield/core";
+export {
+  KNOWN_PROTOCOLS,
+  KNOWN_TOKENS,
+  SYSTEM_PROGRAMS,
+} from "@agent-shield/core";
 
 /**
  * Look up a token's symbol and decimals by mint address.
@@ -23,7 +27,9 @@ export function getTokenInfo(
  * Look up a protocol's name by program ID.
  * Returns undefined for unknown protocols.
  */
-export function getProtocolName(programId: PublicKey | string): string | undefined {
+export function getProtocolName(
+  programId: PublicKey | string,
+): string | undefined {
   const key = typeof programId === "string" ? programId : programId.toBase58();
   return coreGetProtocolName(key);
 }

@@ -1,9 +1,9 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 
-use crate::state::*;
 use crate::errors::AgentShieldError;
-use crate::events::{SessionFinalized, FeesCollected};
+use crate::events::{FeesCollected, SessionFinalized};
+use crate::state::*;
 
 #[derive(Accounts)]
 pub struct FinalizeSession<'info> {
@@ -124,7 +124,10 @@ pub fn handler(ctx: Context<FinalizeSession>, success: bool) -> Result<()> {
         let has_any_fee = protocol_fee > 0 || developer_fee > 0;
 
         if has_any_fee {
-            let vault_token = ctx.accounts.vault_token_account.as_ref()
+            let vault_token = ctx
+                .accounts
+                .vault_token_account
+                .as_ref()
                 .ok_or(error!(AgentShieldError::InvalidFeeDestination))?;
 
             // Validate vault token account authority and mint
@@ -148,7 +151,10 @@ pub fn handler(ctx: Context<FinalizeSession>, success: bool) -> Result<()> {
 
             // Transfer protocol fee
             if protocol_fee > 0 {
-                let treasury_token = ctx.accounts.protocol_treasury_token_account.as_ref()
+                let treasury_token = ctx
+                    .accounts
+                    .protocol_treasury_token_account
+                    .as_ref()
                     .ok_or(error!(AgentShieldError::InvalidProtocolTreasury))?;
                 require!(
                     treasury_token.owner == PROTOCOL_TREASURY,
@@ -174,7 +180,10 @@ pub fn handler(ctx: Context<FinalizeSession>, success: bool) -> Result<()> {
 
             // Transfer developer fee
             if developer_fee > 0 {
-                let fee_dest = ctx.accounts.fee_destination_token_account.as_ref()
+                let fee_dest = ctx
+                    .accounts
+                    .fee_destination_token_account
+                    .as_ref()
                     .ok_or(error!(AgentShieldError::InvalidFeeDestination))?;
                 require!(
                     fee_dest.owner == vault_fee_destination,

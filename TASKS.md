@@ -353,13 +353,16 @@
 
 > **Ship 0.2 as its own PR after 0.1 lands.** Core extraction rewrites every import path in the wrapper — don't combine with the pnpm migration.
 
-### 0.3 CI Pipeline
-- [ ] GitHub Actions workflow: build → lint → test per package
-- [ ] Matrix strategy for each workspace package
-- [ ] Cache pnpm dependencies
-- [ ] Run `cargo fmt --check` and `cargo clippy` for Rust
-- [ ] Run wrapper tests (no validator needed)
-- [ ] Run on-chain tests with `solana-test-validator`
+### 0.3 CI Pipeline ✅
+- [x] GitHub Actions workflow (`.github/workflows/ci.yml`) with 3 parallel jobs
+- [x] **Job 1:** Build all TS packages, Prettier lint (core + wrapper), wrapper tests (41 tests)
+- [x] **Job 2:** `cargo fmt --check` + `cargo clippy` (with Anchor-specific lint allows)
+- [x] **Job 3:** Anchor build + `solana-test-validator` + 57 on-chain tests
+- [x] Cache: pnpm deps (Job 1/3), Cargo registry + build (Job 2/3)
+- [x] Concurrency: cancel in-progress runs for same branch/PR
+- [x] Fix pre-existing `cargo fmt` issues across Rust source
+- [x] Fix pre-existing Prettier issues in `sdk/core/src/` and `sdk/wrapper/src/`
+- [x] **Gate: all 3 jobs pass locally (builds, lints, 98 tests)**
 
 ---
 

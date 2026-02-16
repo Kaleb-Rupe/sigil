@@ -1,8 +1,8 @@
 use anchor_lang::prelude::*;
 
-use crate::state::*;
 use crate::errors::AgentShieldError;
 use crate::events::VaultCreated;
+use crate::state::*;
 
 #[derive(Accounts)]
 #[instruction(vault_id: u64)]

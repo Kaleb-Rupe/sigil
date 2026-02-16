@@ -66,9 +66,10 @@ export function resolvePolicies(input?: ShieldPolicies): ResolvedPolicies {
   // Convert Solana-aware input to core format
   const coreInput: Core.ShieldPolicies | undefined = input
     ? {
-        maxSpend: input.maxSpend !== undefined
-          ? convertSpendLimits(input.maxSpend)
-          : undefined,
+        maxSpend:
+          input.maxSpend !== undefined
+            ? convertSpendLimits(input.maxSpend)
+            : undefined,
         maxTransactionSize: input.maxTransactionSize,
         allowedProtocols: input.allowedProtocols?.map((p) =>
           typeof p === "string" ? p : p.toBase58(),

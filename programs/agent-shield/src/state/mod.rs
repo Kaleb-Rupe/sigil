@@ -1,12 +1,12 @@
-pub mod vault;
 pub mod policy;
-pub mod tracker;
 pub mod session;
+pub mod tracker;
+pub mod vault;
 
-pub use vault::*;
 pub use policy::*;
-pub use tracker::*;
 pub use session::*;
+pub use tracker::*;
+pub use vault::*;
 
 /// Maximum number of allowed tokens in a policy
 pub const MAX_ALLOWED_TOKENS: usize = 10;
@@ -38,10 +38,8 @@ pub const MAX_DEVELOPER_FEE_RATE: u16 = 50;
 /// Protocol treasury address (devnet placeholder — replace before mainnet)
 /// Base58: ASHie1dFTnDSnrHMPGmniJhMgfJVGPm3rAaEPnrtWDiT
 pub const PROTOCOL_TREASURY: Pubkey = Pubkey::new_from_array([
-    140, 51, 155, 5, 120, 99, 25, 69,
-    20, 4, 163, 87, 229, 124, 111, 239,
-    107, 28, 230, 192, 254, 239, 33, 251,
-    37, 93, 179, 29, 45, 226, 14, 172,
+    140, 51, 155, 5, 120, 99, 25, 69, 20, 4, 163, 87, 229, 124, 111, 239, 107, 28, 230, 192, 254,
+    239, 33, 251, 37, 93, 179, 29, 45, 226, 14, 172,
 ]);
 
 /// Vault status enum

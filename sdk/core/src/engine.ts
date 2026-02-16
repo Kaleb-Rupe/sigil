@@ -102,7 +102,7 @@ function checkPrograms(
         rule: "unknown_program",
         message: `Unknown program ${programId} — not in the known protocol registry`,
         suggestion:
-          'Add this program ID to allowedProtocols or set blockUnknownPrograms: false.',
+          "Add this program ID to allowedProtocols or set blockUnknownPrograms: false.",
         details: { programId },
       });
     }
@@ -125,7 +125,8 @@ function checkTokens(
       violations.push({
         rule: "token_not_allowed",
         message: `Token ${tokenInfo?.symbol ?? transfer.mint} is not in the allowed token list`,
-        suggestion: "Add this token mint to allowedTokens in your shield config.",
+        suggestion:
+          "Add this token mint to allowedTokens in your shield config.",
         details: { tokenMint: transfer.mint },
       });
     }

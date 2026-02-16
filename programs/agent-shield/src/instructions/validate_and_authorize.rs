@@ -1,8 +1,8 @@
 use anchor_lang::prelude::*;
 
-use crate::state::*;
 use crate::errors::AgentShieldError;
 use crate::events::ActionAuthorized;
+use crate::state::*;
 
 #[derive(Accounts)]
 pub struct ValidateAndAuthorize<'info> {

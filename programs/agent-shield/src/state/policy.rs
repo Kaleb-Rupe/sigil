@@ -1,5 +1,5 @@
+use super::{MAX_ALLOWED_PROTOCOLS, MAX_ALLOWED_TOKENS};
 use anchor_lang::prelude::*;
-use super::{MAX_ALLOWED_TOKENS, MAX_ALLOWED_PROTOCOLS};
 
 #[account]
 pub struct PolicyConfig {
@@ -46,10 +46,17 @@ impl PolicyConfig {
     /// allowed_tokens vec (4 + 32 * MAX) + allowed_protocols vec (4 + 32 * MAX) +
     /// max_leverage (2) + can_open (1) + max_positions (1) +
     /// developer_fee_rate (2) + bump (1)
-    pub const SIZE: usize = 8 + 32 + 8 + 8 
-        + (4 + 32 * MAX_ALLOWED_TOKENS) 
-        + (4 + 32 * MAX_ALLOWED_PROTOCOLS) 
-        + 2 + 1 + 1 + 2 + 1;
+    pub const SIZE: usize = 8
+        + 32
+        + 8
+        + 8
+        + (4 + 32 * MAX_ALLOWED_TOKENS)
+        + (4 + 32 * MAX_ALLOWED_PROTOCOLS)
+        + 2
+        + 1
+        + 1
+        + 2
+        + 1;
 
     pub fn is_token_allowed(&self, mint: &Pubkey) -> bool {
         self.allowed_tokens.contains(mint)

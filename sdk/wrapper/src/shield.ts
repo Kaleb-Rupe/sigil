@@ -1,8 +1,4 @@
-import {
-  PublicKey,
-  Transaction,
-  VersionedTransaction,
-} from "@solana/web3.js";
+import { PublicKey, Transaction, VersionedTransaction } from "@solana/web3.js";
 import { ShieldPolicies, resolvePolicies } from "./policies";
 import { analyzeTransaction } from "./inspector";
 import { evaluatePolicy, recordTransaction } from "./engine";
@@ -127,9 +123,7 @@ export function shield(
       if (wallet.signAllTransactions) {
         signed = await wallet.signAllTransactions(txs);
       } else {
-        signed = await Promise.all(
-          txs.map((tx) => wallet.signTransaction(tx)),
-        );
+        signed = await Promise.all(txs.map((tx) => wallet.signTransaction(tx)));
       }
       onApproved?.(null);
 

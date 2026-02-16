@@ -1,5 +1,5 @@
+use super::{ActionType, SESSION_EXPIRY_SLOTS};
 use anchor_lang::prelude::*;
-use super::{SESSION_EXPIRY_SLOTS, ActionType};
 
 #[account]
 pub struct SessionAuthority {

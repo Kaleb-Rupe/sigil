@@ -1,5 +1,5 @@
-use anchor_lang::prelude::*;
 use crate::state::ActionType;
+use anchor_lang::prelude::*;
 
 #[event]
 pub struct VaultCreated {

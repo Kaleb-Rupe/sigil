@@ -54,26 +54,59 @@ export const SYSTEM_PROGRAMS: ReadonlySet<string> = new Set([
 ]);
 
 /** Common SPL token mints on Solana */
-export const KNOWN_TOKENS: ReadonlyMap<string, { symbol: string; decimals: number }> = new Map([
+export const KNOWN_TOKENS: ReadonlyMap<
+  string,
+  { symbol: string; decimals: number }
+> = new Map([
   // Stablecoins
-  ["EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", { symbol: "USDC", decimals: 6 }],
-  ["Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", { symbol: "USDT", decimals: 6 }],
-  ["USDSwr9ApdHk5bvJKMjzff41FfuX8bSxdKcR81vTwcA", { symbol: "USDS", decimals: 6 }],
+  [
+    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    { symbol: "USDC", decimals: 6 },
+  ],
+  [
+    "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+    { symbol: "USDT", decimals: 6 },
+  ],
+  [
+    "USDSwr9ApdHk5bvJKMjzff41FfuX8bSxdKcR81vTwcA",
+    { symbol: "USDS", decimals: 6 },
+  ],
 
   // SOL
-  ["So11111111111111111111111111111111111111112", { symbol: "SOL", decimals: 9 }],
+  [
+    "So11111111111111111111111111111111111111112",
+    { symbol: "SOL", decimals: 9 },
+  ],
 
   // Wrapped BTC
-  ["3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh", { symbol: "wBTC", decimals: 8 }],
-  ["cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij", { symbol: "cbBTC", decimals: 8 }],
+  [
+    "3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh",
+    { symbol: "wBTC", decimals: 8 },
+  ],
+  [
+    "cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij",
+    { symbol: "cbBTC", decimals: 8 },
+  ],
 
   // Ethereum
-  ["7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs", { symbol: "wETH", decimals: 8 }],
+  [
+    "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs",
+    { symbol: "wETH", decimals: 8 },
+  ],
 
   // Liquid Staking
-  ["mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So", { symbol: "mSOL", decimals: 9 }],
-  ["J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn", { symbol: "jitoSOL", decimals: 9 }],
-  ["bSo13r4TkiE4KumL71LsHTPpL2euBYLFx6h9HP3piy1", { symbol: "bSOL", decimals: 9 }],
+  [
+    "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So",
+    { symbol: "mSOL", decimals: 9 },
+  ],
+  [
+    "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn",
+    { symbol: "jitoSOL", decimals: 9 },
+  ],
+  [
+    "bSo13r4TkiE4KumL71LsHTPpL2euBYLFx6h9HP3piy1",
+    { symbol: "bSOL", decimals: 9 },
+  ],
 ]);
 
 /**
