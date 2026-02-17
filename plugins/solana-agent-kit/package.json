@@ -1,6 +1,6 @@
 {
   "name": "@agent-shield/plugin-solana-agent-kit",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "AgentShield plugin for Solana Agent Kit — shield() wrapper monitoring and management tools",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
