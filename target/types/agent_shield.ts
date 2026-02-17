@@ -59,8 +59,8 @@ export type AgentShield = {
               },
               {
                 "kind": "account",
-                "path": "vault.vaultId",
-                "account": "AgentVault"
+                "path": "vault.vault_id",
+                "account": "agentVault"
               }
             ]
           },
@@ -168,8 +168,8 @@ export type AgentShield = {
               },
               {
                 "kind": "account",
-                "path": "vault.vaultId",
-                "account": "AgentVault"
+                "path": "vault.vault_id",
+                "account": "agentVault"
               }
             ]
           }
@@ -424,12 +424,12 @@ export type AgentShield = {
               {
                 "kind": "account",
                 "path": "vault.owner",
-                "account": "AgentVault"
+                "account": "agentVault"
               },
               {
                 "kind": "account",
-                "path": "vault.vaultId",
-                "account": "AgentVault"
+                "path": "vault.vault_id",
+                "account": "agentVault"
               }
             ]
           },
@@ -513,7 +513,7 @@ export type AgentShield = {
               {
                 "kind": "account",
                 "path": "session.agent",
-                "account": "SessionAuthority"
+                "account": "sessionAuthority"
               }
             ]
           }
@@ -536,7 +536,7 @@ export type AgentShield = {
         {
           "name": "feeDestinationTokenAccount",
           "docs": [
-            "Developer fee destination token account \u2014 must match vault.fee_destination"
+            "Developer fee destination token account — must match vault.fee_destination"
           ],
           "writable": true,
           "optional": true
@@ -544,7 +544,7 @@ export type AgentShield = {
         {
           "name": "protocolTreasuryTokenAccount",
           "docs": [
-            "Protocol treasury token account \u2014 must be owned by PROTOCOL_TREASURY"
+            "Protocol treasury token account — must be owned by PROTOCOL_TREASURY"
           ],
           "writable": true,
           "optional": true
@@ -755,8 +755,8 @@ export type AgentShield = {
               },
               {
                 "kind": "account",
-                "path": "vault.vaultId",
-                "account": "AgentVault"
+                "path": "vault.vault_id",
+                "account": "agentVault"
               }
             ]
           }
@@ -816,8 +816,8 @@ export type AgentShield = {
               },
               {
                 "kind": "account",
-                "path": "vault.vaultId",
-                "account": "AgentVault"
+                "path": "vault.vault_id",
+                "account": "agentVault"
               }
             ]
           }
@@ -875,8 +875,8 @@ export type AgentShield = {
               },
               {
                 "kind": "account",
-                "path": "vault.vaultId",
-                "account": "AgentVault"
+                "path": "vault.vault_id",
+                "account": "agentVault"
               }
             ]
           }
@@ -928,8 +928,8 @@ export type AgentShield = {
               },
               {
                 "kind": "account",
-                "path": "vault.vaultId",
-                "account": "AgentVault"
+                "path": "vault.vault_id",
+                "account": "agentVault"
               }
             ]
           },
@@ -1058,12 +1058,12 @@ export type AgentShield = {
               {
                 "kind": "account",
                 "path": "vault.owner",
-                "account": "AgentVault"
+                "account": "agentVault"
               },
               {
                 "kind": "account",
-                "path": "vault.vaultId",
-                "account": "AgentVault"
+                "path": "vault.vault_id",
+                "account": "agentVault"
               }
             ]
           },
@@ -1121,7 +1121,7 @@ export type AgentShield = {
         {
           "name": "session",
           "docs": [
-            "Ephemeral session PDA \u2014 `init` ensures no double-authorization"
+            "Ephemeral session PDA — `init` ensures no double-authorization"
           ],
           "writable": true,
           "pda": {
@@ -1159,7 +1159,7 @@ export type AgentShield = {
           "name": "actionType",
           "type": {
             "defined": {
-              "name": "ActionType"
+              "name": "actionType"
             }
           }
         },
@@ -1228,8 +1228,8 @@ export type AgentShield = {
               },
               {
                 "kind": "account",
-                "path": "vault.vaultId",
-                "account": "AgentVault"
+                "path": "vault.vault_id",
+                "account": "agentVault"
               }
             ]
           }
@@ -1438,7 +1438,7 @@ export type AgentShield = {
   ],
   "accounts": [
     {
-      "name": "AgentVault",
+      "name": "agentVault",
       "discriminator": [
         232,
         220,
@@ -1451,7 +1451,7 @@ export type AgentShield = {
       ]
     },
     {
-      "name": "PolicyConfig",
+      "name": "policyConfig",
       "discriminator": [
         219,
         7,
@@ -1464,7 +1464,7 @@ export type AgentShield = {
       ]
     },
     {
-      "name": "SessionAuthority",
+      "name": "sessionAuthority",
       "discriminator": [
         48,
         9,
@@ -1477,7 +1477,7 @@ export type AgentShield = {
       ]
     },
     {
-      "name": "SpendTracker",
+      "name": "spendTracker",
       "discriminator": [
         180,
         17,
@@ -1492,7 +1492,7 @@ export type AgentShield = {
   ],
   "events": [
     {
-      "name": "ActionAuthorized",
+      "name": "actionAuthorized",
       "discriminator": [
         85,
         90,
@@ -1505,7 +1505,7 @@ export type AgentShield = {
       ]
     },
     {
-      "name": "ActionDenied",
+      "name": "actionDenied",
       "discriminator": [
         243,
         239,
@@ -1518,7 +1518,7 @@ export type AgentShield = {
       ]
     },
     {
-      "name": "AgentRegistered",
+      "name": "agentRegistered",
       "discriminator": [
         191,
         78,
@@ -1531,7 +1531,7 @@ export type AgentShield = {
       ]
     },
     {
-      "name": "AgentRevoked",
+      "name": "agentRevoked",
       "discriminator": [
         12,
         251,
@@ -1544,7 +1544,7 @@ export type AgentShield = {
       ]
     },
     {
-      "name": "FeesCollected",
+      "name": "feesCollected",
       "discriminator": [
         233,
         23,
@@ -1557,7 +1557,7 @@ export type AgentShield = {
       ]
     },
     {
-      "name": "FundsDeposited",
+      "name": "fundsDeposited",
       "discriminator": [
         157,
         209,
@@ -1570,7 +1570,7 @@ export type AgentShield = {
       ]
     },
     {
-      "name": "FundsWithdrawn",
+      "name": "fundsWithdrawn",
       "discriminator": [
         56,
         130,
@@ -1583,7 +1583,7 @@ export type AgentShield = {
       ]
     },
     {
-      "name": "PolicyUpdated",
+      "name": "policyUpdated",
       "discriminator": [
         225,
         112,
@@ -1596,7 +1596,7 @@ export type AgentShield = {
       ]
     },
     {
-      "name": "SessionFinalized",
+      "name": "sessionFinalized",
       "discriminator": [
         33,
         12,
@@ -1609,7 +1609,7 @@ export type AgentShield = {
       ]
     },
     {
-      "name": "VaultClosed",
+      "name": "vaultClosed",
       "discriminator": [
         238,
         129,
@@ -1622,7 +1622,7 @@ export type AgentShield = {
       ]
     },
     {
-      "name": "VaultCreated",
+      "name": "vaultCreated",
       "discriminator": [
         117,
         25,
@@ -1635,7 +1635,7 @@ export type AgentShield = {
       ]
     },
     {
-      "name": "VaultReactivated",
+      "name": "vaultReactivated",
       "discriminator": [
         197,
         52,
@@ -1651,148 +1651,148 @@ export type AgentShield = {
   "errors": [
     {
       "code": 6000,
-      "name": "VaultNotActive",
+      "name": "vaultNotActive",
       "msg": "Vault is not active"
     },
     {
       "code": 6001,
-      "name": "UnauthorizedAgent",
+      "name": "unauthorizedAgent",
       "msg": "Unauthorized: signer is not the registered agent"
     },
     {
       "code": 6002,
-      "name": "UnauthorizedOwner",
+      "name": "unauthorizedOwner",
       "msg": "Unauthorized: signer is not the vault owner"
     },
     {
       "code": 6003,
-      "name": "TokenNotAllowed",
+      "name": "tokenNotAllowed",
       "msg": "Token not in allowed list"
     },
     {
       "code": 6004,
-      "name": "ProtocolNotAllowed",
+      "name": "protocolNotAllowed",
       "msg": "Protocol not in allowed list"
     },
     {
       "code": 6005,
-      "name": "TransactionTooLarge",
+      "name": "transactionTooLarge",
       "msg": "Transaction exceeds maximum single transaction size"
     },
     {
       "code": 6006,
-      "name": "DailyCapExceeded",
+      "name": "dailyCapExceeded",
       "msg": "Daily spending cap would be exceeded"
     },
     {
       "code": 6007,
-      "name": "LeverageTooHigh",
+      "name": "leverageTooHigh",
       "msg": "Leverage exceeds maximum allowed"
     },
     {
       "code": 6008,
-      "name": "TooManyPositions",
+      "name": "tooManyPositions",
       "msg": "Maximum concurrent open positions reached"
     },
     {
       "code": 6009,
-      "name": "PositionOpeningDisallowed",
+      "name": "positionOpeningDisallowed",
       "msg": "Cannot open new positions (policy disallows)"
     },
     {
       "code": 6010,
-      "name": "SessionExpired",
+      "name": "sessionExpired",
       "msg": "Session has expired"
     },
     {
       "code": 6011,
-      "name": "SessionNotAuthorized",
+      "name": "sessionNotAuthorized",
       "msg": "Session not authorized"
     },
     {
       "code": 6012,
-      "name": "InvalidSession",
+      "name": "invalidSession",
       "msg": "Invalid session: does not belong to this vault"
     },
     {
       "code": 6013,
-      "name": "OpenPositionsExist",
+      "name": "openPositionsExist",
       "msg": "Vault has open positions, cannot close"
     },
     {
       "code": 6014,
-      "name": "TooManyAllowedTokens",
+      "name": "tooManyAllowedTokens",
       "msg": "Policy configuration invalid: too many allowed tokens"
     },
     {
       "code": 6015,
-      "name": "TooManyAllowedProtocols",
+      "name": "tooManyAllowedProtocols",
       "msg": "Policy configuration invalid: too many allowed protocols"
     },
     {
       "code": 6016,
-      "name": "AgentAlreadyRegistered",
+      "name": "agentAlreadyRegistered",
       "msg": "Agent already registered for this vault"
     },
     {
       "code": 6017,
-      "name": "NoAgentRegistered",
+      "name": "noAgentRegistered",
       "msg": "No agent registered for this vault"
     },
     {
       "code": 6018,
-      "name": "VaultNotFrozen",
+      "name": "vaultNotFrozen",
       "msg": "Vault is not frozen (expected frozen for reactivation)"
     },
     {
       "code": 6019,
-      "name": "VaultAlreadyClosed",
+      "name": "vaultAlreadyClosed",
       "msg": "Vault is already closed"
     },
     {
       "code": 6020,
-      "name": "InsufficientBalance",
+      "name": "insufficientBalance",
       "msg": "Insufficient vault balance for withdrawal"
     },
     {
       "code": 6021,
-      "name": "DeveloperFeeTooHigh",
+      "name": "developerFeeTooHigh",
       "msg": "Developer fee rate exceeds maximum (50 / 1,000,000 = 0.5 BPS)"
     },
     {
       "code": 6022,
-      "name": "InvalidFeeDestination",
+      "name": "invalidFeeDestination",
       "msg": "Fee destination account invalid"
     },
     {
       "code": 6023,
-      "name": "InvalidProtocolTreasury",
+      "name": "invalidProtocolTreasury",
       "msg": "Protocol treasury account does not match expected address"
     },
     {
       "code": 6024,
-      "name": "TooManySpendEntries",
+      "name": "tooManySpendEntries",
       "msg": "Spend entry limit reached (too many active entries in rolling window)"
     },
     {
       "code": 6025,
-      "name": "InvalidAgentKey",
+      "name": "invalidAgentKey",
       "msg": "Invalid agent: cannot be the zero address"
     },
     {
       "code": 6026,
-      "name": "AgentIsOwner",
+      "name": "agentIsOwner",
       "msg": "Invalid agent: agent cannot be the vault owner"
     },
     {
       "code": 6027,
-      "name": "Overflow",
+      "name": "overflow",
       "msg": "Arithmetic overflow"
     }
   ],
   "types": [
     {
-      "name": "ActionAuthorized",
+      "name": "actionAuthorized",
       "type": {
         "kind": "struct",
         "fields": [
@@ -1808,7 +1808,7 @@ export type AgentShield = {
             "name": "actionType",
             "type": {
               "defined": {
-                "name": "ActionType"
+                "name": "actionType"
               }
             }
           },
@@ -1840,7 +1840,7 @@ export type AgentShield = {
       }
     },
     {
-      "name": "ActionDenied",
+      "name": "actionDenied",
       "type": {
         "kind": "struct",
         "fields": [
@@ -1864,7 +1864,7 @@ export type AgentShield = {
       }
     },
     {
-      "name": "ActionType",
+      "name": "actionType",
       "docs": [
         "Action types that agents can request"
       ],
@@ -1872,31 +1872,31 @@ export type AgentShield = {
         "kind": "enum",
         "variants": [
           {
-            "name": "Swap"
+            "name": "swap"
           },
           {
-            "name": "OpenPosition"
+            "name": "openPosition"
           },
           {
-            "name": "ClosePosition"
+            "name": "closePosition"
           },
           {
-            "name": "IncreasePosition"
+            "name": "increasePosition"
           },
           {
-            "name": "DecreasePosition"
+            "name": "decreasePosition"
           },
           {
-            "name": "Deposit"
+            "name": "deposit"
           },
           {
-            "name": "Withdraw"
+            "name": "withdraw"
           }
         ]
       }
     },
     {
-      "name": "AgentRegistered",
+      "name": "agentRegistered",
       "type": {
         "kind": "struct",
         "fields": [
@@ -1916,7 +1916,7 @@ export type AgentShield = {
       }
     },
     {
-      "name": "AgentRevoked",
+      "name": "agentRevoked",
       "type": {
         "kind": "struct",
         "fields": [
@@ -1936,7 +1936,7 @@ export type AgentShield = {
       }
     },
     {
-      "name": "AgentVault",
+      "name": "agentVault",
       "type": {
         "kind": "struct",
         "fields": [
@@ -1957,7 +1957,7 @@ export type AgentShield = {
           {
             "name": "feeDestination",
             "docs": [
-              "Developer fee destination \u2014 the wallet that receives developer fees",
+              "Developer fee destination — the wallet that receives developer fees",
               "on every finalized transaction. Set at vault creation, immutable after",
               "initialization. Protocol fees go to PROTOCOL_TREASURY separately."
             ],
@@ -1977,7 +1977,7 @@ export type AgentShield = {
             ],
             "type": {
               "defined": {
-                "name": "VaultStatus"
+                "name": "vaultStatus"
               }
             }
           },
@@ -2028,7 +2028,7 @@ export type AgentShield = {
       }
     },
     {
-      "name": "FeesCollected",
+      "name": "feesCollected",
       "type": {
         "kind": "struct",
         "fields": [
@@ -2080,7 +2080,7 @@ export type AgentShield = {
       }
     },
     {
-      "name": "FundsDeposited",
+      "name": "fundsDeposited",
       "type": {
         "kind": "struct",
         "fields": [
@@ -2104,7 +2104,7 @@ export type AgentShield = {
       }
     },
     {
-      "name": "FundsWithdrawn",
+      "name": "fundsWithdrawn",
       "type": {
         "kind": "struct",
         "fields": [
@@ -2132,7 +2132,7 @@ export type AgentShield = {
       }
     },
     {
-      "name": "PolicyConfig",
+      "name": "policyConfig",
       "type": {
         "kind": "struct",
         "fields": [
@@ -2221,7 +2221,7 @@ export type AgentShield = {
       }
     },
     {
-      "name": "PolicyUpdated",
+      "name": "policyUpdated",
       "type": {
         "kind": "struct",
         "fields": [
@@ -2261,7 +2261,7 @@ export type AgentShield = {
       }
     },
     {
-      "name": "SessionAuthority",
+      "name": "sessionAuthority",
       "type": {
         "kind": "struct",
         "fields": [
@@ -2308,7 +2308,7 @@ export type AgentShield = {
             ],
             "type": {
               "defined": {
-                "name": "ActionType"
+                "name": "actionType"
               }
             }
           },
@@ -2330,7 +2330,7 @@ export type AgentShield = {
       }
     },
     {
-      "name": "SessionFinalized",
+      "name": "sessionFinalized",
       "type": {
         "kind": "struct",
         "fields": [
@@ -2354,7 +2354,7 @@ export type AgentShield = {
       }
     },
     {
-      "name": "SpendEntry",
+      "name": "spendEntry",
       "type": {
         "kind": "struct",
         "fields": [
@@ -2374,7 +2374,7 @@ export type AgentShield = {
       }
     },
     {
-      "name": "SpendTracker",
+      "name": "spendTracker",
       "type": {
         "kind": "struct",
         "fields": [
@@ -2394,7 +2394,7 @@ export type AgentShield = {
             "type": {
               "vec": {
                 "defined": {
-                  "name": "SpendEntry"
+                  "name": "spendEntry"
                 }
               }
             }
@@ -2408,7 +2408,7 @@ export type AgentShield = {
             "type": {
               "vec": {
                 "defined": {
-                  "name": "TransactionRecord"
+                  "name": "transactionRecord"
                 }
               }
             }
@@ -2424,7 +2424,7 @@ export type AgentShield = {
       }
     },
     {
-      "name": "TransactionRecord",
+      "name": "transactionRecord",
       "type": {
         "kind": "struct",
         "fields": [
@@ -2436,7 +2436,7 @@ export type AgentShield = {
             "name": "actionType",
             "type": {
               "defined": {
-                "name": "ActionType"
+                "name": "actionType"
               }
             }
           },
@@ -2464,7 +2464,7 @@ export type AgentShield = {
       }
     },
     {
-      "name": "VaultClosed",
+      "name": "vaultClosed",
       "type": {
         "kind": "struct",
         "fields": [
@@ -2484,7 +2484,7 @@ export type AgentShield = {
       }
     },
     {
-      "name": "VaultCreated",
+      "name": "vaultCreated",
       "type": {
         "kind": "struct",
         "fields": [
@@ -2508,7 +2508,7 @@ export type AgentShield = {
       }
     },
     {
-      "name": "VaultReactivated",
+      "name": "vaultReactivated",
       "type": {
         "kind": "struct",
         "fields": [
@@ -2530,7 +2530,7 @@ export type AgentShield = {
       }
     },
     {
-      "name": "VaultStatus",
+      "name": "vaultStatus",
       "docs": [
         "Vault status enum"
       ],
@@ -2538,13 +2538,13 @@ export type AgentShield = {
         "kind": "enum",
         "variants": [
           {
-            "name": "Active"
+            "name": "active"
           },
           {
-            "name": "Frozen"
+            "name": "frozen"
           },
           {
-            "name": "Closed"
+            "name": "closed"
           }
         ]
       }

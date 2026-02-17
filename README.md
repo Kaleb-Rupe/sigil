@@ -114,10 +114,10 @@ const tx = await client.executeJupiterSwap({
 ## Development
 
 ```bash
-# Build the Anchor program
+# Build the Anchor program (--no-idl required on stable Rust with Anchor 0.32.1)
 anchor build --no-idl
 
-# Generate IDL (requires nightly Rust)
+# Generate IDL separately (requires nightly Rust — anchor-syn 0.32.1 bug)
 RUSTUP_TOOLCHAIN=nightly anchor idl build -o target/idl/agent_shield.json
 
 # Run on-chain tests (57 tests across 3 suites)
