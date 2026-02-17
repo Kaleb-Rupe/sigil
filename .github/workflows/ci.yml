@@ -120,9 +120,9 @@ jobs:
   # ──────────────────────────────────────────────────────────────
   on-chain-tests:
     name: On-Chain Tests (68 tests, LiteSVM)
-    # Pin ubuntu-22.04 — litesvm NAPI-RS binary crashes on ubuntu-24.04/latest
-    # due to V8 GC corruption (upstream: https://github.com/LiteSVM/litesvm/issues/171)
-    runs-on: ubuntu-22.04
+    # litesvm NAPI-RS binary requires glibc ≥2.38 (ubuntu ≥24.04)
+    # See: https://github.com/LiteSVM/litesvm/issues/171
+    runs-on: ubuntu-latest
     env:
       # Extra heap room for the litesvm native addon
       NODE_OPTIONS: "--max-old-space-size=4096"
@@ -140,9 +140,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          # Include runner image in key so ubuntu-22.04 vs 24.04 don't share binaries
-          key: anchor-22.04-${{ runner.os }}-${{ hashFiles('programs/agent-shield/Cargo.lock') }}
-          restore-keys: anchor-22.04-${{ runner.os }}-
+          key: anchor-${{ runner.os }}-${{ hashFiles('programs/agent-shield/Cargo.lock') }}
+          restore-keys: anchor-${{ runner.os }}-
 
       - name: Install Solana CLI
         run: |
