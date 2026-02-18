@@ -60,10 +60,10 @@ describe("SAK Plugin", () => {
       );
     });
 
-    it("has 4 methods", () => {
+    it("has 5 methods", () => {
       const wallet = shield(createMockWallet());
       const plugin = createAgentShieldPlugin({ wallet });
-      expect(Object.keys(plugin.methods)).to.have.length(4);
+      expect(Object.keys(plugin.methods)).to.have.length(5);
     });
   });
 

@@ -58,8 +58,8 @@ describe("ElizaOS Plugin", () => {
       expect(agentShieldPlugin.description).to.include("spending controls");
     });
 
-    it("has 4 actions", () => {
-      expect(agentShieldPlugin.actions).to.have.length(4);
+    it("has 5 actions", () => {
+      expect(agentShieldPlugin.actions).to.have.length(5);
     });
 
     it("has 2 providers", () => {
