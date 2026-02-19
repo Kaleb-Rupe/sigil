@@ -166,12 +166,16 @@ async function main() {
       allowedDestinations: z
         .array(z.string())
         .optional()
-        .describe("Allowed destination addresses for agent transfers (base58). Max 10."),
+        .describe(
+          "Allowed destination addresses for agent transfers (base58). Max 10.",
+        ),
       timelockDuration: z
         .number()
         .optional()
         .default(0)
-        .describe("Timelock duration in seconds (0 = immediate policy updates)"),
+        .describe(
+          "Timelock duration in seconds (0 = immediate policy updates)",
+        ),
     },
     async (input) => ({
       content: [{ type: "text", text: await createVault(client, input) }],
@@ -313,9 +317,7 @@ async function main() {
         .describe("New developer fee rate (max 50)"),
     },
     async (input) => ({
-      content: [
-        { type: "text", text: await queuePolicyUpdate(client, input) },
-      ],
+      content: [{ type: "text", text: await queuePolicyUpdate(client, input) }],
     }),
   );
 
@@ -392,9 +394,7 @@ async function main() {
       amount: z.string().describe("Amount in token base units"),
     },
     async (input) => ({
-      content: [
-        { type: "text", text: await agentTransfer(client, input) },
-      ],
+      content: [{ type: "text", text: await agentTransfer(client, input) }],
     }),
   );
 

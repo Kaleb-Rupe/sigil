@@ -323,19 +323,17 @@ export function buildAgentTransfer(
   const [policy] = getPolicyPDA(vault, program.programId);
   const [tracker] = getTrackerPDA(vault, program.programId);
 
-  let builder = program.methods
-    .agentTransfer(params.amount)
-    .accounts({
-      agent,
-      vault,
-      policy,
-      tracker,
-      vaultTokenAccount: params.vaultTokenAccount,
-      destinationTokenAccount: params.destinationTokenAccount,
-      feeDestinationTokenAccount: params.feeDestinationTokenAccount ?? null,
-      protocolTreasuryTokenAccount: params.protocolTreasuryTokenAccount ?? null,
-      tokenProgram: TOKEN_PROGRAM_ID,
-    } as any);
+  let builder = program.methods.agentTransfer(params.amount).accounts({
+    agent,
+    vault,
+    policy,
+    tracker,
+    vaultTokenAccount: params.vaultTokenAccount,
+    destinationTokenAccount: params.destinationTokenAccount,
+    feeDestinationTokenAccount: params.feeDestinationTokenAccount ?? null,
+    protocolTreasuryTokenAccount: params.protocolTreasuryTokenAccount ?? null,
+    tokenProgram: TOKEN_PROGRAM_ID,
+  } as any);
 
   if (oracleFeedAccount) {
     builder = builder.remainingAccounts([

@@ -1,12 +1,11 @@
-import type { VersionedTransaction, PublicKey as PublicKeyType } from "@solana/web3.js";
+import type {
+  VersionedTransaction,
+  PublicKey as PublicKeyType,
+} from "@solana/web3.js";
 import type { BN as BNType } from "@coral-xyz/anchor";
-import {
-  buildParamsFromTemplate,
-  type TemplateName,
-} from "./templates";
+import { buildParamsFromTemplate, type TemplateName } from "./templates";
 
-const RPC_URL =
-  process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
+const RPC_URL = process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
 
 export interface BuildProvisionTxParams {
   owner: PublicKeyType;
@@ -35,9 +34,8 @@ export async function buildProvisionTransaction(
     VersionedTransaction: VTx,
     ComputeBudgetProgram,
   } = await import("@solana/web3.js");
-  const { BN, Program, AnchorProvider, Wallet } = await import(
-    "@coral-xyz/anchor"
-  );
+  const { BN, Program, AnchorProvider, Wallet } =
+    await import("@coral-xyz/anchor");
   const {
     AGENT_SHIELD_PROGRAM_ID,
     IDL,

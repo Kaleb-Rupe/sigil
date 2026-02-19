@@ -61,9 +61,8 @@ describe("Actions Server", () => {
         const res = await app.request("/api/actions/provision");
         const body = (await res.json()) as any;
         const links = body.links.actions.map((a: any) => a.href);
-        expect(
-          links.some((h: string) => h.includes(`template=${template}`)),
-        ).to.be.true;
+        expect(links.some((h: string) => h.includes(`template=${template}`))).to
+          .be.true;
       });
     }
   });

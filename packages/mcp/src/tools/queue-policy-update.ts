@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { BN } from "@coral-xyz/anchor";
 import { PublicKey } from "@solana/web3.js";
-import type { AgentShieldClient, QueuePolicyUpdateParams } from "@agent-shield/sdk";
+import type {
+  AgentShieldClient,
+  QueuePolicyUpdateParams,
+} from "@agent-shield/sdk";
 import { toPublicKey, toBN } from "../utils";
 import { formatError } from "../errors";
 

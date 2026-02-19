@@ -43,8 +43,7 @@ export const TEMPLATES: Record<TemplateName, TemplateConfig> = {
   },
   moderate: {
     label: "Moderate",
-    description:
-      "$2,000/day, Jupiter + Orca + Raydium + Meteora, 2x leverage",
+    description: "$2,000/day, Jupiter + Orca + Raydium + Meteora, 2x leverage",
     dailyCapUsd: 2000,
     maxTxUsd: 1000,
     protocols: [

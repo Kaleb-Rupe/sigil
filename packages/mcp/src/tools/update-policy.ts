@@ -55,7 +55,7 @@ export const updatePolicySchema = z.object({
     .optional()
     .describe(
       "New timelock duration in seconds. Note: if the vault already has a timelock > 0, " +
-      "this call will fail — use shield_queue_policy_update instead.",
+        "this call will fail — use shield_queue_policy_update instead.",
     ),
 });
 

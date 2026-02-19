@@ -199,6 +199,9 @@ jobs:
       - name: Build program
         run: anchor build --no-idl
 
+      - name: Restore committed IDL (cache may contain stale version)
+        run: git checkout -- target/idl/ target/types/
+
       - name: Run on-chain tests (LiteSVM, in-process)
         run: |
           npx ts-mocha -p ./tsconfig.json -t 300000 \

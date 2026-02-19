@@ -14,9 +14,7 @@ export async function checkPendingPolicy(
   input: CheckPendingPolicyInput,
 ): Promise<string> {
   try {
-    const pending = await client.fetchPendingPolicy(
-      toPublicKey(input.vault),
-    );
+    const pending = await client.fetchPendingPolicy(toPublicKey(input.vault));
 
     if (!pending) {
       return [
@@ -82,9 +80,7 @@ export async function checkPendingPolicy(
       );
     }
     if (pending.developerFeeRate !== null) {
-      changes.push(
-        `  - Developer Fee Rate: → ${pending.developerFeeRate}`,
-      );
+      changes.push(`  - Developer Fee Rate: → ${pending.developerFeeRate}`);
     }
 
     return [

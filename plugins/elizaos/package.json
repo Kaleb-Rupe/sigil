@@ -1,6 +1,6 @@
 {
   "name": "@agent-shield/plugin-elizaos",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "AgentShield plugin for ElizaOS — shield() wrapper actions, providers, and policy evaluators",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

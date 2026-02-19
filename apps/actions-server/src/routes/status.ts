@@ -2,8 +2,7 @@ import { Hono } from "hono";
 
 const status = new Hono();
 
-const RPC_URL =
-  process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
+const RPC_URL = process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
 
 /**
  * GET /api/actions/status/:sig — Poll transaction confirmation.
@@ -77,8 +76,7 @@ status.get("/api/actions/status/:sig", async (c) => {
 
     return c.json({ status: "pending" });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Unknown error";
+    const message = error instanceof Error ? error.message : "Unknown error";
     return c.json({ status: "not_found", error: message }, 500);
   }
 });

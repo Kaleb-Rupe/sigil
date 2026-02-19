@@ -20,9 +20,7 @@ export function setProvision(
   store.set(txSignature, record);
 }
 
-export function getProvision(
-  txSignature: string,
-): ProvisionRecord | undefined {
+export function getProvision(txSignature: string): ProvisionRecord | undefined {
   const record = store.get(txSignature);
   if (record && Date.now() - record.createdAt > EXPIRY_MS) {
     store.delete(txSignature);
