@@ -79,11 +79,7 @@ pub(crate) fn stablecoin_to_usd(amount: u64, token_decimals: u8) -> Result<u64> 
 /// usd = amount * mantissa / 10^(token_decimals + 12)
 ///
 /// The 12 comes from: 18 (oracle decimals) - 6 (USD decimals) = 12
-pub(crate) fn oracle_price_to_usd(
-    amount: u64,
-    mantissa: i128,
-    token_decimals: u8,
-) -> Result<u64> {
+pub(crate) fn oracle_price_to_usd(amount: u64, mantissa: i128, token_decimals: u8) -> Result<u64> {
     // Ensure positive price
     require!(mantissa > 0, AgentShieldError::OracleFeedInvalid);
 
