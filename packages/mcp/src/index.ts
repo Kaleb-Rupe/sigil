@@ -3,7 +3,12 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { loadConfig, createClient, type McpConfig } from "./config";
+import {
+  loadConfig,
+  createClient,
+  isConfigured,
+  type McpConfig,
+} from "./config";
 import type { AgentShieldClient } from "@agent-shield/sdk";
 
 // Tool handlers
@@ -26,10 +31,20 @@ import { cancelPendingPolicy } from "./tools/cancel-pending-policy";
 import { checkPendingPolicy } from "./tools/check-pending-policy";
 import { agentTransfer } from "./tools/agent-transfer";
 
+// Setup & onboarding tools (work without SDK client)
+import { setupStatus } from "./tools/setup-status";
+import { configure } from "./tools/configure";
+import { fundWallet } from "./tools/fund-wallet";
+import { upgradeTier } from "./tools/upgrade-tier";
+
 // Resources
 import { getPolicyResource } from "./resources/policy";
 import { getSpendingResource } from "./resources/spending";
 import { getActivityResource } from "./resources/activity";
+
+const NOT_CONFIGURED_MSG =
+  "AgentShield is not configured yet. " +
+  'Use shield_setup_status to check status, or ask me to "Set up AgentShield".';
 
 /**
  * Helper to register a tool with the MCP server.
@@ -53,31 +68,143 @@ async function main() {
   // All logging to stderr — stdout is reserved for JSON-RPC
   console.error("[agent-shield-mcp] Starting...");
 
-  let config: McpConfig;
+  // Try to load config, but don't exit if it fails — run in setup mode
+  let config: McpConfig | null = null;
+  let client: AgentShieldClient | null = null;
+
   try {
     config = loadConfig();
-  } catch (error) {
-    console.error(`[agent-shield-mcp] Configuration error: ${error}`);
-    process.exit(1);
-  }
-
-  let client: AgentShieldClient;
-  try {
     client = createClient(config);
-  } catch (error) {
-    console.error(`[agent-shield-mcp] Client creation failed: ${error}`);
-    process.exit(1);
+    console.error(
+      `[agent-shield-mcp] Connected to ${config.rpcUrl}, ` +
+        `wallet: ${client.provider.wallet.publicKey.toBase58()}`,
+    );
+  } catch {
+    console.error(
+      "[agent-shield-mcp] No wallet configured — running in setup mode. " +
+        "Use shield_setup_status or shield_configure to get started.",
+    );
   }
 
-  console.error(
-    `[agent-shield-mcp] Connected to ${config.rpcUrl}, ` +
-      `wallet: ${client.provider.wallet.publicKey.toBase58()}`,
-  );
+  /**
+   * Guard for tools that require a configured SDK client.
+   * Returns the "not configured" message if no client is available.
+   */
+  function requireClient(
+    fn: (input: any) => Promise<string>,
+  ): (input: any) => Promise<{ content: { type: "text"; text: string }[] }> {
+    return async (input) => {
+      // Re-check at call time (config may have been created since startup)
+      if (!client) {
+        try {
+          const freshConfig = loadConfig();
+          client = createClient(freshConfig);
+          config = freshConfig;
+        } catch {
+          return {
+            content: [{ type: "text", text: NOT_CONFIGURED_MSG }],
+          };
+        }
+      }
+      return {
+        content: [{ type: "text", text: await fn(input) }],
+      };
+    };
+  }
 
   const server = new McpServer({
     name: "agent-shield",
     version: "0.1.0",
   });
+
+  // ── Setup & Onboarding Tools (always available) ───────────────
+
+  registerTool(
+    server,
+    "shield_setup_status",
+    "Check the current AgentShield setup status — shows which security tiers are active, wallet, policy, and network. Works even when not configured.",
+    {},
+    async (input) => ({
+      content: [{ type: "text", text: await setupStatus(null, input) }],
+    }),
+  );
+
+  registerTool(
+    server,
+    "shield_configure",
+    "Set up AgentShield with any security tier (1=Shield, 2=Shield+TEE, 3=Shield+TEE+Vault). Generates keypair, provisions TEE, and/or creates vault.",
+    {
+      tier: z
+        .union([z.literal(1), z.literal(2), z.literal(3)])
+        .describe("Security tier: 1=Shield, 2=Shield+TEE, 3=Shield+TEE+Vault"),
+      template: z
+        .enum(["conservative", "moderate", "aggressive"])
+        .optional()
+        .default("conservative")
+        .describe("Policy template"),
+      dailyCapUsd: z
+        .number()
+        .optional()
+        .describe("Custom daily cap in USD"),
+      allowedProtocols: z
+        .array(z.string())
+        .optional()
+        .describe("Custom protocol IDs (base58)"),
+      maxLeverageBps: z
+        .number()
+        .optional()
+        .describe("Custom max leverage in BPS"),
+      rateLimit: z
+        .number()
+        .optional()
+        .describe("Custom rate limit (tx/min)"),
+      network: z
+        .enum(["devnet", "mainnet-beta"])
+        .optional()
+        .default("devnet")
+        .describe("Solana network"),
+      walletPath: z
+        .string()
+        .optional()
+        .describe("Path to existing keypair JSON"),
+    },
+    async (input) => ({
+      content: [{ type: "text", text: await configure(null, input) }],
+    }),
+  );
+
+  registerTool(
+    server,
+    "shield_fund_wallet",
+    "Generate funding links (Blink URL, Solana Pay, raw address) for the configured AgentShield wallet.",
+    {
+      mint: z
+        .string()
+        .optional()
+        .describe("Token mint (base58). Omit for SOL."),
+      amount: z
+        .string()
+        .optional()
+        .describe("Amount in human-readable units"),
+    },
+    async (input) => ({
+      content: [{ type: "text", text: await fundWallet(null, input) }],
+    }),
+  );
+
+  registerTool(
+    server,
+    "shield_upgrade_tier",
+    "Upgrade AgentShield from current tier to a higher one (2=add TEE, 3=add Vault). Preserves existing policy.",
+    {
+      targetTier: z
+        .union([z.literal(2), z.literal(3)])
+        .describe("Target tier: 2=add TEE, 3=add Vault"),
+    },
+    async (input) => ({
+      content: [{ type: "text", text: await upgradeTier(null, input) }],
+    }),
+  );
 
   // ── Read-Only Tools ──────────────────────────────────────────
 
@@ -98,9 +225,7 @@ async function main() {
         .optional()
         .describe("Vault ID number. Used with owner."),
     },
-    async (input) => ({
-      content: [{ type: "text", text: await checkVault(client, input) }],
-    }),
+    requireClient((input) => checkVault(client!, input)),
   );
 
   registerTool(
@@ -110,9 +235,7 @@ async function main() {
     {
       vault: z.string().describe("Vault PDA address (base58)"),
     },
-    async (input) => ({
-      content: [{ type: "text", text: await checkSpending(client, input) }],
-    }),
+    requireClient((input) => checkSpending(client!, input)),
   );
 
   registerTool(
@@ -122,11 +245,7 @@ async function main() {
     {
       vault: z.string().describe("Vault PDA address (base58)"),
     },
-    async (input) => ({
-      content: [
-        { type: "text", text: await checkPendingPolicy(client, input) },
-      ],
-    }),
+    requireClient((input) => checkPendingPolicy(client!, input)),
   );
 
   // ── Owner-Signed Write Tools ────────────────────────────────
@@ -177,9 +296,7 @@ async function main() {
           "Timelock duration in seconds (0 = immediate policy updates)",
         ),
     },
-    async (input) => ({
-      content: [{ type: "text", text: await createVault(client, input) }],
-    }),
+    requireClient((input) => createVault(client!, input)),
   );
 
   registerTool(
@@ -191,9 +308,7 @@ async function main() {
       mint: z.string().describe("Token mint address (base58)"),
       amount: z.string().describe("Amount in token base units"),
     },
-    async (input) => ({
-      content: [{ type: "text", text: await deposit(client, input) }],
-    }),
+    requireClient((input) => deposit(client!, input)),
   );
 
   registerTool(
@@ -205,9 +320,7 @@ async function main() {
       mint: z.string().describe("Token mint address (base58)"),
       amount: z.string().describe("Amount in token base units"),
     },
-    async (input) => ({
-      content: [{ type: "text", text: await withdraw(client, input) }],
-    }),
+    requireClient((input) => withdraw(client!, input)),
   );
 
   registerTool(
@@ -218,9 +331,7 @@ async function main() {
       vault: z.string().describe("Vault PDA address (base58)"),
       agent: z.string().describe("Agent public key to register (base58)"),
     },
-    async (input) => ({
-      content: [{ type: "text", text: await registerAgent(client, input) }],
-    }),
+    requireClient((input) => registerAgent(client!, input)),
   );
 
   registerTool(
@@ -267,9 +378,7 @@ async function main() {
         .optional()
         .describe("New timelock duration in seconds"),
     },
-    async (input) => ({
-      content: [{ type: "text", text: await updatePolicy(client, input) }],
-    }),
+    requireClient((input) => updatePolicy(client!, input)),
   );
 
   registerTool(
@@ -316,9 +425,7 @@ async function main() {
         .optional()
         .describe("New developer fee rate (max 50)"),
     },
-    async (input) => ({
-      content: [{ type: "text", text: await queuePolicyUpdate(client, input) }],
-    }),
+    requireClient((input) => queuePolicyUpdate(client!, input)),
   );
 
   registerTool(
@@ -328,11 +435,7 @@ async function main() {
     {
       vault: z.string().describe("Vault PDA address (base58)"),
     },
-    async (input) => ({
-      content: [
-        { type: "text", text: await applyPendingPolicy(client, input) },
-      ],
-    }),
+    requireClient((input) => applyPendingPolicy(client!, input)),
   );
 
   registerTool(
@@ -342,11 +445,7 @@ async function main() {
     {
       vault: z.string().describe("Vault PDA address (base58)"),
     },
-    async (input) => ({
-      content: [
-        { type: "text", text: await cancelPendingPolicy(client, input) },
-      ],
-    }),
+    requireClient((input) => cancelPendingPolicy(client!, input)),
   );
 
   registerTool(
@@ -356,9 +455,7 @@ async function main() {
     {
       vault: z.string().describe("Vault PDA address (base58)"),
     },
-    async (input) => ({
-      content: [{ type: "text", text: await revokeAgent(client, input) }],
-    }),
+    requireClient((input) => revokeAgent(client!, input)),
   );
 
   registerTool(
@@ -372,9 +469,7 @@ async function main() {
         .optional()
         .describe("Optional new agent public key (base58)"),
     },
-    async (input) => ({
-      content: [{ type: "text", text: await reactivateVault(client, input) }],
-    }),
+    requireClient((input) => reactivateVault(client!, input)),
   );
 
   // ── Agent-Signed Tools ──────────────────────────────────────
@@ -393,9 +488,7 @@ async function main() {
       mint: z.string().describe("Token mint address (base58)"),
       amount: z.string().describe("Amount in token base units"),
     },
-    async (input) => ({
-      content: [{ type: "text", text: await agentTransfer(client, input) }],
-    }),
+    requireClient((input) => agentTransfer(client!, input)),
   );
 
   registerTool(
@@ -413,11 +506,7 @@ async function main() {
         .default(50)
         .describe("Slippage tolerance in BPS (default: 50)"),
     },
-    async (input) => ({
-      content: [
-        { type: "text", text: await executeSwap(client, config, input) },
-      ],
-    }),
+    requireClient((input) => executeSwap(client!, config!, input)),
   );
 
   registerTool(
@@ -439,11 +528,7 @@ async function main() {
         .number()
         .describe("Leverage in basis points (e.g. 20000 = 2x)"),
     },
-    async (input) => ({
-      content: [
-        { type: "text", text: await openPosition(client, config, input) },
-      ],
-    }),
+    requireClient((input) => openPosition(client!, config!, input)),
   );
 
   registerTool(
@@ -461,11 +546,7 @@ async function main() {
         .default(0)
         .describe("Price exponent (default: 0)"),
     },
-    async (input) => ({
-      content: [
-        { type: "text", text: await closePosition(client, config, input) },
-      ],
-    }),
+    requireClient((input) => closePosition(client!, config!, input)),
   );
 
   // ── Platform Tools ─────────────────────────────────────────
@@ -503,7 +584,9 @@ async function main() {
         .describe("Custom max leverage in basis points"),
     },
     async (input) => ({
-      content: [{ type: "text", text: await provision(client, input) }],
+      content: [
+        { type: "text", text: await provision(client as any, input) },
+      ],
     }),
   );
 
@@ -514,6 +597,17 @@ async function main() {
     "shield://vault/{address}/policy",
     { description: "Current policy configuration for a vault" },
     async (uri: URL) => {
+      if (!client) {
+        return {
+          contents: [
+            {
+              uri: uri.href,
+              mimeType: "text/plain",
+              text: NOT_CONFIGURED_MSG,
+            },
+          ],
+        };
+      }
       const address = uri.pathname.split("/")[2];
       return {
         contents: [
@@ -532,6 +626,17 @@ async function main() {
     "shield://vault/{address}/spending",
     { description: "Rolling 24h spending state for a vault" },
     async (uri: URL) => {
+      if (!client) {
+        return {
+          contents: [
+            {
+              uri: uri.href,
+              mimeType: "text/plain",
+              text: NOT_CONFIGURED_MSG,
+            },
+          ],
+        };
+      }
       const address = uri.pathname.split("/")[2];
       return {
         contents: [
@@ -550,6 +655,17 @@ async function main() {
     "shield://vault/{address}/activity",
     { description: "Recent transaction history for a vault" },
     async (uri: URL) => {
+      if (!client) {
+        return {
+          contents: [
+            {
+              uri: uri.href,
+              mimeType: "text/plain",
+              text: NOT_CONFIGURED_MSG,
+            },
+          ],
+        };
+      }
       const address = uri.pathname.split("/")[2];
       return {
         contents: [

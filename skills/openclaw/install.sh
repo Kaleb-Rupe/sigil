@@ -2,35 +2,61 @@
 set -euo pipefail
 
 # AgentShield OpenClaw Skill Installer
-# Copies the skill to OpenClaw's workspace and configures the MCP server.
+# Idempotent — safe to run multiple times.
+# Does NOT execute remote code. Only copies files and merges JSON config.
 
+MCP_VERSION="0.3.1"
 SKILL_DIR="${HOME}/.openclaw/workspace/skills/agent-shield"
 CONFIG_FILE="${HOME}/.openclaw/openclaw.json"
-WALLET_DIR="${HOME}/.agentshield/wallets"
+SHIELD_DIR="${HOME}/.agentshield"
 
 echo "==> Installing AgentShield skill for OpenClaw..."
+
+# 0. Check npx availability
+if ! command -v npx &>/dev/null; then
+  echo "ERROR: npx is not installed. Install Node.js 18+ first."
+  echo "       https://nodejs.org/"
+  exit 1
+fi
 
 # 1. Copy SKILL.md
 mkdir -p "${SKILL_DIR}"
 cp "$(dirname "$0")/SKILL.md" "${SKILL_DIR}/SKILL.md"
 echo "    Copied SKILL.md to ${SKILL_DIR}/"
 
-# 2. Create agent wallet directory if it doesn't exist
-if [ ! -d "${WALLET_DIR}" ]; then
-  mkdir -p "${WALLET_DIR}"
-  echo "    Created wallet directory at ${WALLET_DIR}/"
-  echo "    NOTE: Place your agent keypair at ${WALLET_DIR}/agent.json"
+# 2. Create AgentShield config directory with restricted permissions
+if [ ! -d "${SHIELD_DIR}" ]; then
+  mkdir -p "${SHIELD_DIR}" && chmod 700 "${SHIELD_DIR}"
+  echo "    Created ${SHIELD_DIR}/ (mode 700)"
 fi
 
-# 3. Merge MCP config into openclaw.json
+# 3. Merge MCP config into openclaw.json (idempotent)
+MCP_ENTRY=$(cat <<JSONEOF
+{
+  "command": "npx",
+  "args": ["@agent-shield/mcp@${MCP_VERSION}"],
+  "env": {
+    "AGENTSHIELD_RPC_URL": "https://api.devnet.solana.com"
+  }
+}
+JSONEOF
+)
+
 if [ -f "${CONFIG_FILE}" ]; then
-  # Check if agent-shield is already configured
   if grep -q '"agent-shield"' "${CONFIG_FILE}" 2>/dev/null; then
     echo "    MCP config already present in ${CONFIG_FILE} — skipping"
   else
-    echo "    WARNING: ${CONFIG_FILE} exists but does not contain agent-shield config."
-    echo "    Please manually add the MCP config from openclaw.json to your config file."
-    echo "    See: $(dirname "$0")/openclaw.json"
+    # Merge using node (available since npx check passed)
+    node -e "
+      const fs = require('fs');
+      const cfg = JSON.parse(fs.readFileSync('${CONFIG_FILE}', 'utf-8'));
+      if (!cfg.agents) cfg.agents = {};
+      if (!cfg.agents.default) cfg.agents.default = {};
+      if (!cfg.agents.default.mcp) cfg.agents.default.mcp = {};
+      cfg.agents.default.mcp['agent-shield'] = ${MCP_ENTRY};
+      fs.writeFileSync('${CONFIG_FILE}', JSON.stringify(cfg, null, 2) + '\n');
+    "
+    echo "    Merged agent-shield MCP config into ${CONFIG_FILE}"
   fi
 else
   mkdir -p "$(dirname "${CONFIG_FILE}")"
@@ -39,5 +65,10 @@ else
 fi
 
 echo ""
-echo "==> Done! Start OpenClaw to verify AgentShield tools are available."
-echo "    If you haven't yet, install the MCP server: npm install -g @agent-shield/mcp"
+echo "==> Done! AgentShield skill installed."
+echo ""
+echo "    Start OpenClaw and say: \"Set up AgentShield\""
+echo "    The agent will guide you through three-tier security setup."
+echo ""
+echo "    MCP server: @agent-shield/mcp@${MCP_VERSION}"
+echo "    No wallet needed at install time — the agent creates one during setup."

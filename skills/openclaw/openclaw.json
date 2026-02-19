@@ -4,9 +4,8 @@
       "mcp": {
         "agent-shield": {
           "command": "npx",
-          "args": ["@agent-shield/mcp"],
+          "args": ["@agent-shield/mcp@0.3.1"],
           "env": {
-            "AGENTSHIELD_WALLET_PATH": "~/.agentshield/wallets/agent.json",
             "AGENTSHIELD_RPC_URL": "https://api.devnet.solana.com"
           }
         }

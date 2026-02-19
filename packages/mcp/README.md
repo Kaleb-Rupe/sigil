@@ -16,7 +16,7 @@ npx @agent-shield/mcp
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `AGENTSHIELD_WALLET_PATH` | Yes | — | Path to Solana keypair JSON (vault owner) |
+| `AGENTSHIELD_WALLET_PATH` | No | — | Path to Solana keypair JSON (vault owner). Not required — server starts in setup mode without it. |
 | `AGENTSHIELD_RPC_URL` | No | devnet | Solana RPC endpoint URL |
 | `AGENTSHIELD_AGENT_KEYPAIR_PATH` | No | — | Path to agent keypair JSON (needed for swap/position tools) |
 
@@ -57,7 +57,16 @@ Add to `.cursor/mcp.json` in your project:
 }
 ```
 
-## Tools (18)
+## Tools (22)
+
+### Setup & Onboarding (always available — no wallet required)
+
+| Tool | Description |
+|------|-------------|
+| `shield_setup_status` | Check current setup status — which security tiers are active |
+| `shield_configure` | Set up AgentShield with any tier (1=Shield, 2=TEE, 3=Vault) |
+| `shield_fund_wallet` | Generate funding links (Blink URL, Solana Pay, raw address) |
+| `shield_upgrade_tier` | Upgrade from current tier to a higher one |
 
 ### Read-Only
 
@@ -111,7 +120,7 @@ pnpm install
 # Build
 pnpm build
 
-# Run tests (82 tests)
+# Run tests (107 tests)
 pnpm test
 
 # Smoke test
@@ -123,7 +132,8 @@ AGENTSHIELD_WALLET_PATH=~/.config/solana/id.json node dist/index.js
 - **Transport**: stdio only (local subprocess of the AI tool)
 - **Credentials**: Environment variables (keypair file paths)
 - **SDK**: Wraps `AgentShieldClient` from `@agent-shield/sdk` — every tool delegates to a client method
-- **Error handling**: All 46 Anchor error codes (6000–6045) mapped to human-readable messages with actionable suggestions
+- **Setup mode**: Starts without a wallet — only setup/onboarding tools available until configured
+- **Error handling**: All 40 Anchor error codes (6000–6039) mapped to human-readable messages with actionable suggestions
 
 ## Support
 

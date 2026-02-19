@@ -2,9 +2,143 @@ import { Connection, Keypair, clusterApiUrl } from "@solana/web3.js";
 import { Wallet } from "@coral-xyz/anchor";
 import { AgentShieldClient } from "@agent-shield/sdk";
 import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
 
 /** Supported custody providers for MCP server. */
 export type McpCustodyProvider = "crossmint" | "turnkey" | "privy";
+
+// ── Local Config (Three-Tier Onboarding) ────────────────────────
+
+export interface ShieldLayerConfig {
+  shield: {
+    enabled: boolean;
+    dailyCapUsd: number;
+    allowedProtocols: string[];
+    maxLeverageBps: number;
+    rateLimit: number;
+  };
+  tee: {
+    enabled: boolean;
+    locator: string | null;
+    publicKey: string | null;
+  };
+  vault: {
+    enabled: boolean;
+    address: string | null;
+    owner: string | null;
+    vaultId: string | null;
+  };
+}
+
+export interface ShieldLocalConfig {
+  version: 1;
+  layers: ShieldLayerConfig;
+  wallet: {
+    type: "keypair" | "crossmint";
+    path: string | null;
+    publicKey: string;
+  };
+  network: "devnet" | "mainnet-beta";
+  template: "conservative" | "moderate" | "aggressive";
+  configuredAt: string;
+}
+
+/** Canonical config directory. */
+export function getConfigDir(): string {
+  return path.join(os.homedir(), ".agentshield");
+}
+
+/** Canonical config file path. */
+export function getConfigPath(): string {
+  return path.join(getConfigDir(), "config.json");
+}
+
+/**
+ * Load local shield config from ~/.agentshield/config.json.
+ * Falls back to env vars for backwards compatibility with existing MCP installs.
+ * Returns null if neither config file nor env vars exist.
+ */
+export function loadShieldConfig(): ShieldLocalConfig | null {
+  const configPath = getConfigPath();
+
+  // Config file takes precedence
+  if (fs.existsSync(configPath)) {
+    try {
+      const raw = fs.readFileSync(configPath, "utf-8");
+      return JSON.parse(raw) as ShieldLocalConfig;
+    } catch {
+      return null;
+    }
+  }
+
+  // Fall back to env vars (backwards compatible with existing installs)
+  const walletPath = process.env.AGENTSHIELD_WALLET_PATH;
+  if (walletPath) {
+    try {
+      const kp = loadKeypair(walletPath);
+      return {
+        version: 1,
+        layers: {
+          shield: {
+            enabled: true,
+            dailyCapUsd: 500,
+            allowedProtocols: [],
+            maxLeverageBps: 0,
+            rateLimit: 60,
+          },
+          tee: { enabled: false, locator: null, publicKey: null },
+          vault: { enabled: false, address: null, owner: null, vaultId: null },
+        },
+        wallet: {
+          type: "keypair",
+          path: walletPath,
+          publicKey: kp.publicKey.toBase58(),
+        },
+        network: (process.env.AGENTSHIELD_RPC_URL?.includes("mainnet")
+          ? "mainnet-beta"
+          : "devnet") as "devnet" | "mainnet-beta",
+        template: "conservative",
+        configuredAt: new Date().toISOString(),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Save local shield config to ~/.agentshield/config.json.
+ * Creates the directory if needed. Sets file permissions to 0600.
+ */
+export function saveShieldConfig(config: ShieldLocalConfig): void {
+  const dir = getConfigDir();
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  }
+  const configPath = getConfigPath();
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), {
+    mode: 0o600,
+  });
+}
+
+/**
+ * Returns true if AgentShield is configured (config file exists or env vars set).
+ */
+export function isConfigured(): boolean {
+  return loadShieldConfig() !== null;
+}
+
+/**
+ * Returns the current tier number based on enabled layers.
+ */
+export function getCurrentTier(config: ShieldLocalConfig): 1 | 2 | 3 {
+  if (config.layers.vault.enabled) return 3;
+  if (config.layers.tee.enabled) return 2;
+  return 1;
+}
 
 export interface McpConfig {
   /** Path to owner wallet keypair JSON. Not needed when using custody. */

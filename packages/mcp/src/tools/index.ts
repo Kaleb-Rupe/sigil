@@ -72,3 +72,23 @@ export {
   agentTransfer,
   agentTransferSchema,
 } from "./agent-transfer";
+export {
+  setupStatusTool,
+  setupStatus,
+  setupStatusSchema,
+} from "./setup-status";
+export {
+  configureTool,
+  configure,
+  configureSchema,
+} from "./configure";
+export {
+  fundWalletTool,
+  fundWallet,
+  fundWalletSchema,
+} from "./fund-wallet";
+export {
+  upgradeTierTool,
+  upgradeTier,
+  upgradeTierSchema,
+} from "./upgrade-tier";

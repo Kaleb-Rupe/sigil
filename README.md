@@ -20,7 +20,7 @@ AgentShield is a Solana program that holds agent funds in PDA vaults and validat
 - **Agent transfers** — destination-allowlisted token transfers initiated by agents
 - **Kill switch** — owner can freeze any vault instantly, revoking all agent permissions
 - **On-chain audit trail** — every action emits Anchor events; last 50 txs stored on-chain
-- **MCP server** — 18 tools + 3 resources for Claude Desktop, Cursor, and any MCP client
+- **MCP server** — 22 tools + 3 resources for Claude Desktop, Cursor, and any MCP client
 - **OpenClaw skill** — AI agent skill for autonomous vault management
 - **Solana Actions/Blinks** — provision vaults via shareable action URLs
 
@@ -76,7 +76,7 @@ All instructions succeed or all revert atomically. The agent's signing key is va
 | [`@agent-shield/sdk`](./sdk/typescript) | On-chain vault SDK — Anchor-based, Jupiter & Flash Trade composition | [![npm](https://img.shields.io/npm/v/@agent-shield/sdk)](https://www.npmjs.com/package/@agent-shield/sdk) |
 | [`@agent-shield/platform`](./sdk/platform) | Platform client — request TEE wallet provisioning via Solana Actions | [![npm](https://img.shields.io/npm/v/@agent-shield/platform)](https://www.npmjs.com/package/@agent-shield/platform) |
 | [`@agent-shield/custody-crossmint`](./sdk/custody/crossmint) | Crossmint TEE custody adapter — hardware-enclave signing | [![npm](https://img.shields.io/npm/v/@agent-shield/custody-crossmint)](https://www.npmjs.com/package/@agent-shield/custody-crossmint) |
-| [`@agent-shield/mcp`](./packages/mcp) | MCP server — 18 tools, 3 resources for AI tool management | [![npm](https://img.shields.io/npm/v/@agent-shield/mcp)](https://www.npmjs.com/package/@agent-shield/mcp) |
+| [`@agent-shield/mcp`](./packages/mcp) | MCP server — 22 tools, 3 resources for AI tool management | [![npm](https://img.shields.io/npm/v/@agent-shield/mcp)](https://www.npmjs.com/package/@agent-shield/mcp) |
 | [`@agent-shield/plugin-solana-agent-kit`](./plugins/solana-agent-kit) | Solana Agent Kit plugin — 5 monitoring/management tools | [![npm](https://img.shields.io/npm/v/@agent-shield/plugin-solana-agent-kit)](https://www.npmjs.com/package/@agent-shield/plugin-solana-agent-kit) |
 | [`@agent-shield/plugin-elizaos`](./plugins/elizaos) | ElizaOS plugin — 5 actions, 2 providers, 1 evaluator | [![npm](https://img.shields.io/npm/v/@agent-shield/plugin-elizaos)](https://www.npmjs.com/package/@agent-shield/plugin-elizaos) |
 
@@ -188,7 +188,7 @@ RUSTUP_TOOLCHAIN=nightly anchor idl build -o target/idl/agent_shield.json
 npx ts-mocha -p ./tsconfig.json -t 300000 \
   tests/agent-shield.ts tests/jupiter-integration.ts tests/flash-trade-integration.ts
 
-# Run all TypeScript tests (400 tests across 9 suites)
+# Run all TypeScript tests (442 tests across 10 suites)
 pnpm -r run test
 
 # Lint
@@ -211,9 +211,9 @@ cargo fmt --check --manifest-path programs/agent-shield/Cargo.toml
 | Wrapper SDK (`@agent-shield/solana`) | 96 |
 | SAK plugin (`@agent-shield/plugin-solana-agent-kit`) | 25 |
 | ElizaOS plugin (`@agent-shield/plugin-elizaos`) | 32 |
-| MCP server (`@agent-shield/mcp`) | 82 |
-| Actions server (`@agent-shield/actions-server`) | 22 |
-| **Total** | **493** |
+| MCP server (`@agent-shield/mcp`) | 107 |
+| Actions server (`@agent-shield/actions-server`) | 39 |
+| **Total** | **535** |
 
 ## License
 
