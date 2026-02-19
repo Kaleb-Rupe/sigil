@@ -61,7 +61,7 @@ const sig = await client.executeJupiterSwap({
 
 ## On-Chain Account Model
 
-AgentShield uses 4 PDA account types:
+AgentShield uses 5 PDA account types:
 
 | Account | Seeds | Description |
 |---------|-------|-------------|
@@ -69,6 +69,7 @@ AgentShield uses 4 PDA account types:
 | **PolicyConfig** | `[b"policy", vault]` | Spending caps, token/protocol whitelists, leverage limits |
 | **SpendTracker** | `[b"tracker", vault]` | Rolling 24h spend entries + bounded audit log (max 50 txs) |
 | **SessionAuthority** | `[b"session", vault, agent, token_mint]` | Ephemeral PDA for atomic transaction validation (expires after 20 slots) |
+| **PendingPolicyUpdate** | `[b"pending_policy", vault]` | Queued policy change with timelock, applied after delay |
 
 ## Instruction Composition Pattern
 
@@ -165,7 +166,7 @@ const tracker = await client.fetchTrackerByAddress(trackerPDA);
 
 ### Instruction Parameters
 
-- **`InitializeVaultParams`** — `vaultId`, `dailySpendingCapUsd`, `maxTransactionSizeUsd`, `allowedTokens` (`AllowedToken[]`), `allowedProtocols`, `maxLeverageBps`, `maxConcurrentPositions`, `feeDestination`
+- **`InitializeVaultParams`** — `vaultId`, `dailySpendingCapUsd`, `maxTransactionSizeUsd`, `allowedTokens` (`AllowedToken[]`), `allowedProtocols`, `maxLeverageBps`, `maxConcurrentPositions`, `feeDestination`, `trackerTier?` (`TrackerTier` — defaults to Standard)
 - **`UpdatePolicyParams`** — All policy fields as optionals (only set fields are updated)
 - **`AuthorizeParams`** — `actionType`, `tokenMint`, `amount`, `targetProtocol`, `leverageBps?`
 - **`ComposeActionParams`** — Full params for composed transactions including `defiInstructions`, `success?`, token accounts
@@ -174,7 +175,7 @@ const tracker = await client.fetchTrackerByAddress(trackerPDA);
 
 - **`AgentVaultAccount`** — owner, agent, feeDestination, vaultId, status, stats (totalTransactions, totalVolume)
 - **`PolicyConfigAccount`** — dailySpendingCapUsd, maxTransactionSizeUsd, allowedTokens (`AllowedToken[]`), allowedProtocols, maxLeverageBps, maxConcurrentPositions, developerFeeRate
-- **`SpendTrackerAccount`** — rollingSpends (`SpendEntry[]` with tokenMint, usdAmount, baseAmount, timestamp), recentTransactions (audit log, max 50)
+- **`SpendTrackerAccount`** — trackerTier, maxSpendEntries, rollingSpends (`SpendEntry[]` with tokenIndex, usdAmount, baseAmount, timestamp), recentTransactions (audit log, max 50)
 - **`SessionAuthorityAccount`** — vault, agent, actionType, expiresAt, delegated, delegationTokenAccount
 
 ### Enums
@@ -239,7 +240,7 @@ Owner creates vault with policy → Agent operates within policy constraints
 | Rolling 24h window | Not calendar-day. Prevents edge-case burst at midnight. |
 | Fees at finalization only | Not at authorization. Prevents fee charging on failed txs. |
 | Immutable fee destination | Prevents owner from changing fee recipient after vault creation. |
-| Bounded vectors | Max 10 tokens, 10 protocols, 100 spend entries, 50 audit records. |
+| Bounded vectors | Max 10 tokens, 10 protocols, 200/500/1000 spend entries (by TrackerTier), 50 audit records. |
 
 ### Policy Constraints
 

@@ -44,7 +44,7 @@ All instructions succeed or all revert atomically. The agent's signing key is va
 |---------|-------|---------|
 | **AgentVault** | `[b"vault", owner, vault_id]` | Holds owner/agent pubkeys, status, fee destination |
 | **PolicyConfig** | `[b"policy", vault]` | Spending caps, token/protocol whitelists, leverage limits, timelock duration, allowed destinations |
-| **SpendTracker** | `[b"tracker", vault]` | Rolling 24h spend entries, bounded audit log (max 50 txs) |
+| **SpendTracker** | `[b"tracker", vault]` | Tiered rolling 24h spend entries (Standard/Pro/Max: 200/500/1000), bounded audit log (max 50 txs) |
 | **SessionAuthority** | `[b"session", vault, agent, token_mint]` | Ephemeral PDA created per action, expires after 20 slots |
 | **PendingPolicyUpdate** | `[b"pending_policy", vault]` | Queued policy change with timelock, applied after delay |
 
@@ -138,6 +138,7 @@ const sig = await client.createVault({
   maxLeverageBps: 0,
   maxConcurrentPositions: 0,
   feeDestination: feeWallet.publicKey,
+  trackerTier: 0, // 0=Standard (200 entries), 1=Pro (500), 2=Max (1000)
 });
 ```
 

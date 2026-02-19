@@ -64,7 +64,7 @@ const protectedWallet = createShieldedWallet({
 
 ## Tools
 
-The plugin registers 4 monitoring/management tools on the agent:
+The plugin registers 5 monitoring/management tools on the agent:
 
 | Tool | Description | Parameters |
 |------|-------------|------------|
@@ -203,7 +203,7 @@ Agent calls swap() → SAK builds transaction → shield() intercepts signTransa
 
 ```bash
 npm test
-# Runs 23 tests covering all tools, factory, config resolution, and event wiring
+# Runs 25 tests covering all tools, factory, config resolution, and event wiring
 ```
 
 ## Related Packages

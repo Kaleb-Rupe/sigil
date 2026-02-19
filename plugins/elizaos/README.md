@@ -41,7 +41,7 @@ The plugin reads environment variables to create a `ShieldedWallet` automaticall
 
 ## Actions
 
-The plugin provides 4 actions that agents can invoke conversationally:
+The plugin provides 5 actions that agents can invoke conversationally:
 
 ### `SHIELD_STATUS`
 
@@ -246,7 +246,7 @@ Providers give the agent continuous budget awareness. The evaluator proactively 
 
 ```bash
 npm test
-# Runs 30 tests covering all actions, providers, evaluator, config, caching, and event wiring
+# Runs 32 tests covering all actions, providers, evaluator, config, caching, and event wiring
 ```
 
 ## Related Packages
