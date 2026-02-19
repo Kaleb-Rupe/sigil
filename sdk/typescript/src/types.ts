@@ -67,7 +67,10 @@ export type AgentVaultAccount = {
   totalVolume: BN;
   openPositions: number;
   totalFeesCollected: BN;
-  trackerTier: { standard: Record<string, never> } | { pro: Record<string, never> } | { max: Record<string, never> };
+  trackerTier:
+    | { standard: Record<string, never> }
+    | { pro: Record<string, never> }
+    | { max: Record<string, never> };
 };
 
 export type PolicyConfigAccount = {
@@ -104,7 +107,10 @@ export type PendingPolicyUpdateAccount = {
 
 export type SpendTrackerAccount = {
   vault: PublicKey;
-  trackerTier: { standard: Record<string, never> } | { pro: Record<string, never> } | { max: Record<string, never> };
+  trackerTier:
+    | { standard: Record<string, never> }
+    | { pro: Record<string, never> }
+    | { max: Record<string, never> };
   maxSpendEntries: number;
   rollingSpends: SpendEntry[];
   recentTransactions: TransactionRecord[];
