@@ -334,7 +334,7 @@ jobs:
           pip install certora-cli
 
       - name: Install cargo-certora-sbf
-        run: cargo install cargo-certora-sbf
+        run: cargo install cargo-certora-sbf --force
 
       - name: Run Certora Solana Prover
         env:
