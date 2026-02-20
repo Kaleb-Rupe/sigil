@@ -43,7 +43,7 @@ pub fn rule_expiry_equals_saturating_add() {
 #[rule]
 pub fn rule_session_expires_after_window() {
     let creation_slot: u64 = nondet();
-    cvlr_assume!(creation_slot <= u64::MAX - SESSION_EXPIRY_SLOTS - 1);
+    cvlr_assume!(creation_slot < u64::MAX - SESSION_EXPIRY_SLOTS);
 
     let expires_at = SessionAuthority::calculate_expiry(creation_slot);
     let after_window = creation_slot + SESSION_EXPIRY_SLOTS + 1;
@@ -66,7 +66,7 @@ pub fn rule_session_valid_at_creation() {
 
     // is_expired = current_slot > expires_at_slot
     // At creation_slot, this must be false
-    cvlr_assert!(!(creation_slot > expires_at));
+    cvlr_assert!(creation_slot <= expires_at);
 }
 
 // ─────────────────────────────────────────────────────────────────
