@@ -36,14 +36,14 @@
   },
   "devDependencies": {
     "typescript": "^5.3.3",
-    "@elizaos/core": "^0.1.0",
+    "@elizaos/core": "^1.7.2",
     "@agent-shield/solana": "workspace:*",
     "@agent-shield/custody-crossmint": "workspace:*",
     "@solana/web3.js": "^1.95.0",
     "@types/chai": "^4.3.11",
     "@types/mocha": "^10.0.6",
-    "chai": "^4.4.1",
-    "mocha": "^10.3.0",
+    "chai": "^6.2.2",
+    "mocha": "^11.7.5",
     "ts-node": "^10.9.2"
   },
   "keywords": [
