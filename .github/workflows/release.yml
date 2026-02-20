@@ -1,10 +1,12 @@
 # Release workflow for publishing @agent-shield packages to npm.
 #
-# Triggered manually via workflow_dispatch. Select the package to publish
-# and the version bump type. Builds, tests, and publishes with npm provenance
-# (cryptographic link between npm package and source commit).
+# Triggered manually via workflow_dispatch. Select the package to publish.
+# Uses npm Trusted Publishing (OIDC) — no stored npm token required.
+# GitHub Actions exchanges a short-lived OIDC token with npm for publish auth.
+# Provenance attestation links each published package to this exact commit.
 #
-# Requires NPM_TOKEN secret with publish permissions for @agent-shield scope.
+# Setup: each @agent-shield package must have Trusted Publishing configured
+# on npmjs.com → Package Settings → Publishing access → Trusted Publishers.
 
 name: Release
 
@@ -32,7 +34,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write # Required for npm provenance attestation
+  id-token: write # Required for OIDC token exchange with npm (Trusted Publishing)
 
 jobs:
   publish:
@@ -72,13 +74,9 @@ jobs:
       - name: Publish (dry run)
         if: ${{ inputs.dry-run }}
         working-directory: ${{ inputs.package }}
-        run: pnpm publish --access public --no-git-checks --dry-run
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --dry-run --provenance
 
       - name: Publish to npm
         if: ${{ !inputs.dry-run }}
         working-directory: ${{ inputs.package }}
-        run: pnpm publish --access public --no-git-checks --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance
