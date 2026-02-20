@@ -7,7 +7,7 @@ describe("resource: shield://vault/{address}/activity", () => {
     const client = createMockClient();
     const json = await getActivityResource(
       client as any,
-      TEST_VAULT_PDA.toBase58()
+      TEST_VAULT_PDA.toBase58(),
     );
     const data = JSON.parse(json);
     expect(data.vault).to.equal(TEST_VAULT_PDA.toBase58());
@@ -23,7 +23,7 @@ describe("resource: shield://vault/{address}/activity", () => {
     });
     const json = await getActivityResource(
       client as any,
-      TEST_VAULT_PDA.toBase58()
+      TEST_VAULT_PDA.toBase58(),
     );
     const data = JSON.parse(json);
     expect(data.error).to.include("not found");
@@ -35,7 +35,7 @@ describe("resource: shield://vault/{address}/activity", () => {
     const client = createMockClient();
     const json = await getActivityResource(
       client as any,
-      TEST_VAULT_PDA.toBase58()
+      TEST_VAULT_PDA.toBase58(),
     );
     const data = JSON.parse(json);
     const tx = data.transactions[0];
@@ -46,7 +46,7 @@ describe("resource: shield://vault/{address}/activity", () => {
       "amount",
       "protocol",
       "success",
-      "slot"
+      "slot",
     );
   });
 });

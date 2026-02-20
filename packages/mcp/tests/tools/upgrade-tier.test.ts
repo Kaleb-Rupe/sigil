@@ -1,12 +1,19 @@
 import { expect } from "chai";
+import * as sinon from "sinon";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { upgradeTier } from "../../src/tools/upgrade-tier";
 
+const MOCK_TEE_RESPONSE = {
+  publicKey: "TESTpubkey111111111111111111111111111111111",
+  locator: "userId:agent-shield-test-1234",
+};
+
 describe("shield_upgrade_tier", () => {
   const tmpHome = path.join(os.tmpdir(), `home-upgrade-${Date.now()}`);
   const origHome = process.env.HOME;
+  let fetchStub: sinon.SinonStub;
 
   beforeEach(() => {
     const shieldDir = path.join(tmpHome, ".agentshield");
@@ -16,10 +23,19 @@ describe("shield_upgrade_tier", () => {
     process.env.HOME = tmpHome;
     delete process.env.AGENTSHIELD_WALLET_PATH;
     delete process.env.AGENTSHIELD_RPC_URL;
+
+    // Stub global.fetch to prevent live network calls
+    fetchStub = sinon.stub(global, "fetch").resolves(
+      new Response(JSON.stringify(MOCK_TEE_RESPONSE), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
   });
 
   afterEach(() => {
     process.env.HOME = origHome;
+    fetchStub.restore();
     const configPath = path.join(tmpHome, ".agentshield", "config.json");
     if (fs.existsSync(configPath)) {
       fs.unlinkSync(configPath);
@@ -63,6 +79,8 @@ describe("shield_upgrade_tier", () => {
   it("returns not-configured when no config exists", async () => {
     const result = await upgradeTier(null, { targetTier: 2 });
     expect(result).to.include("not configured");
+    // Should not call fetch when no config exists
+    expect(fetchStub.callCount).to.equal(0);
   });
 
   it("rejects downgrade from higher tier", async () => {
@@ -86,6 +104,7 @@ describe("shield_upgrade_tier", () => {
 
     const result = await upgradeTier(null, { targetTier: 2 });
     expect(result).to.include("Already at Tier 2");
+    expect(fetchStub.callCount).to.equal(0);
   });
 
   it("generates Blink URL when upgrading to Tier 3", async () => {
@@ -117,6 +136,9 @@ describe("shield_upgrade_tier", () => {
     expect(result).to.include("Blink URL");
     expect(result).to.include("dial.to");
 
+    // TEE already enabled — no fetch needed
+    expect(fetchStub.callCount).to.equal(0);
+
     // Verify config was updated
     const configPath = path.join(tmpHome, ".agentshield", "config.json");
     const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
@@ -127,9 +149,33 @@ describe("shield_upgrade_tier", () => {
     writeConfig();
 
     const result = await upgradeTier(null, { targetTier: 3 });
+
+    // Should call fetch for TEE provisioning
+    expect(fetchStub.calledOnce).to.be.true;
+    expect(fetchStub.firstCall.args[0]).to.include("provision-tee");
+
     // TEE is provisioned first, then vault Blink URL generated
     expect(result).to.include("Upgraded to Tier 2");
     expect(result).to.include("Tier 3");
+    expect(result).to.include(MOCK_TEE_RESPONSE.publicKey);
+    expect(result).to.include(MOCK_TEE_RESPONSE.locator);
+    expect(result).to.include("dial.to");
+  });
+
+  it("returns error when TEE provisioning fails during upgrade", async () => {
+    writeConfig();
+
+    fetchStub.resolves(
+      new Response("Bad Gateway", {
+        status: 502,
+      }),
+    );
+
+    const result = await upgradeTier(null, { targetTier: 2 });
+
+    expect(fetchStub.calledOnce).to.be.true;
+    expect(result).to.include("Error provisioning TEE wallet");
+    expect(result).to.include("502");
   });
 
   it("preserves existing policy on upgrade", async () => {

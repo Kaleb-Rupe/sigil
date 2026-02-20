@@ -1,12 +1,19 @@
 import { expect } from "chai";
+import * as sinon from "sinon";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { configure } from "../../src/tools/configure";
 
+const MOCK_TEE_RESPONSE = {
+  publicKey: "TESTpubkey111111111111111111111111111111111",
+  locator: "userId:agent-shield-test-1234",
+};
+
 describe("shield_configure", () => {
   const tmpHome = path.join(os.tmpdir(), `home-configure-${Date.now()}`);
   const origHome = process.env.HOME;
+  let fetchStub: sinon.SinonStub;
 
   beforeEach(() => {
     const shieldDir = path.join(tmpHome, ".agentshield");
@@ -16,17 +23,31 @@ describe("shield_configure", () => {
     process.env.HOME = tmpHome;
     delete process.env.AGENTSHIELD_WALLET_PATH;
     delete process.env.AGENTSHIELD_RPC_URL;
+
+    // Stub global.fetch to prevent live network calls
+    fetchStub = sinon.stub(global, "fetch").resolves(
+      new Response(JSON.stringify(MOCK_TEE_RESPONSE), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
   });
 
   afterEach(() => {
     process.env.HOME = origHome;
+    fetchStub.restore();
     // Clean up config
     const configPath = path.join(tmpHome, ".agentshield", "config.json");
     if (fs.existsSync(configPath)) {
       fs.unlinkSync(configPath);
     }
     // Clean up generated wallet
-    const walletPath = path.join(tmpHome, ".agentshield", "wallets", "agent.json");
+    const walletPath = path.join(
+      tmpHome,
+      ".agentshield",
+      "wallets",
+      "agent.json",
+    );
     if (fs.existsSync(walletPath)) {
       fs.unlinkSync(walletPath);
     }
@@ -57,6 +78,9 @@ describe("shield_configure", () => {
     expect(config.layers.shield.dailyCapUsd).to.equal(500);
     expect(config.layers.tee.enabled).to.be.false;
     expect(config.layers.vault.enabled).to.be.false;
+
+    // Tier 1 should NOT call fetch
+    expect(fetchStub.callCount).to.equal(0);
   });
 
   it("generates a new keypair when walletPath not provided", async () => {
@@ -66,7 +90,12 @@ describe("shield_configure", () => {
       network: "devnet",
     });
 
-    const walletPath = path.join(tmpHome, ".agentshield", "wallets", "agent.json");
+    const walletPath = path.join(
+      tmpHome,
+      ".agentshield",
+      "wallets",
+      "agent.json",
+    );
     expect(fs.existsSync(walletPath)).to.be.true;
 
     // Verify it's a valid keypair (array of 64 numbers)
@@ -159,16 +188,47 @@ describe("shield_configure", () => {
   });
 
   it("Tier 3 provisions TEE and generates vault Blink URL", async () => {
-    // Tier 3 first provisions TEE (tier >= 2), then generates vault Blink URL
     const result = await configure(null, {
       tier: 3,
       template: "conservative",
       network: "devnet",
     });
 
-    // TEE provisioning succeeds, vault Blink URL generated
+    // TEE provisioning should use the mock
+    expect(fetchStub.calledOnce).to.be.true;
+    expect(fetchStub.firstCall.args[0]).to.include("provision-tee");
+
+    // Result uses mock TEE pubkey
     expect(result).to.include("Tier 3");
     expect(result).to.include("Configured");
+    expect(result).to.include(MOCK_TEE_RESPONSE.publicKey);
+    expect(result).to.include(MOCK_TEE_RESPONSE.locator);
+    expect(result).to.include("dial.to");
+
+    // Config should have TEE + vault enabled
+    const configPath = path.join(tmpHome, ".agentshield", "config.json");
+    const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    expect(config.layers.tee.enabled).to.be.true;
+    expect(config.layers.tee.publicKey).to.equal(MOCK_TEE_RESPONSE.publicKey);
+    expect(config.layers.vault.enabled).to.be.true;
+  });
+
+  it("returns error when TEE provisioning fails", async () => {
+    fetchStub.resolves(
+      new Response("Internal Server Error", {
+        status: 502,
+      }),
+    );
+
+    const result = await configure(null, {
+      tier: 2,
+      template: "conservative",
+      network: "devnet",
+    });
+
+    expect(fetchStub.calledOnce).to.be.true;
+    expect(result).to.include("Error provisioning TEE wallet");
+    expect(result).to.include("502");
   });
 
   it("Tier 1 next steps suggest upgrading to TEE", async () => {

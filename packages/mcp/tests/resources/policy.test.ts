@@ -7,7 +7,7 @@ describe("resource: shield://vault/{address}/policy", () => {
     const client = createMockClient();
     const json = await getPolicyResource(
       client as any,
-      TEST_VAULT_PDA.toBase58()
+      TEST_VAULT_PDA.toBase58(),
     );
     const data = JSON.parse(json);
     expect(data.vault).to.equal(TEST_VAULT_PDA.toBase58());
@@ -23,7 +23,7 @@ describe("resource: shield://vault/{address}/policy", () => {
     });
     const json = await getPolicyResource(
       client as any,
-      TEST_VAULT_PDA.toBase58()
+      TEST_VAULT_PDA.toBase58(),
     );
     const data = JSON.parse(json);
     expect(data.error).to.include("not found");
@@ -35,7 +35,7 @@ describe("resource: shield://vault/{address}/policy", () => {
     const client = createMockClient();
     const json = await getPolicyResource(
       client as any,
-      TEST_VAULT_PDA.toBase58()
+      TEST_VAULT_PDA.toBase58(),
     );
     expect(() => JSON.parse(json)).not.to.throw();
   });

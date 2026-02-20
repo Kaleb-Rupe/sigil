@@ -1,6 +1,10 @@
 import { expect } from "chai";
 import { deposit } from "../../src/tools/deposit";
-import { createMockClient, TEST_VAULT_PDA, TEST_MINT } from "../helpers/mock-client";
+import {
+  createMockClient,
+  TEST_VAULT_PDA,
+  TEST_MINT,
+} from "../helpers/mock-client";
 
 describe("shield_deposit", () => {
   it("deposits successfully", async () => {

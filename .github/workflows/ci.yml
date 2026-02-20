@@ -2,11 +2,11 @@
 #
 # Runs on every push to main and on pull requests.
 # Three parallel jobs:
-#   1. build-lint-test  — TypeScript builds, Prettier (10 packages), 400 TS tests across 9 suites
+#   1. build-lint-test  — TypeScript builds, Prettier (10 packages), 442 TS tests across 9 suites
 #   2. rust-checks      — cargo fmt + cargo clippy
 #   3. on-chain-tests   — Anchor build + LiteSVM in-process + 93 on-chain tests
 #
-# Total: 493 tests across 12 suites (400 TS + 93 on-chain)
+# Total: 535 tests across 12 suites (442 TS + 93 on-chain)
 
 name: CI
 
@@ -28,7 +28,7 @@ env:
 
 jobs:
   # ──────────────────────────────────────────────────────────────
-  # Job 1: TypeScript build, lint, and tests (9 suites, 400 tests)
+  # Job 1: TypeScript build, lint, and tests (9 suites, 442 tests)
   # ──────────────────────────────────────────────────────────────
   build-lint-test:
     name: Build, Lint & TS Tests
@@ -65,6 +65,7 @@ jobs:
             "plugins/solana-agent-kit/src/**/*.ts" \
             "plugins/elizaos/src/**/*.ts" \
             "packages/mcp/src/**/*.ts" \
+            "packages/mcp/tests/**/*.ts" \
             "apps/actions-server/src/**/*.ts" \
             "apps/actions-server/tests/**/*.ts"
 
@@ -96,11 +97,11 @@ jobs:
         working-directory: plugins/elizaos
         run: pnpm test
 
-      - name: MCP server tests (82 tests)
+      - name: MCP server tests (107 tests)
         working-directory: packages/mcp
         run: pnpm test
 
-      - name: Actions server tests (22 tests)
+      - name: Actions server tests (39 tests)
         working-directory: apps/actions-server
         run: pnpm test
 

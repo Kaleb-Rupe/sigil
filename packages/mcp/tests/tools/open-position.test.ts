@@ -4,7 +4,11 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { openPosition } from "../../src/tools/open-position";
-import { createMockClient, TEST_VAULT_PDA, TEST_MINT } from "../helpers/mock-client";
+import {
+  createMockClient,
+  TEST_VAULT_PDA,
+  TEST_MINT,
+} from "../helpers/mock-client";
 import type { McpConfig } from "../../src/config";
 
 describe("shield_open_position", () => {
@@ -18,7 +22,7 @@ describe("shield_open_position", () => {
     agentKeypairPath = path.join(tmpDir, "agent.json");
     fs.writeFileSync(
       agentKeypairPath,
-      JSON.stringify(Array.from(kp.secretKey))
+      JSON.stringify(Array.from(kp.secretKey)),
     );
     config = {
       walletPath: agentKeypairPath,
@@ -76,7 +80,7 @@ describe("shield_open_position", () => {
         sizeUsd: "10000000000",
         side: "long",
         leverageBps: 20000,
-      }
+      },
     );
     expect(result).to.include("AGENTSHIELD_AGENT_KEYPAIR_PATH is required");
   });

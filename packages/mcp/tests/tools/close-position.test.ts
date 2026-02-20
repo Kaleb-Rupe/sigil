@@ -18,7 +18,7 @@ describe("shield_close_position", () => {
     agentKeypairPath = path.join(tmpDir, "agent.json");
     fs.writeFileSync(
       agentKeypairPath,
-      JSON.stringify(Array.from(kp.secretKey))
+      JSON.stringify(Array.from(kp.secretKey)),
     );
     config = {
       walletPath: agentKeypairPath,
@@ -70,7 +70,7 @@ describe("shield_close_position", () => {
         side: "long",
         priceWithSlippage: "50000000000",
         priceExponent: 0,
-      }
+      },
     );
     expect(result).to.include("AGENTSHIELD_AGENT_KEYPAIR_PATH is required");
   });

@@ -47,7 +47,9 @@ describe("config", () => {
 
     it("throws when AGENTSHIELD_WALLET_PATH is not set", () => {
       delete process.env.AGENTSHIELD_WALLET_PATH;
-      expect(() => loadConfig()).to.throw("AGENTSHIELD_WALLET_PATH is required");
+      expect(() => loadConfig()).to.throw(
+        "AGENTSHIELD_WALLET_PATH is required",
+      );
     });
 
     it("loads config with required env vars", () => {
@@ -88,7 +90,7 @@ describe("config", () => {
   describe("loadAgentKeypair", () => {
     it("throws when agentKeypairPath is not set", () => {
       expect(() =>
-        loadAgentKeypair({ walletPath: keypairPath, rpcUrl: "" })
+        loadAgentKeypair({ walletPath: keypairPath, rpcUrl: "" }),
       ).to.throw("AGENTSHIELD_AGENT_KEYPAIR_PATH is required");
     });
   });

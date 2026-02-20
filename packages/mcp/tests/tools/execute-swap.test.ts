@@ -4,7 +4,11 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { executeSwap } from "../../src/tools/execute-swap";
-import { createMockClient, TEST_VAULT_PDA, TEST_MINT } from "../helpers/mock-client";
+import {
+  createMockClient,
+  TEST_VAULT_PDA,
+  TEST_MINT,
+} from "../helpers/mock-client";
 import type { McpConfig } from "../../src/config";
 
 describe("shield_execute_swap", () => {
@@ -19,7 +23,7 @@ describe("shield_execute_swap", () => {
     agentKeypairPath = path.join(tmpDir, "agent.json");
     fs.writeFileSync(
       agentKeypairPath,
-      JSON.stringify(Array.from(agentKeypair.secretKey))
+      JSON.stringify(Array.from(agentKeypair.secretKey)),
     );
     config = {
       walletPath: agentKeypairPath,

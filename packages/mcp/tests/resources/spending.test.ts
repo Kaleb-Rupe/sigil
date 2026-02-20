@@ -7,7 +7,7 @@ describe("resource: shield://vault/{address}/spending", () => {
     const client = createMockClient();
     const json = await getSpendingResource(
       client as any,
-      TEST_VAULT_PDA.toBase58()
+      TEST_VAULT_PDA.toBase58(),
     );
     const data = JSON.parse(json);
     expect(data.vault).to.equal(TEST_VAULT_PDA.toBase58());
@@ -23,7 +23,7 @@ describe("resource: shield://vault/{address}/spending", () => {
     });
     const json = await getSpendingResource(
       client as any,
-      TEST_VAULT_PDA.toBase58()
+      TEST_VAULT_PDA.toBase58(),
     );
     const data = JSON.parse(json);
     expect(data.error).to.include("not found");
@@ -34,7 +34,7 @@ describe("resource: shield://vault/{address}/spending", () => {
     const client = createMockClient();
     const json = await getSpendingResource(
       client as any,
-      TEST_VAULT_PDA.toBase58()
+      TEST_VAULT_PDA.toBase58(),
     );
     const data = JSON.parse(json);
     // 500000000 / 10000000000 = 5%

@@ -97,7 +97,7 @@ describe("errors", () => {
       for (let code = 6000; code <= 6039; code++) {
         const msg = formatError({ code });
         expect(msg, `Code ${code} missing suggestion`).to.include(
-          "Suggestion:"
+          "Suggestion:",
         );
       }
     });

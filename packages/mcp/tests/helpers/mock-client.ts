@@ -20,7 +20,7 @@ export const TEST_MINT = Keypair.generate().publicKey;
 export const TEST_PROTOCOL = Keypair.generate().publicKey;
 
 export function makeVaultAccount(
-  overrides: Partial<AgentVaultAccount> = {}
+  overrides: Partial<AgentVaultAccount> = {},
 ): AgentVaultAccount {
   return {
     owner: TEST_OWNER.publicKey,
@@ -40,13 +40,21 @@ export function makeVaultAccount(
 }
 
 export function makePolicyAccount(
-  overrides: Partial<PolicyConfigAccount> = {}
+  overrides: Partial<PolicyConfigAccount> = {},
 ): PolicyConfigAccount {
   return {
     vault: TEST_VAULT_PDA,
     dailySpendingCapUsd: new BN("10000000000"),
     maxTransactionSizeUsd: new BN("1000000000"),
-    allowedTokens: [{ mint: TEST_MINT, oracleFeed: PublicKey.default, decimals: 6, dailyCapBase: new BN(0), maxTxBase: new BN(0) }],
+    allowedTokens: [
+      {
+        mint: TEST_MINT,
+        oracleFeed: PublicKey.default,
+        decimals: 6,
+        dailyCapBase: new BN(0),
+        maxTxBase: new BN(0),
+      },
+    ],
     allowedProtocols: [TEST_PROTOCOL],
     maxLeverageBps: 30000,
     canOpenPositions: true,
@@ -60,7 +68,7 @@ export function makePolicyAccount(
 }
 
 export function makeSpendEntry(
-  overrides: Partial<SpendEntry> = {}
+  overrides: Partial<SpendEntry> = {},
 ): SpendEntry {
   return {
     tokenIndex: 0,
@@ -72,7 +80,7 @@ export function makeSpendEntry(
 }
 
 export function makeTransactionRecord(
-  overrides: Partial<TransactionRecord> = {}
+  overrides: Partial<TransactionRecord> = {},
 ): TransactionRecord {
   return {
     timestamp: new BN(1700000200),
@@ -87,7 +95,7 @@ export function makeTransactionRecord(
 }
 
 export function makeTrackerAccount(
-  overrides: Partial<SpendTrackerAccount> = {}
+  overrides: Partial<SpendTrackerAccount> = {},
 ): SpendTrackerAccount {
   return {
     vault: TEST_VAULT_PDA,
@@ -101,7 +109,7 @@ export function makeTrackerAccount(
 }
 
 export function makePendingPolicyAccount(
-  overrides: Partial<PendingPolicyUpdateAccount> = {}
+  overrides: Partial<PendingPolicyUpdateAccount> = {},
 ): PendingPolicyUpdateAccount {
   return {
     vault: TEST_VAULT_PDA,
@@ -131,12 +139,14 @@ export interface CallRecord {
  * Mock AgentShieldClient that records method calls and returns canned data.
  * Cast to `any` when passing to tool handlers to bypass type checks.
  */
-export function createMockClient(overrides: {
-  vault?: Partial<AgentVaultAccount>;
-  policy?: Partial<PolicyConfigAccount>;
-  tracker?: Partial<SpendTrackerAccount>;
-  shouldThrow?: Error;
-} = {}) {
+export function createMockClient(
+  overrides: {
+    vault?: Partial<AgentVaultAccount>;
+    policy?: Partial<PolicyConfigAccount>;
+    tracker?: Partial<SpendTrackerAccount>;
+    shouldThrow?: Error;
+  } = {},
+) {
   const calls: CallRecord[] = [];
   const vaultData = makeVaultAccount(overrides.vault);
   const policyData = makePolicyAccount(overrides.policy);
@@ -166,7 +176,11 @@ export function createMockClient(overrides: {
       return [Keypair.generate().publicKey, 253];
     },
 
-    getSessionPDA(vault: PublicKey, agent: PublicKey, tokenMint: PublicKey): [PublicKey, number] {
+    getSessionPDA(
+      vault: PublicKey,
+      agent: PublicKey,
+      tokenMint: PublicKey,
+    ): [PublicKey, number] {
       calls.push({ method: "getSessionPDA", args: [vault, agent, tokenMint] });
       return [Keypair.generate().publicKey, 252];
     },
@@ -302,8 +316,15 @@ export function createMockClient(overrides: {
       return "mock-sig-cancel";
     },
 
-    async agentTransfer(vault: PublicKey, params: any, oracleFeedAccount?: PublicKey) {
-      calls.push({ method: "agentTransfer", args: [vault, params, oracleFeedAccount] });
+    async agentTransfer(
+      vault: PublicKey,
+      params: any,
+      oracleFeedAccount?: PublicKey,
+    ) {
+      calls.push({
+        method: "agentTransfer",
+        args: [vault, params, oracleFeedAccount],
+      });
       if (overrides.shouldThrow) throw overrides.shouldThrow;
       return "mock-sig-transfer";
     },
@@ -335,11 +356,7 @@ export function createMockClient(overrides: {
       return [];
     },
 
-    async composeAndSend(
-      params: any,
-      signers?: any[],
-      computeUnits?: number
-    ) {
+    async composeAndSend(params: any, signers?: any[], computeUnits?: number) {
       calls.push({
         method: "composeAndSend",
         args: [params, signers, computeUnits],
