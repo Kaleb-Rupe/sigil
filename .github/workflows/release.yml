@@ -1,0 +1,84 @@
+# Release workflow for publishing @agent-shield packages to npm.
+#
+# Triggered manually via workflow_dispatch. Select the package to publish
+# and the version bump type. Builds, tests, and publishes with npm provenance
+# (cryptographic link between npm package and source commit).
+#
+# Requires NPM_TOKEN secret with publish permissions for @agent-shield scope.
+
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Package to publish (directory name)"
+        required: true
+        type: choice
+        options:
+          - sdk/core
+          - sdk/typescript
+          - sdk/wrapper
+          - sdk/platform
+          - sdk/custody/crossmint
+          - packages/mcp
+          - plugins/solana-agent-kit
+          - plugins/elizaos
+      dry-run:
+        description: "Dry run (skip actual publish)"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write # Required for npm provenance attestation
+
+jobs:
+  publish:
+    name: Publish ${{ inputs.package }}
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@c5ba7f7862a0f64c1b1a05fbac13e0b8e86ba08c # v4
+        with:
+          version: 10
+
+      - name: Install Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all packages
+        run: pnpm -r run build
+
+      - name: Run package tests
+        working-directory: ${{ inputs.package }}
+        run: pnpm test
+
+      - name: Verify package contents
+        working-directory: ${{ inputs.package }}
+        run: pnpm pack --dry-run
+
+      - name: Publish (dry run)
+        if: ${{ inputs.dry-run }}
+        working-directory: ${{ inputs.package }}
+        run: pnpm publish --access public --no-git-checks --dry-run
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish to npm
+        if: ${{ !inputs.dry-run }}
+        working-directory: ${{ inputs.package }}
+        run: pnpm publish --access public --no-git-checks --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

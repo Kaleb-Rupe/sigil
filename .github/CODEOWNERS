@@ -1,0 +1,12 @@
+# Default: all changes require review from the maintainer
+* @Kaleb-Rupe
+
+# On-chain program — highest risk, handles real funds
+programs/ @Kaleb-Rupe
+
+# Serverless API — handles TEE provisioning and transaction building
+api/ @Kaleb-Rupe
+
+# CI/CD and security config
+.github/ @Kaleb-Rupe
+vercel.json @Kaleb-Rupe

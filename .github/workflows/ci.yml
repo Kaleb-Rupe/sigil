@@ -2,11 +2,11 @@
 #
 # Runs on every push to main and on pull requests.
 # Three parallel jobs:
-#   1. build-lint-test  — TypeScript builds, Prettier (10 packages), 442 TS tests across 9 suites
+#   1. build-lint-test  — TypeScript builds, Prettier (10 packages), 444 TS tests across 9 suites
 #   2. rust-checks      — cargo fmt + cargo clippy
 #   3. on-chain-tests   — Anchor build + LiteSVM in-process + 93 on-chain tests
 #
-# Total: 535 tests across 12 suites (442 TS + 93 on-chain)
+# Total: 537 tests across 12 suites (444 TS + 93 on-chain)
 
 name: CI
 
@@ -15,6 +15,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+
+# Least-privilege: only read repo contents by default
+permissions:
+  contents: read
 
 # Cancel in-progress runs for the same branch/PR (saves CI minutes)
 concurrency:
@@ -28,28 +32,33 @@ env:
 
 jobs:
   # ──────────────────────────────────────────────────────────────
-  # Job 1: TypeScript build, lint, and tests (9 suites, 442 tests)
+  # Job 1: TypeScript build, lint, and tests (9 suites, 444 tests)
   # ──────────────────────────────────────────────────────────────
   build-lint-test:
     name: Build, Lint & TS Tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@c5ba7f7862a0f64c1b1a05fbac13e0b8e86ba08c # v4
         with:
           version: 10
 
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "pnpm"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Audit dependencies
+        run: pnpm audit --audit-level=high || true
+        # Non-blocking for now — warns on known CVEs without failing the build.
+        # Remove `|| true` once all existing advisories are resolved.
 
       - name: Build all packages
         run: pnpm -r run build
@@ -97,7 +106,7 @@ jobs:
         working-directory: plugins/elizaos
         run: pnpm test
 
-      - name: MCP server tests (107 tests)
+      - name: MCP server tests (109 tests)
         working-directory: packages/mcp
         run: pnpm test
 
@@ -113,15 +122,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # stable
         with:
           components: rustfmt, clippy
 
       - name: Cache Cargo registry + build
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/registry
@@ -152,13 +161,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # stable
 
       - name: Cache Cargo registry + build
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/registry
@@ -184,12 +193,12 @@ jobs:
           fi
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@c5ba7f7862a0f64c1b1a05fbac13e0b8e86ba08c # v4
         with:
           version: 10
 
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "pnpm"
