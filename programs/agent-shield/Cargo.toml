@@ -15,7 +15,7 @@ no-log-ix-name = []
 cpi = ["no-entrypoint"]
 default = []
 idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
-certora = ["dep:cvlr"]
+certora = ["no-entrypoint", "dep:cvlr"]
 
 [dependencies]
 anchor-lang = { version = "0.32.1", features = ["init-if-needed"] }
@@ -31,3 +31,5 @@ sources = [
     "Cargo.toml",
     "src/**/*.rs"
 ]
+solana_inlining = ["src/certora/envs/cvlr_inlining.txt"]
+solana_summaries = ["src/certora/envs/cvlr_summaries.txt"]
