@@ -290,18 +290,11 @@ jobs:
   # ──────────────────────────────────────────────────────────────
   # Job 5: Formal verification (Certora Solana Prover)
   #
-  # NON-BLOCKING (continue-on-error: true)
+  # NON-BLOCKING (continue-on-error: true) until confirmed green.
   #
-  # Known limitation: cargo-certora-sbf bundles a frozen rustc
-  # 1.75.0-dev compiler that cannot parse Cargo.lock v4 (introduced
-  # in Rust 1.78) or compile crates with MSRV > 1.75. This project
-  # uses Rust 1.89.0 / lockfile v4, so the job fails during SBF
-  # compilation. Downgrading individual crates creates cascading
-  # version conflicts (276-crate dependency graph).
-  #
-  # This will resolve itself when Certora ships an updated
-  # cargo-certora-sbf with a newer embedded compiler. Until then
-  # the job runs for visibility but does not block merges.
+  # Uses platform-tools v1.51 (Rust 1.84.1+) via the conf file's
+  # cargo_tools_version field. This resolves the Cargo.lock v4
+  # incompatibility that affected earlier platform-tools versions.
   #
   # For local verification see: scripts/run-certora.sh
   # ──────────────────────────────────────────────────────────────
@@ -315,10 +308,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Install Rust stable
+      - name: Install Rust (1.81 — minimum for cargo-certora-sbf)
         uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # stable
         with:
-          toolchain: stable
+          toolchain: "1.81"
 
       - name: Cache Cargo registry + binaries
         uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
@@ -327,7 +320,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             ~/.cargo/bin
-          key: certora-${{ runner.os }}-cargo-certora-sbf
+          key: certora-${{ runner.os }}-cargo-certora-sbf-v1.51
           restore-keys: certora-${{ runner.os }}-
 
       - name: Install Python

@@ -1,17 +1,15 @@
 #!/usr/bin/env bash
 # run-certora.sh — Run Certora Solana Prover locally
 #
-# cargo-certora-sbf bundles a frozen rustc 1.75.0-dev that cannot parse
-# Cargo.lock v4 or compile crates with MSRV > 1.75. This script works
-# around the issue by regenerating the lockfile with Rust 1.81 (which
-# produces v3 format with compatible dependency versions) before running
-# the prover, then restoring the original lockfile.
+# The conf file specifies cargo_tools_version = "v1.51", which tells
+# cargo-certora-sbf to download platform-tools v1.51 (bundling Rust
+# 1.84.1+). This compiler supports Cargo.lock v4 and modern crate
+# MSRVs, so no lockfile workarounds are needed.
 #
 # Prerequisites:
 #   - CERTORAKEY environment variable set (get from certoracloud.com)
 #   - certora-cli installed: pip install certora-cli
 #   - cargo-certora-sbf installed: cargo install cargo-certora-sbf
-#   - Rust 1.81.0 installed: rustup toolchain install 1.81.0
 #
 # Usage:
 #   ./scripts/run-certora.sh
@@ -43,30 +41,9 @@ if ! command -v cargo-certora-sbf &>/dev/null; then
   exit 1
 fi
 
-if ! rustup run 1.81.0 rustc --version &>/dev/null; then
-  echo "ERROR: Rust 1.81.0 toolchain not found. Install it with:"
-  echo "  rustup toolchain install 1.81.0"
-  exit 1
-fi
-
-# ── Backup and regenerate lockfile ───────────────────────────────────
-
-echo "Backing up Cargo.lock..."
-cp Cargo.lock Cargo.lock.bak
-
-# Restore original lockfile on exit (success or failure)
-restore_lockfile() {
-  echo "Restoring original Cargo.lock..."
-  mv Cargo.lock.bak Cargo.lock
-}
-trap restore_lockfile EXIT
-
-echo "Regenerating lockfile with Rust 1.81 (v3 format, compatible deps)..."
-cargo +1.81.0 generate-lockfile
-
 # ── Run the prover ───────────────────────────────────────────────────
 
-echo "Running Certora Solana Prover..."
+echo "Running Certora Solana Prover (platform-tools v1.51)..."
 certoraSolanaProver certora/conf/agent_shield.conf
 
 echo "Done. Certora report available in .certora_internal/"
