@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { AgentShieldClient } from "@agent-shield/sdk";
+import { formatError } from "../errors";
 import type { McpConfig } from "../config";
 
 export const x402FetchSchema = z.object({
@@ -10,7 +11,7 @@ export const x402FetchSchema = z.object({
     .default("GET")
     .describe("HTTP method (default: GET)"),
   headers: z
-    .record(z.string())
+    .record(z.string(), z.string())
     .optional()
     .describe("Additional HTTP headers as key-value pairs"),
   body: z.string().optional().describe("Request body (for POST/PUT)"),
@@ -24,13 +25,6 @@ export const x402FetchSchema = z.object({
 
 export type X402FetchInput = z.input<typeof x402FetchSchema>;
 
-function formatError(error: unknown): string {
-  if (error instanceof Error) {
-    return `## Error\n\n${error.name}: ${error.message}`;
-  }
-  return `## Error\n\n${String(error)}`;
-}
-
 export async function x402Fetch(
   _client: AgentShieldClient,
   config: McpConfig,
@@ -41,14 +35,24 @@ export async function x402Fetch(
     const { shieldWallet, shieldedFetch } = await import("@agent-shield/sdk");
     const { Connection, Keypair } = await import("@solana/web3.js");
 
-    // Build wallet from config keypair
-    const keypairBytes = config.keypair;
-    if (!keypairBytes) {
+    // Load wallet keypair — direct bytes, walletPath file, or agentKeypairPath
+    let keypair: InstanceType<typeof Keypair>;
+    const cfgAny = config as unknown as Record<string, unknown>;
+    if (typeof cfgAny.keypair === "string") {
+      // Direct keypair bytes (JSON array string) — programmatic/test usage
+      keypair = Keypair.fromSecretKey(
+        new Uint8Array(JSON.parse(cfgAny.keypair as string)),
+      );
+    } else if (config.walletPath) {
+      const { loadKeypair } = await import("../config");
+      keypair = loadKeypair(config.walletPath);
+    } else if (config.agentKeypairPath) {
+      const { loadKeypair } = await import("../config");
+      keypair = loadKeypair(config.agentKeypairPath);
+    } else {
       return "## Error\n\nNo agent keypair configured. Run `shield_configure` first.";
     }
-    const keypair = Keypair.fromSecretKey(
-      new Uint8Array(JSON.parse(keypairBytes)),
-    );
+
     const wallet = {
       publicKey: keypair.publicKey,
       signTransaction: async <T>(tx: T): Promise<T> => {
@@ -62,8 +66,10 @@ export async function x402Fetch(
 
     const fetchInit: RequestInit = {
       method: input.method ?? "GET",
-      headers: input.headers,
     };
+    if (input.headers) {
+      fetchInit.headers = input.headers as Record<string, string>;
+    }
     if (input.body) {
       fetchInit.body = input.body;
     }
@@ -76,27 +82,23 @@ export async function x402Fetch(
     const body = await res.text();
     const x402 = (res as any).x402;
 
-    const lines = [`## x402 Fetch Result`, ``];
-    lines.push(`- **URL:** ${input.url}`);
-    lines.push(`- **Status:** ${res.status}`);
+    const lines = [`=== x402 Fetch Result ===`];
+    lines.push(`URL: ${input.url}`);
+    lines.push(`Status: ${res.status}`);
 
     if (x402) {
-      lines.push(`- **Paid:** ${x402.paid}`);
+      lines.push(`Paid: ${x402.paid}`);
       if (x402.paid) {
-        lines.push(`- **Amount:** ${x402.amountPaid}`);
-        lines.push(`- **Asset:** ${x402.asset}`);
-        lines.push(`- **Pay To:** ${x402.payTo}`);
+        lines.push(`Amount: ${x402.amountPaid}`);
+        lines.push(`Asset: ${x402.asset}`);
+        lines.push(`Pay To: ${x402.payTo}`);
         if (x402.settlement?.transaction) {
-          lines.push(`- **Tx:** ${x402.settlement.transaction}`);
+          lines.push(`Tx: ${x402.settlement.transaction}`);
         }
       }
     }
 
-    lines.push(``);
-    lines.push(`### Response Body`);
-    lines.push("```");
-    lines.push(body.slice(0, 2000));
-    lines.push("```");
+    lines.push(`Response: ${body.slice(0, 2000)}`);
 
     return lines.join("\n");
   } catch (error) {

@@ -9,7 +9,7 @@ export const x402FetchSchema = z.object({
     .default("GET")
     .describe("HTTP method (default: GET)"),
   headers: z
-    .record(z.string())
+    .record(z.string(), z.string())
     .optional()
     .describe("Additional HTTP headers"),
   body: z.string().optional().describe("Request body (for POST/PUT)"),
@@ -18,7 +18,7 @@ export const x402FetchSchema = z.object({
 export type X402FetchInput = z.input<typeof x402FetchSchema>;
 
 export async function x402Fetch(
-  _agent: any,
+  agent: any,
   config: ResolvedConfig,
   input: X402FetchInput,
 ): Promise<string> {
@@ -27,15 +27,20 @@ export async function x402Fetch(
 
     const fetchInit: RequestInit = {
       method: input.method ?? "GET",
-      headers: input.headers,
     };
+    if (input.headers) {
+      fetchInit.headers = input.headers as Record<string, string>;
+    }
     if (input.body) {
       fetchInit.body = input.body;
     }
 
+    // Get connection from agent (SolanaAgentKit) or fall back to undefined
+    const connection = agent?.connection;
+
     const res = await shieldedFetch(config.wallet, input.url, {
       ...fetchInit,
-      connection: config.connection,
+      connection,
     });
 
     const body = await res.text();

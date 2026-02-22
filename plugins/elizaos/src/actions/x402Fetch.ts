@@ -42,7 +42,7 @@ export const x402FetchAction = {
     callback: (response: any) => void,
   ) => {
     try {
-      const { wallet, connection } = await getOrCreateShieldedWallet(runtime);
+      const { wallet } = await getOrCreateShieldedWallet(runtime);
       const { shieldedFetch } = await import("@agent-shield/sdk");
 
       // Extract URL from message
@@ -58,7 +58,7 @@ export const x402FetchAction = {
       const url = urlMatch[0];
       runtime.logger?.info(`[AgentShield] x402 fetch: ${url}`);
 
-      const res = await shieldedFetch(wallet, url, { connection });
+      const res = await shieldedFetch(wallet, url);
       const body = await res.text();
       const x402 = (res as any).x402;
 
