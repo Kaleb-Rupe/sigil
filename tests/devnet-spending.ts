@@ -11,7 +11,7 @@ import {
   TOKEN_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
   createMint,
-  createAssociatedTokenAccount,
+  getOrCreateAssociatedTokenAccount,
   mintTo,
 } from "@solana/spl-token";
 import { expect } from "chai";
@@ -29,6 +29,7 @@ import {
   fundKeypair,
   expectError,
   FullVaultResult,
+  PROTOCOL_TREASURY,
 } from "./helpers/devnet-setup";
 
 describe("devnet-spending", () => {
@@ -81,12 +82,13 @@ describe("devnet-spending", () => {
       mint: mintB,
       owner: vault.vaultPda,
     });
-    const ownerMintBAta = await createAssociatedTokenAccount(
+    const ownerMintBAtaAccount = await getOrCreateAssociatedTokenAccount(
       connection,
       payer,
       mintB,
       owner.publicKey,
     );
+    const ownerMintBAta = ownerMintBAtaAccount.address;
     await mintTo(
       connection,
       payer,
@@ -109,7 +111,16 @@ describe("devnet-spending", () => {
       } as any)
       .rpc();
 
-    return { ...vault, mintBVaultAta };
+    // Create protocol treasury ATA for mintB (needed for mintB finalize)
+    const mintBTreasuryAccount = await getOrCreateAssociatedTokenAccount(
+      connection,
+      payer,
+      mintB,
+      PROTOCOL_TREASURY,
+      true,
+    );
+
+    return { ...vault, mintBVaultAta, mintBTreasuryAta: mintBTreasuryAccount.address };
   }
 
   it("1. aggregate USD cap tracks across both tokens", async () => {
@@ -161,7 +172,7 @@ describe("devnet-spending", () => {
       amount: new BN(100_000_000_000), // 100 tokens (9 dec) = 100 USD
       protocol: jupiterProgramId,
       feeDestinationAta: null,
-      protocolTreasuryAta: vault.protocolTreasuryAta,
+      protocolTreasuryAta: vault.mintBTreasuryAta,
     });
 
     // Now at 200 USD cap — 1 more of either should fail
@@ -250,7 +261,7 @@ describe("devnet-spending", () => {
       amount: new BN(10_000_000_000), // 10 tokens of B
       protocol: jupiterProgramId,
       feeDestinationAta: null,
-      protocolTreasuryAta: vault.protocolTreasuryAta,
+      protocolTreasuryAta: vault.mintBTreasuryAta,
     });
 
     // 1 more of token A should fail (per-token cap)
@@ -413,7 +424,7 @@ describe("devnet-spending", () => {
       amount: new BN(50_000_000_000),
       protocol: jupiterProgramId,
       feeDestinationAta: null,
-      protocolTreasuryAta: vault.protocolTreasuryAta,
+      protocolTreasuryAta: vault.mintBTreasuryAta,
     });
     console.log("    token_index correctness verified after reorder");
   });

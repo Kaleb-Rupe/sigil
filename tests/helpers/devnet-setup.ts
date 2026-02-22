@@ -17,7 +17,6 @@ import {
   TOKEN_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
   createMint,
-  createAssociatedTokenAccount,
   getOrCreateAssociatedTokenAccount,
   mintTo,
   getAccount,
@@ -194,13 +193,14 @@ export async function createFullVault(
     owner: pdas.vaultPda,
   });
 
-  // Create owner ATA + mint tokens
-  const ownerTokenAta = await createAssociatedTokenAccount(
+  // Create owner ATA + mint tokens (idempotent — safe across multiple vaults)
+  const ownerAtaAccount = await getOrCreateAssociatedTokenAccount(
     connection,
     payer,
     mint,
     owner.publicKey,
   );
+  const ownerTokenAta = ownerAtaAccount.address;
   if (!skipDeposit) {
     await mintTo(
       connection,
@@ -230,7 +230,6 @@ export async function createFullVault(
       payer,
       mint,
       feeDestination,
-      true,
     );
     feeDestinationAta = feeAtaAccount.address;
   }
