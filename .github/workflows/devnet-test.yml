@@ -32,19 +32,17 @@ jobs:
           echo '${{ secrets.DEVNET_WALLET_KEYPAIR }}' > ~/.config/solana/id.json
           solana config set --url https://api.devnet.solana.com --keypair ~/.config/solana/id.json
 
-      - name: Fund wallet if needed
+      - name: Fund wallet
         run: |
-          BALANCE=$(solana balance | awk '{print int($1)}')
-          echo "Current balance: ${BALANCE} SOL"
-          if [ "$BALANCE" -lt 5 ]; then
-            echo "Balance below 5 SOL, requesting airdrops..."
-            solana airdrop 2 && sleep 6
-            solana airdrop 2 && sleep 6
-            solana airdrop 2
-            echo "New balance: $(solana balance)"
-          else
-            echo "Balance sufficient, skipping airdrop"
-          fi
+          echo "Current balance: $(solana balance)"
+          echo "Requesting airdrops..."
+          solana airdrop 2 || true
+          sleep 6
+          solana airdrop 2 || true
+          sleep 6
+          solana airdrop 2 || true
+          sleep 6
+          echo "Final balance: $(solana balance)"
 
       - name: Run devnet tests
         env:
