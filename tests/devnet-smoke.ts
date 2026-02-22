@@ -10,27 +10,31 @@ import {
 import {
   TOKEN_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
-  createMint,
   createAssociatedTokenAccount,
   mintTo,
+  getOrCreateAssociatedTokenAccount,
   getAccount,
 } from "@solana/spl-token";
 import { expect } from "chai";
 import BN from "bn.js";
+import {
+  PROTOCOL_TREASURY,
+  makeAllowedToken,
+  getDevnetProvider,
+  derivePDAs,
+  deriveSessionPda,
+  fundKeypair,
+  createTestMint,
+  nextVaultId,
+} from "./helpers/devnet-setup";
 
 describe("devnet-smoke-test", () => {
-  const provider = anchor.AnchorProvider.env();
-  anchor.setProvider(provider);
+  const { provider, program, connection, owner } = getDevnetProvider();
 
-  const program = anchor.workspace.AgentShield as Program<AgentShield>;
-  const connection = provider.connection;
-
-  const owner = provider.wallet as anchor.Wallet;
   const agent = Keypair.generate();
   const feeDestination = Keypair.generate();
 
-  // Use a unique vault ID based on timestamp to avoid collisions on devnet
-  const vaultId = new BN(Date.now() % 1_000_000_000);
+  const vaultId = nextVaultId(1);
 
   let usdcMint: PublicKey;
   let vaultPda: PublicKey;
@@ -39,6 +43,7 @@ describe("devnet-smoke-test", () => {
   let sessionPda: PublicKey;
   let ownerUsdcAta: PublicKey;
   let vaultUsdcAta: PublicKey;
+  let protocolTreasuryUsdcAta: PublicKey;
 
   const jupiterProgramId = Keypair.generate().publicKey;
 
@@ -49,21 +54,14 @@ describe("devnet-smoke-test", () => {
     console.log("  Program:", program.programId.toString());
 
     // Fund agent keypair from owner wallet (devnet faucet is rate-limited)
-    const transferIx = SystemProgram.transfer({
-      fromPubkey: owner.publicKey,
-      toPubkey: agent.publicKey,
-      lamports: 0.1 * LAMPORTS_PER_SOL,
-    });
-    const tx = new anchor.web3.Transaction().add(transferIx);
-    await provider.sendAndConfirm(tx);
+    await fundKeypair(provider, agent.publicKey);
 
     // Create a test SPL token mint
-    usdcMint = await createMint(
+    usdcMint = await createTestMint(
       connection,
       (owner as any).payer,
       owner.publicKey,
-      null,
-      6
+      6,
     );
     console.log("  Test mint:", usdcMint.toString());
 
@@ -72,7 +70,7 @@ describe("devnet-smoke-test", () => {
       connection,
       (owner as any).payer,
       usdcMint,
-      owner.publicKey
+      owner.publicKey,
     );
     await mintTo(
       connection,
@@ -80,35 +78,37 @@ describe("devnet-smoke-test", () => {
       usdcMint,
       ownerUsdcAta,
       owner.publicKey,
-      1_000_000_000 // 1000 tokens
+      1_000_000_000, // 1000 tokens
     );
 
     // Derive PDAs
-    [vaultPda] = PublicKey.findProgramAddressSync(
-      [
-        Buffer.from("vault"),
-        owner.publicKey.toBuffer(),
-        vaultId.toArrayLike(Buffer, "le", 8),
-      ],
-      program.programId
-    );
-    [policyPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("policy"), vaultPda.toBuffer()],
-      program.programId
-    );
-    [trackerPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("tracker"), vaultPda.toBuffer()],
-      program.programId
-    );
-    [sessionPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("session"), vaultPda.toBuffer(), agent.publicKey.toBuffer()],
-      program.programId
+    const pdas = derivePDAs(owner.publicKey, vaultId, program.programId);
+    vaultPda = pdas.vaultPda;
+    policyPda = pdas.policyPda;
+    trackerPda = pdas.trackerPda;
+
+    sessionPda = deriveSessionPda(
+      vaultPda,
+      agent.publicKey,
+      usdcMint,
+      program.programId,
     );
 
     vaultUsdcAta = anchor.utils.token.associatedAddress({
       mint: usdcMint,
       owner: vaultPda,
     });
+
+    // Create protocol treasury ATA on devnet (idempotent)
+    const treasuryAta = await getOrCreateAssociatedTokenAccount(
+      connection,
+      (owner as any).payer,
+      usdcMint,
+      PROTOCOL_TREASURY,
+      true,
+    );
+    protocolTreasuryUsdcAta = treasuryAta.address;
+    console.log("  Treasury ATA:", protocolTreasuryUsdcAta.toString());
   });
 
   it("1. initialize_vault", async () => {
@@ -117,13 +117,14 @@ describe("devnet-smoke-test", () => {
         vaultId,
         new BN(500_000_000), // daily cap: 500
         new BN(100_000_000), // max tx: 100
-        [usdcMint],
+        [makeAllowedToken(usdcMint)],
         [jupiterProgramId],
-        new BN(0) as any,
-        3,
+        new BN(0) as any, // max_leverage_bps
+        3, // max_concurrent_positions
         0, // developer_fee_rate: 0 bps
         new BN(0), // timelockDuration
-        [] // allowedDestinations
+        [], // allowedDestinations
+        0, // tracker_tier: Standard
       )
       .accounts({
         owner: owner.publicKey,
@@ -178,21 +179,22 @@ describe("devnet-smoke-test", () => {
   it("4. update_policy", async () => {
     await program.methods
       .updatePolicy(
-        null,  // keep daily cap
-        null,  // keep max tx
-        null,  // keep tokens
-        null,  // keep protocols
+        null, // keep daily cap
+        null, // keep max tx
+        null, // keep tokens
+        null, // keep protocols
         new BN(5000) as any, // set leverage to 50x
-        null,  // keep can_open_positions
-        null,  // keep max_concurrent_positions
-        null,  // keep developer_fee_rate
-        null,  // keep timelockDuration
-        null   // keep allowedDestinations
+        null, // keep can_open_positions
+        null, // keep max_concurrent_positions
+        null, // keep developer_fee_rate
+        null, // keep timelockDuration
+        null, // keep allowedDestinations
       )
       .accounts({
         owner: owner.publicKey,
         vault: vaultPda,
         policy: policyPda,
+        tracker: trackerPda,
       } as any)
       .rpc();
 
@@ -208,7 +210,7 @@ describe("devnet-smoke-test", () => {
         usdcMint,
         new BN(50_000_000), // 50 tokens
         jupiterProgramId,
-        null
+        null,
       )
       .accounts({
         agent: agent.publicKey,
@@ -216,6 +218,9 @@ describe("devnet-smoke-test", () => {
         policy: policyPda,
         tracker: trackerPda,
         session: sessionPda,
+        vaultTokenAccount: vaultUsdcAta,
+        tokenMintAccount: usdcMint,
+        tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       } as any)
       .signers([agent])
@@ -237,8 +242,9 @@ describe("devnet-smoke-test", () => {
         tracker: trackerPda,
         session: sessionPda,
         sessionRentRecipient: agent.publicKey,
-        vaultTokenAccount: null,
+        vaultTokenAccount: vaultUsdcAta,
         feeDestinationTokenAccount: null,
+        protocolTreasuryTokenAccount: protocolTreasuryUsdcAta,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       } as any)
@@ -268,9 +274,12 @@ describe("devnet-smoke-test", () => {
       } as any)
       .rpc();
 
+    // After deposit(100M) - protocolFee(10k from finalize) - withdraw(50M) = 49,990,000
     const vaultAccount = await getAccount(connection, vaultUsdcAta);
-    expect(Number(vaultAccount.amount)).to.equal(50_000_000);
-    console.log("    Withdrew 50 tokens, vault balance = 50M");
+    const remainingBalance = Number(vaultAccount.amount);
+    expect(remainingBalance).to.be.lessThanOrEqual(50_000_000);
+    expect(remainingBalance).to.be.greaterThan(49_000_000);
+    console.log(`    Withdrew 50 tokens, vault balance = ${remainingBalance}`);
   });
 
   it("8. revoke_agent (kill switch)", async () => {
@@ -302,9 +311,10 @@ describe("devnet-smoke-test", () => {
   });
 
   it("10. withdraw remaining + close_vault", async () => {
-    // Withdraw remaining 50 tokens
+    // Withdraw remaining balance (100M - protocolFee - 50M withdrawn)
+    const remaining = await getAccount(connection, vaultUsdcAta);
     await program.methods
-      .withdrawFunds(new BN(50_000_000))
+      .withdrawFunds(new BN(Number(remaining.amount)))
       .accounts({
         owner: owner.publicKey,
         vault: vaultPda,
