@@ -6,7 +6,12 @@
  */
 import * as anchor from "@coral-xyz/anchor";
 import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
-import { TOKEN_PROGRAM_ID, createMint, mintTo } from "@solana/spl-token";
+import {
+  TOKEN_PROGRAM_ID,
+  createMint,
+  mintTo,
+  getOrCreateAssociatedTokenAccount,
+} from "@solana/spl-token";
 import { expect } from "chai";
 import BN from "bn.js";
 import {
@@ -23,6 +28,7 @@ import {
   waitForSlot,
   expectError,
   FullVaultResult,
+  PROTOCOL_TREASURY,
 } from "./helpers/devnet-setup";
 
 describe("devnet-sessions", () => {
@@ -38,6 +44,8 @@ describe("devnet-sessions", () => {
   let mintB: PublicKey;
   let vault: FullVaultResult;
   let vaultId: BN;
+  let mintBVaultAta: PublicKey;
+  let mintBTreasuryAta: PublicKey;
 
   before(async () => {
     // Fund agent and third party from owner
@@ -66,17 +74,17 @@ describe("devnet-sessions", () => {
     });
 
     // Create vault ATA + deposit for mintB too
-    const mintBVaultAta = anchor.utils.token.associatedAddress({
+    mintBVaultAta = anchor.utils.token.associatedAddress({
       mint: mintB,
       owner: vault.vaultPda,
     });
-    const { createAssociatedTokenAccount } = await import("@solana/spl-token");
-    const ownerMintBAta = await createAssociatedTokenAccount(
+    const ownerMintBAtaAccount = await getOrCreateAssociatedTokenAccount(
       connection,
       payer,
       mintB,
       owner.publicKey,
     );
+    const ownerMintBAta = ownerMintBAtaAccount.address;
     await mintTo(connection, payer, mintB, ownerMintBAta, owner.publicKey, 500_000_000);
     await program.methods
       .depositFunds(new BN(500_000_000))
@@ -91,6 +99,16 @@ describe("devnet-sessions", () => {
         systemProgram: SystemProgram.programId,
       } as any)
       .rpc();
+
+    // Create protocol treasury ATA for mintB (needed for mintB finalize)
+    const mintBTreasuryAccount = await getOrCreateAssociatedTokenAccount(
+      connection,
+      payer,
+      mintB,
+      PROTOCOL_TREASURY,
+      true,
+    );
+    mintBTreasuryAta = mintBTreasuryAccount.address;
 
     console.log("  Session tests vault:", vault.vaultPda.toString());
   });
@@ -269,11 +287,6 @@ describe("devnet-sessions", () => {
       program.programId,
     );
 
-    const mintBVaultAta = anchor.utils.token.associatedAddress({
-      mint: mintB,
-      owner: vault.vaultPda,
-    });
-
     // Authorize session on mintA
     await authorize({
       program,
@@ -308,7 +321,7 @@ describe("devnet-sessions", () => {
     expect(sessionA.authorized).to.equal(true);
     expect(sessionB.authorized).to.equal(true);
 
-    // Finalize both
+    // Finalize both — each uses the correct treasury ATA for its mint
     await finalize({
       program,
       payer: agent,
@@ -332,7 +345,7 @@ describe("devnet-sessions", () => {
       agentPubkey: agent.publicKey,
       vaultTokenAta: mintBVaultAta,
       feeDestinationAta: null,
-      protocolTreasuryAta: vault.protocolTreasuryAta,
+      protocolTreasuryAta: mintBTreasuryAta,
       success: true,
     });
 
