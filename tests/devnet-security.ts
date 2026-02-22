@@ -1,0 +1,715 @@
+/**
+ * Devnet Security Tests — 12 tests
+ *
+ * Adversarial access control tests against the live deployed program.
+ * Confirms the same constraints that LiteSVM tests verify actually hold
+ * on the deployed devnet binary.
+ */
+import * as anchor from "@coral-xyz/anchor";
+import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
+import {
+  TOKEN_PROGRAM_ID,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  createMint,
+  createAssociatedTokenAccount,
+  mintTo,
+} from "@solana/spl-token";
+import { expect } from "chai";
+import BN from "bn.js";
+import {
+  getDevnetProvider,
+  makeAllowedToken,
+  nextVaultId,
+  derivePDAs,
+  deriveSessionPda,
+  createFullVault,
+  authorize,
+  finalize,
+  fundKeypair,
+  expectError,
+  FullVaultResult,
+} from "./helpers/devnet-setup";
+
+describe("devnet-security", () => {
+  const { provider, program, connection, owner } = getDevnetProvider();
+  const payer = (owner as any).payer;
+
+  const agent = Keypair.generate();
+  const attacker = Keypair.generate();
+  const feeDestination = Keypair.generate();
+  const jupiterProgramId = Keypair.generate().publicKey;
+
+  let mint: PublicKey;
+  let disallowedMint: PublicKey;
+  let vault: FullVaultResult;
+  let vaultId: BN;
+
+  before(async () => {
+    await fundKeypair(provider, agent.publicKey);
+    await fundKeypair(provider, attacker.publicKey);
+
+    mint = await createMint(connection, payer, owner.publicKey, null, 6);
+    disallowedMint = await createMint(
+      connection,
+      payer,
+      owner.publicKey,
+      null,
+      6,
+    );
+
+    vaultId = nextVaultId(4);
+
+    vault = await createFullVault({
+      program,
+      connection,
+      owner,
+      agent,
+      feeDestination: feeDestination.publicKey,
+      mint,
+      vaultId,
+      dailyCap: new BN(100_000_000), // 100 USDC
+      maxTx: new BN(50_000_000), // 50 USDC max per tx
+      allowedTokens: [
+        makeAllowedToken(
+          mint,
+          PublicKey.default,
+          6,
+          new BN(0),
+          new BN(40_000_000), // maxTxBase=40 USDC
+        ),
+      ],
+      allowedProtocols: [jupiterProgramId],
+      depositAmount: new BN(1_000_000_000),
+    });
+
+    console.log("  Security test vault:", vault.vaultPda.toString());
+    console.log("  Attacker:", attacker.publicKey.toString());
+  });
+
+  it("1. non-owner cannot update_policy", async () => {
+    try {
+      await program.methods
+        .updatePolicy(
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+        )
+        .accounts({
+          owner: attacker.publicKey,
+          vault: vault.vaultPda,
+          policy: vault.policyPda,
+          tracker: vault.trackerPda,
+        } as any)
+        .signers([attacker])
+        .rpc();
+      expect.fail("Should have thrown");
+    } catch (err: any) {
+      expectError(err, "ConstraintSeeds", "Unauthorized", "2006", "constraint");
+    }
+    console.log("    Non-owner update_policy rejected");
+  });
+
+  it("2. non-owner cannot revoke_agent", async () => {
+    try {
+      await program.methods
+        .revokeAgent()
+        .accounts({
+          owner: attacker.publicKey,
+          vault: vault.vaultPda,
+        } as any)
+        .signers([attacker])
+        .rpc();
+      expect.fail("Should have thrown");
+    } catch (err: any) {
+      expectError(err, "ConstraintSeeds", "Unauthorized", "2006", "constraint");
+    }
+    console.log("    Non-owner revoke_agent rejected");
+  });
+
+  it("3. non-owner cannot withdraw_funds", async () => {
+    try {
+      const attackerAta = await createAssociatedTokenAccount(
+        connection,
+        payer,
+        mint,
+        attacker.publicKey,
+      );
+      await program.methods
+        .withdrawFunds(new BN(1_000_000))
+        .accounts({
+          owner: attacker.publicKey,
+          vault: vault.vaultPda,
+          mint,
+          vaultTokenAccount: vault.vaultTokenAta,
+          ownerTokenAccount: attackerAta,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        } as any)
+        .signers([attacker])
+        .rpc();
+      expect.fail("Should have thrown");
+    } catch (err: any) {
+      expectError(err, "ConstraintSeeds", "Unauthorized", "2006", "constraint");
+    }
+    console.log("    Non-owner withdraw_funds rejected");
+  });
+
+  it("4. non-owner cannot close_vault", async () => {
+    try {
+      await program.methods
+        .closeVault()
+        .accounts({
+          owner: attacker.publicKey,
+          vault: vault.vaultPda,
+          policy: vault.policyPda,
+          tracker: vault.trackerPda,
+          systemProgram: SystemProgram.programId,
+        } as any)
+        .signers([attacker])
+        .rpc();
+      expect.fail("Should have thrown");
+    } catch (err: any) {
+      expectError(err, "ConstraintSeeds", "Unauthorized", "2006", "constraint");
+    }
+    console.log("    Non-owner close_vault rejected");
+  });
+
+  it("5. non-agent cannot validate_and_authorize", async () => {
+    const sessionPda = deriveSessionPda(
+      vault.vaultPda,
+      attacker.publicKey,
+      mint,
+      program.programId,
+    );
+    try {
+      await program.methods
+        .validateAndAuthorize(
+          { swap: {} },
+          mint,
+          new BN(10_000_000),
+          jupiterProgramId,
+          null,
+        )
+        .accounts({
+          agent: attacker.publicKey,
+          vault: vault.vaultPda,
+          policy: vault.policyPda,
+          tracker: vault.trackerPda,
+          session: sessionPda,
+          vaultTokenAccount: vault.vaultTokenAta,
+          tokenMintAccount: mint,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        } as any)
+        .signers([attacker])
+        .rpc();
+      expect.fail("Should have thrown");
+    } catch (err: any) {
+      expectError(err, "UnauthorizedAgent", "unauthorized", "constraint");
+    }
+    console.log("    Non-agent validate_and_authorize rejected");
+  });
+
+  it("6. agent cannot call update_policy (owner-only)", async () => {
+    try {
+      await program.methods
+        .updatePolicy(
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+        )
+        .accounts({
+          owner: agent.publicKey,
+          vault: vault.vaultPda,
+          policy: vault.policyPda,
+          tracker: vault.trackerPda,
+        } as any)
+        .signers([agent])
+        .rpc();
+      expect.fail("Should have thrown");
+    } catch (err: any) {
+      expectError(err, "ConstraintSeeds", "Unauthorized", "2006", "constraint");
+    }
+    console.log("    Agent update_policy rejected (owner-only)");
+  });
+
+  it("7. over-cap spending blocked with DailyCapExceeded", async () => {
+    // Spend exactly at cap (100 USDC) — need two transactions since maxTx=50
+    const sessionPda1 = deriveSessionPda(
+      vault.vaultPda,
+      agent.publicKey,
+      mint,
+      program.programId,
+    );
+
+    await authorize({
+      program,
+      agent,
+      vaultPda: vault.vaultPda,
+      policyPda: vault.policyPda,
+      trackerPda: vault.trackerPda,
+      sessionPda: sessionPda1,
+      vaultTokenAta: vault.vaultTokenAta,
+      mint,
+      amount: new BN(40_000_000), // 40 USDC (within maxTxBase=40)
+      protocol: jupiterProgramId,
+    });
+    await finalize({
+      program,
+      payer: agent,
+      vaultPda: vault.vaultPda,
+      policyPda: vault.policyPda,
+      trackerPda: vault.trackerPda,
+      sessionPda: sessionPda1,
+      agentPubkey: agent.publicKey,
+      vaultTokenAta: vault.vaultTokenAta,
+      feeDestinationAta: null,
+      protocolTreasuryAta: vault.protocolTreasuryAta,
+      success: true,
+    });
+
+    const sessionPda2 = deriveSessionPda(
+      vault.vaultPda,
+      agent.publicKey,
+      mint,
+      program.programId,
+    );
+    await authorize({
+      program,
+      agent,
+      vaultPda: vault.vaultPda,
+      policyPda: vault.policyPda,
+      trackerPda: vault.trackerPda,
+      sessionPda: sessionPda2,
+      vaultTokenAta: vault.vaultTokenAta,
+      mint,
+      amount: new BN(40_000_000),
+      protocol: jupiterProgramId,
+    });
+    await finalize({
+      program,
+      payer: agent,
+      vaultPda: vault.vaultPda,
+      policyPda: vault.policyPda,
+      trackerPda: vault.trackerPda,
+      sessionPda: sessionPda2,
+      agentPubkey: agent.publicKey,
+      vaultTokenAta: vault.vaultTokenAta,
+      feeDestinationAta: null,
+      protocolTreasuryAta: vault.protocolTreasuryAta,
+      success: true,
+    });
+
+    // Now at 80 USDC of 100 cap — try 21 more to exceed
+    const sessionPda3 = deriveSessionPda(
+      vault.vaultPda,
+      agent.publicKey,
+      mint,
+      program.programId,
+    );
+    try {
+      await authorize({
+        program,
+        agent,
+        vaultPda: vault.vaultPda,
+        policyPda: vault.policyPda,
+        trackerPda: vault.trackerPda,
+        sessionPda: sessionPda3,
+        vaultTokenAta: vault.vaultTokenAta,
+        mint,
+        amount: new BN(21_000_000), // 21 USDC — exceeds remaining 20
+        protocol: jupiterProgramId,
+      });
+      expect.fail("Should have thrown");
+    } catch (err: any) {
+      expectError(err, "DailyCapExceeded", "cap");
+    }
+    console.log("    Over-cap spending correctly blocked");
+  });
+
+  it("8. per-token single tx limit enforced", async () => {
+    // maxTxBase=40 USDC for mint — try 41
+    // Need a fresh vault since the cap on the main vault is spent
+    const freshVaultId = nextVaultId(4);
+    const freshAgent = Keypair.generate();
+    await fundKeypair(provider, freshAgent.publicKey);
+
+    const freshVault = await createFullVault({
+      program,
+      connection,
+      owner,
+      agent: freshAgent,
+      feeDestination: feeDestination.publicKey,
+      mint,
+      vaultId: freshVaultId,
+      dailyCap: new BN(500_000_000),
+      maxTx: new BN(200_000_000),
+      allowedTokens: [
+        makeAllowedToken(
+          mint,
+          PublicKey.default,
+          6,
+          new BN(0),
+          new BN(40_000_000),
+        ),
+      ],
+      allowedProtocols: [jupiterProgramId],
+      depositAmount: new BN(500_000_000),
+    });
+
+    const sessionPda = deriveSessionPda(
+      freshVault.vaultPda,
+      freshAgent.publicKey,
+      mint,
+      program.programId,
+    );
+
+    try {
+      await authorize({
+        program,
+        agent: freshAgent,
+        vaultPda: freshVault.vaultPda,
+        policyPda: freshVault.policyPda,
+        trackerPda: freshVault.trackerPda,
+        sessionPda,
+        vaultTokenAta: freshVault.vaultTokenAta,
+        mint,
+        amount: new BN(41_000_000), // 41 > maxTxBase=40
+        protocol: jupiterProgramId,
+      });
+      expect.fail("Should have thrown");
+    } catch (err: any) {
+      expectError(err, "PerTokenTxLimitExceeded", "limit");
+    }
+    console.log("    Per-token tx limit enforced");
+  });
+
+  it("9. double-finalize same session fails", async () => {
+    const freshVaultId = nextVaultId(4);
+    const freshAgent = Keypair.generate();
+    await fundKeypair(provider, freshAgent.publicKey);
+
+    const freshVault = await createFullVault({
+      program,
+      connection,
+      owner,
+      agent: freshAgent,
+      feeDestination: feeDestination.publicKey,
+      mint,
+      vaultId: freshVaultId,
+      dailyCap: new BN(500_000_000),
+      maxTx: new BN(200_000_000),
+      allowedProtocols: [jupiterProgramId],
+      depositAmount: new BN(500_000_000),
+    });
+
+    const sessionPda = deriveSessionPda(
+      freshVault.vaultPda,
+      freshAgent.publicKey,
+      mint,
+      program.programId,
+    );
+
+    await authorize({
+      program,
+      agent: freshAgent,
+      vaultPda: freshVault.vaultPda,
+      policyPda: freshVault.policyPda,
+      trackerPda: freshVault.trackerPda,
+      sessionPda,
+      vaultTokenAta: freshVault.vaultTokenAta,
+      mint,
+      amount: new BN(10_000_000),
+      protocol: jupiterProgramId,
+    });
+
+    // First finalize succeeds
+    await finalize({
+      program,
+      payer: freshAgent,
+      vaultPda: freshVault.vaultPda,
+      policyPda: freshVault.policyPda,
+      trackerPda: freshVault.trackerPda,
+      sessionPda,
+      agentPubkey: freshAgent.publicKey,
+      vaultTokenAta: freshVault.vaultTokenAta,
+      feeDestinationAta: null,
+      protocolTreasuryAta: freshVault.protocolTreasuryAta,
+      success: true,
+    });
+
+    // Second finalize fails (session PDA closed)
+    try {
+      await finalize({
+        program,
+        payer: freshAgent,
+        vaultPda: freshVault.vaultPda,
+        policyPda: freshVault.policyPda,
+        trackerPda: freshVault.trackerPda,
+        sessionPda,
+        agentPubkey: freshAgent.publicKey,
+        vaultTokenAta: freshVault.vaultTokenAta,
+        feeDestinationAta: null,
+        protocolTreasuryAta: freshVault.protocolTreasuryAta,
+        success: true,
+      });
+      expect.fail("Should have thrown");
+    } catch (err: any) {
+      expectError(
+        err,
+        "AccountNotInitialized",
+        "not found",
+        "not exist",
+        "3012",
+      );
+    }
+    console.log("    Double-finalize correctly rejected");
+  });
+
+  it("10. frozen vault blocks validate_and_authorize", async () => {
+    const freshVaultId = nextVaultId(4);
+    const freshAgent = Keypair.generate();
+    await fundKeypair(provider, freshAgent.publicKey);
+
+    const freshVault = await createFullVault({
+      program,
+      connection,
+      owner,
+      agent: freshAgent,
+      feeDestination: feeDestination.publicKey,
+      mint,
+      vaultId: freshVaultId,
+      dailyCap: new BN(500_000_000),
+      maxTx: new BN(200_000_000),
+      allowedProtocols: [jupiterProgramId],
+      depositAmount: new BN(500_000_000),
+    });
+
+    // Freeze vault
+    await program.methods
+      .revokeAgent()
+      .accounts({ owner: owner.publicKey, vault: freshVault.vaultPda } as any)
+      .rpc();
+
+    // Reactivate with same agent and freeze again to test VaultNotActive
+    await program.methods
+      .reactivateVault(freshAgent.publicKey)
+      .accounts({ owner: owner.publicKey, vault: freshVault.vaultPda } as any)
+      .rpc();
+    await program.methods
+      .revokeAgent()
+      .accounts({ owner: owner.publicKey, vault: freshVault.vaultPda } as any)
+      .rpc();
+
+    // Re-register agent after reactivating
+    await program.methods
+      .reactivateVault(freshAgent.publicKey)
+      .accounts({ owner: owner.publicKey, vault: freshVault.vaultPda } as any)
+      .rpc();
+    await program.methods
+      .revokeAgent()
+      .accounts({ owner: owner.publicKey, vault: freshVault.vaultPda } as any)
+      .rpc();
+
+    const sessionPda = deriveSessionPda(
+      freshVault.vaultPda,
+      freshAgent.publicKey,
+      mint,
+      program.programId,
+    );
+
+    try {
+      await authorize({
+        program,
+        agent: freshAgent,
+        vaultPda: freshVault.vaultPda,
+        policyPda: freshVault.policyPda,
+        trackerPda: freshVault.trackerPda,
+        sessionPda,
+        vaultTokenAta: freshVault.vaultTokenAta,
+        mint,
+        amount: new BN(10_000_000),
+        protocol: jupiterProgramId,
+      });
+      expect.fail("Should have thrown");
+    } catch (err: any) {
+      expectError(err, "VaultNotActive", "not active", "constraint");
+    }
+    console.log("    Frozen vault blocks authorize");
+  });
+
+  it("11. frozen vault still allows deposit and withdraw", async () => {
+    const freshVaultId = nextVaultId(4);
+    const freshAgent = Keypair.generate();
+    await fundKeypair(provider, freshAgent.publicKey);
+
+    const freshVault = await createFullVault({
+      program,
+      connection,
+      owner,
+      agent: freshAgent,
+      feeDestination: feeDestination.publicKey,
+      mint,
+      vaultId: freshVaultId,
+      dailyCap: new BN(500_000_000),
+      maxTx: new BN(200_000_000),
+      allowedProtocols: [jupiterProgramId],
+      depositAmount: new BN(500_000_000),
+    });
+
+    // Freeze
+    await program.methods
+      .revokeAgent()
+      .accounts({ owner: owner.publicKey, vault: freshVault.vaultPda } as any)
+      .rpc();
+
+    // Deposit should succeed even when frozen
+    const extraMintAta = await createAssociatedTokenAccount(
+      connection,
+      payer,
+      mint,
+      Keypair.generate().publicKey, // throwaway for minting
+    );
+    // Mint more to owner's ATA
+    await mintTo(
+      connection,
+      payer,
+      mint,
+      freshVault.ownerTokenAta,
+      owner.publicKey,
+      100_000_000,
+    );
+
+    await program.methods
+      .depositFunds(new BN(100_000_000))
+      .accounts({
+        owner: owner.publicKey,
+        vault: freshVault.vaultPda,
+        mint,
+        ownerTokenAccount: freshVault.ownerTokenAta,
+        vaultTokenAccount: freshVault.vaultTokenAta,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      } as any)
+      .rpc();
+
+    // Withdraw should also succeed
+    await program.methods
+      .withdrawFunds(new BN(50_000_000))
+      .accounts({
+        owner: owner.publicKey,
+        vault: freshVault.vaultPda,
+        mint,
+        vaultTokenAccount: freshVault.vaultTokenAta,
+        ownerTokenAccount: freshVault.ownerTokenAta,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      } as any)
+      .rpc();
+
+    console.log("    Frozen vault: deposit + withdraw succeeded");
+  });
+
+  it("12. disallowed token rejected with TokenNotAllowed", async () => {
+    const freshVaultId = nextVaultId(4);
+    const freshAgent = Keypair.generate();
+    await fundKeypair(provider, freshAgent.publicKey);
+
+    const freshVault = await createFullVault({
+      program,
+      connection,
+      owner,
+      agent: freshAgent,
+      feeDestination: feeDestination.publicKey,
+      mint,
+      vaultId: freshVaultId,
+      dailyCap: new BN(500_000_000),
+      maxTx: new BN(200_000_000),
+      allowedTokens: [makeAllowedToken(mint)], // only mint, not disallowedMint
+      allowedProtocols: [jupiterProgramId],
+      depositAmount: new BN(500_000_000),
+    });
+
+    // Create vault ATA for the disallowed mint and deposit
+    const disallowedVaultAta = anchor.utils.token.associatedAddress({
+      mint: disallowedMint,
+      owner: freshVault.vaultPda,
+    });
+    const ownerDisallowedAta = await createAssociatedTokenAccount(
+      connection,
+      payer,
+      disallowedMint,
+      owner.publicKey,
+    );
+    await mintTo(
+      connection,
+      payer,
+      disallowedMint,
+      ownerDisallowedAta,
+      owner.publicKey,
+      500_000_000,
+    );
+    await program.methods
+      .depositFunds(new BN(500_000_000))
+      .accounts({
+        owner: owner.publicKey,
+        vault: freshVault.vaultPda,
+        mint: disallowedMint,
+        ownerTokenAccount: ownerDisallowedAta,
+        vaultTokenAccount: disallowedVaultAta,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      } as any)
+      .rpc();
+
+    // Try to authorize a swap with the disallowed token
+    const sessionPda = deriveSessionPda(
+      freshVault.vaultPda,
+      freshAgent.publicKey,
+      disallowedMint,
+      program.programId,
+    );
+
+    try {
+      await program.methods
+        .validateAndAuthorize(
+          { swap: {} },
+          disallowedMint,
+          new BN(10_000_000),
+          jupiterProgramId,
+          null,
+        )
+        .accounts({
+          agent: freshAgent.publicKey,
+          vault: freshVault.vaultPda,
+          policy: freshVault.policyPda,
+          tracker: freshVault.trackerPda,
+          session: sessionPda,
+          vaultTokenAccount: disallowedVaultAta,
+          tokenMintAccount: disallowedMint,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        } as any)
+        .signers([freshAgent])
+        .rpc();
+      expect.fail("Should have thrown");
+    } catch (err: any) {
+      expectError(err, "TokenNotAllowed", "not in allowed");
+    }
+    console.log("    Disallowed token correctly rejected");
+  });
+});

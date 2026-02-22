@@ -1,0 +1,66 @@
+name: Devnet Tests
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  devnet-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install Solana CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+
+      - name: Configure devnet wallet
+        run: |
+          mkdir -p ~/.config/solana
+          echo '${{ secrets.DEVNET_WALLET_KEYPAIR }}' > ~/.config/solana/id.json
+          solana config set --url https://api.devnet.solana.com --keypair ~/.config/solana/id.json
+
+      - name: Fund wallet if needed
+        run: |
+          BALANCE=$(solana balance | awk '{print int($1)}')
+          echo "Current balance: ${BALANCE} SOL"
+          if [ "$BALANCE" -lt 5 ]; then
+            echo "Balance below 5 SOL, requesting airdrops..."
+            solana airdrop 2 && sleep 6
+            solana airdrop 2 && sleep 6
+            solana airdrop 2
+            echo "New balance: $(solana balance)"
+          else
+            echo "Balance sufficient, skipping airdrop"
+          fi
+
+      - name: Run devnet tests
+        env:
+          ANCHOR_PROVIDER_URL: https://api.devnet.solana.com
+          ANCHOR_WALLET: ~/.config/solana/id.json
+        run: |
+          npx ts-mocha -p ./tsconfig.json -t 600000 \
+            tests/devnet-smoke.ts \
+            tests/devnet-sessions.ts \
+            tests/devnet-fees.ts \
+            tests/devnet-security.ts \
+            tests/devnet-spending.ts \
+            tests/devnet-transfers.ts \
+            tests/devnet-positions.ts \
+            tests/devnet-timelock.ts
+
+      - name: Cleanup wallet
+        if: always()
+        run: rm -f ~/.config/solana/id.json
