@@ -144,5 +144,7 @@ jobs:
           commit: "chore: version packages"
           createGithubReleases: true
         env:
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          # GITHUB_TOKEN for PR creation/updates (has pull-requests: write).
+          # Git push uses the app token from checkout (triggers CI on the PR).
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
