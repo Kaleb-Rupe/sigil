@@ -11,7 +11,7 @@ pub enum AgentShieldError {
     #[msg("Unauthorized: signer is not the vault owner")]
     UnauthorizedOwner,
 
-    #[msg("Token not registered in oracle registry")]
+    #[msg("Token is not a recognized stablecoin")]
     TokenNotRegistered,
 
     #[msg("Protocol not allowed by policy")]
@@ -31,9 +31,6 @@ pub enum AgentShieldError {
 
     #[msg("Cannot open new positions (policy disallows)")]
     PositionOpeningDisallowed,
-
-    #[msg("Session has expired")]
-    SessionExpired,
 
     #[msg("Session not authorized")]
     SessionNotAuthorized,
@@ -80,37 +77,9 @@ pub enum AgentShieldError {
     #[msg("Arithmetic overflow")]
     Overflow,
 
-    // --- Delegation + Oracle errors ---
-    #[msg("Token delegation approval failed")]
-    DelegationFailed,
-
-    #[msg("Token delegation revocation failed")]
-    RevocationFailed,
-
-    #[msg("Oracle feed value is too stale")]
-    OracleFeedStale,
-
-    #[msg("Cannot parse oracle feed data")]
-    OracleFeedInvalid,
-
-    // V1 legacy — not emitted in V2 (kept to preserve error code ordering)
-    #[msg("Unpriced token cannot be spent (receive-only)")]
-    TokenSpendBlocked,
-
+    // --- Validation errors ---
     #[msg("Token account does not belong to vault or has wrong mint")]
     InvalidTokenAccount,
-
-    #[msg("Oracle-priced token requires feed account in remaining_accounts")]
-    OracleAccountMissing,
-
-    #[msg("Oracle spot confidence exceeds 20% safety valve (feed likely broken)")]
-    OracleConfidenceTooWide,
-
-    #[msg("Oracle account owner is not a recognized oracle program")]
-    OracleUnsupportedType,
-
-    #[msg("Pyth price update not fully verified by Wormhole")]
-    OracleNotVerified,
 
     // --- Timelock + Destination errors ---
     #[msg("Timelock period has not expired yet")]
@@ -128,28 +97,47 @@ pub enum AgentShieldError {
     #[msg("Too many destinations (max 10)")]
     TooManyDestinations,
 
-    // --- V2 errors ---
     #[msg("Invalid protocol mode (must be 0, 1, or 2)")]
     InvalidProtocolMode,
 
-    #[msg("Oracle registry is full (max 104 entries)")]
-    OracleRegistryFull,
+    // --- Flash Trade expansion errors ---
+    #[msg("Non-spending action must have amount = 0")]
+    InvalidNonSpendingAmount,
 
-    #[msg("Unauthorized: not the oracle registry authority")]
-    UnauthorizedRegistryAdmin,
+    #[msg("No open positions to close or cancel")]
+    NoPositionsToClose,
 
-    #[msg("Primary and fallback oracle prices diverge beyond threshold")]
-    OraclePriceDivergence,
+    #[msg("Instruction must be top-level (CPI calls not allowed)")]
+    CpiCallNotAllowed,
 
-    #[msg("Both primary and fallback oracle feeds failed")]
-    OracleBothFeedsFailed,
+    #[msg("Transaction must include finalize_session after validate")]
+    MissingFinalizeInstruction,
 
-    #[msg("Oracle confidence spike: spot_conf exceeds 5x ema_conf")]
-    OracleConfidenceSpike,
+    // --- Stablecoin-only enforcement errors ---
+    #[msg("Non-stablecoin swap must return stablecoin (balance did not increase)")]
+    NonTrackedSwapMustReturnStablecoin,
 
-    #[msg("Invalid authority key: cannot be the zero address")]
-    InvalidAuthorityKey,
+    #[msg("Jupiter slippage exceeds policy max_slippage_bps or quoted_out is zero")]
+    SlippageTooHigh,
 
-    #[msg("No pending authority transfer to accept")]
-    NoPendingAuthority,
+    #[msg("Cannot parse Jupiter swap instruction data")]
+    InvalidJupiterInstruction,
+
+    #[msg("Cannot parse Flash Trade instruction data")]
+    InvalidFlashTradeInstruction,
+
+    #[msg("Flash Trade priceWithSlippage is zero")]
+    FlashTradePriceZero,
+
+    #[msg("SPL Transfer to vault stablecoin ATA detected (dust deposit attack)")]
+    DustDepositDetected,
+
+    #[msg("Cannot parse Jupiter Lend instruction data")]
+    InvalidJupiterLendInstruction,
+
+    #[msg("Slippage BPS exceeds maximum (5000 = 50%)")]
+    SlippageBpsTooHigh,
+
+    #[msg("DeFi instruction program does not match declared target_protocol")]
+    ProtocolMismatch,
 }

@@ -5,10 +5,7 @@
  * Confirms the same constraints that LiteSVM tests verify actually hold
  * on the deployed devnet binary.
  *
- * V2: No makeAllowedToken. Tokens via OracleRegistry.
- *     validate_and_authorize requires oracleRegistry + tokenMintAccount.
- *     Removed per-token tx limit test (V1 concept, replaced by aggregate
- *     TransactionTooLarge). Token not in registry -> TokenNotRegistered.
+ *     Stablecoin-only architecture. Non-stablecoin tokens -> TokenNotRegistered.
  *     updatePolicy: no tracker in accounts.
  */
 import * as anchor from "@coral-xyz/anchor";
@@ -27,9 +24,6 @@ import {
   nextVaultId,
   derivePDAs,
   deriveSessionPda,
-  deriveOracleRegistryPda,
-  initializeOracleRegistry,
-  makeOracleEntry,
   createFullVault,
   authorize,
   finalize,
@@ -48,10 +42,9 @@ describe("devnet-security", () => {
   const jupiterProgramId = Keypair.generate().publicKey;
 
   let mint: PublicKey;
-  let unregisteredMint: PublicKey; // mint NOT in oracle registry
+  let unregisteredMint: PublicKey; // non-stablecoin mint
   let vault: FullVaultResult;
   let vaultId: BN;
-  let oracleRegistryPda: PublicKey;
 
   before(async () => {
     await fundKeypair(provider, agent.publicKey);
@@ -65,11 +58,6 @@ describe("devnet-security", () => {
       null,
       6,
     );
-
-    // Initialize oracle registry with only `mint` (not unregisteredMint)
-    oracleRegistryPda = await initializeOracleRegistry(program, owner, [
-      makeOracleEntry(mint),
-    ]);
 
     vaultId = nextVaultId(4);
 
@@ -206,7 +194,6 @@ describe("devnet-security", () => {
           vault: vault.vaultPda,
           policy: vault.policyPda,
           tracker: vault.trackerPda,
-          oracleRegistry: vault.oracleRegistryPda,
           session: sessionPda,
           vaultTokenAccount: vault.vaultTokenAta,
           tokenMintAccount: mint,
@@ -266,7 +253,6 @@ describe("devnet-security", () => {
       vaultPda: vault.vaultPda,
       policyPda: vault.policyPda,
       trackerPda: vault.trackerPda,
-      oracleRegistryPda: vault.oracleRegistryPda,
       sessionPda: sessionPda1,
       vaultTokenAta: vault.vaultTokenAta,
       mint,
@@ -298,7 +284,6 @@ describe("devnet-security", () => {
       vaultPda: vault.vaultPda,
       policyPda: vault.policyPda,
       trackerPda: vault.trackerPda,
-      oracleRegistryPda: vault.oracleRegistryPda,
       sessionPda: sessionPda2,
       vaultTokenAta: vault.vaultTokenAta,
       mint,
@@ -332,7 +317,6 @@ describe("devnet-security", () => {
         vaultPda: vault.vaultPda,
         policyPda: vault.policyPda,
         trackerPda: vault.trackerPda,
-        oracleRegistryPda: vault.oracleRegistryPda,
         sessionPda: sessionPda3,
         vaultTokenAta: vault.vaultTokenAta,
         mint,
@@ -381,7 +365,6 @@ describe("devnet-security", () => {
         vaultPda: freshVault.vaultPda,
         policyPda: freshVault.policyPda,
         trackerPda: freshVault.trackerPda,
-        oracleRegistryPda: freshVault.oracleRegistryPda,
         sessionPda,
         vaultTokenAta: freshVault.vaultTokenAta,
         mint,
@@ -427,7 +410,6 @@ describe("devnet-security", () => {
       vaultPda: freshVault.vaultPda,
       policyPda: freshVault.policyPda,
       trackerPda: freshVault.trackerPda,
-      oracleRegistryPda: freshVault.oracleRegistryPda,
       sessionPda,
       vaultTokenAta: freshVault.vaultTokenAta,
       mint,
@@ -517,7 +499,6 @@ describe("devnet-security", () => {
         vaultPda: freshVault.vaultPda,
         policyPda: freshVault.policyPda,
         trackerPda: freshVault.trackerPda,
-        oracleRegistryPda: freshVault.oracleRegistryPda,
         sessionPda,
         vaultTokenAta: freshVault.vaultTokenAta,
         mint,

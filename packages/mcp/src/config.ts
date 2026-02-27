@@ -385,3 +385,13 @@ export function loadAgentKeypair(config: McpConfig): Keypair {
   }
   return loadKeypair(config.agentKeypairPath);
 }
+
+export function loadOwnerKeypair(config: McpConfig): Keypair {
+  if (!config.walletPath) {
+    throw new Error(
+      "Wallet path is required for Squads multisig operations. " +
+        "Configure with shield_configure or set AGENTSHIELD_WALLET_PATH.",
+    );
+  }
+  return loadKeypair(config.walletPath);
+}

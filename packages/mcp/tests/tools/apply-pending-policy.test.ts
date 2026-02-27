@@ -23,7 +23,7 @@ describe("shield_apply_pending_policy", () => {
 
   it("returns error on SDK failure (TimelockNotExpired)", async () => {
     const client = createMockClient({
-      shouldThrow: Object.assign(new Error("test"), { code: 6036 }),
+      shouldThrow: Object.assign(new Error("test"), { code: 6026 }),
     });
     const result = await applyPendingPolicy(client as any, { vault });
     expect(result).to.include("TimelockNotExpired");

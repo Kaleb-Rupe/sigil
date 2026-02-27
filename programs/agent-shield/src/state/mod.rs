@@ -1,13 +1,11 @@
 pub mod pending_policy;
 pub mod policy;
-pub mod registry;
 pub mod session;
 pub mod tracker;
 pub mod vault;
 
 pub use pending_policy::*;
 pub use policy::*;
-pub use registry::*;
 pub use session::*;
 pub use tracker::*;
 pub use vault::*;
@@ -30,6 +28,10 @@ pub const PROTOCOL_FEE_RATE: u16 = 200;
 /// Maximum developer fee rate: 500 / 1,000,000 = 0.05% = 5 BPS
 pub const MAX_DEVELOPER_FEE_RATE: u16 = 500;
 
+/// Maximum allowed slippage in basis points (5000 = 50%).
+/// Prevents misconfiguration while allowing wide flexibility.
+pub const MAX_SLIPPAGE_BPS: u16 = 5000;
+
 // Build requires exactly one of: --features mainnet OR --features devnet
 #[cfg(not(any(feature = "mainnet", feature = "devnet")))]
 compile_error!("Build requires --features mainnet OR --features devnet");
@@ -51,63 +53,93 @@ pub const PROTOCOL_TREASURY: Pubkey = Pubkey::new_from_array([
 #[cfg(feature = "mainnet")]
 pub const PROTOCOL_TREASURY: Pubkey = Pubkey::new_from_array([0u8; 32]);
 
-// --- Oracle constants ---
+// --- Stablecoin mint constants ---
 
-/// Pyth Receiver program (same mainnet/devnet).
-/// Base58: rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ
-pub const PYTH_RECEIVER_PROGRAM: Pubkey = Pubkey::new_from_array([
-    12, 183, 250, 187, 82, 247, 166, 72, 187, 91, 49, 125, 154, 1, 139, 144, 87, 203, 2, 71, 116,
-    250, 254, 1, 230, 196, 223, 152, 204, 56, 88, 129,
+/// USDC mint (devnet: 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU)
+#[cfg(feature = "devnet")]
+pub const USDC_MINT: Pubkey = Pubkey::new_from_array([
+    59, 68, 44, 179, 145, 33, 87, 241, 58, 147, 61, 1, 52, 40, 45, 3, 43, 95, 254, 205, 1, 162,
+    219, 241, 183, 121, 6, 8, 223, 0, 46, 167,
 ]);
 
-/// Switchboard On-Demand program (same mainnet/devnet).
-/// Base58: SBondMDrcV3K4kxZR1HNVT7osZxAHVHgYXL5Ze1oMUv
-pub const SWITCHBOARD_ON_DEMAND_PROGRAM: Pubkey = Pubkey::new_from_array([
-    6, 115, 189, 70, 242, 228, 126, 4, 241, 43, 217, 47, 183, 49, 150, 142, 205, 157, 151, 87, 194,
-    116, 218, 135, 71, 111, 70, 92, 4, 12, 101, 115,
+/// USDC mint (mainnet: EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v)
+#[cfg(feature = "mainnet")]
+pub const USDC_MINT: Pubkey = Pubkey::new_from_array([
+    198, 250, 122, 243, 190, 219, 173, 58, 61, 101, 243, 106, 171, 201, 116, 49, 177, 187, 228,
+    194, 210, 246, 224, 228, 124, 166, 2, 3, 69, 47, 93, 97,
 ]);
 
-/// Maximum staleness for oracle feed values (in slots).
-/// 50 slots ≈ 20s normal, ~37s congested. Pyth updates every slot.
-/// Drift uses 10% conf threshold (no separate staleness gate in public docs).
-/// LIVENESS TRADEOFF: During oracle outages, vault transactions requiring
-/// oracle pricing will be blocked until fresh data is available. This is
-/// the correct security posture for a spending cap system — stale prices
-/// create greater risk than temporary unavailability. The fallback oracle
-/// mitigates single-provider outages when configured.
-pub const MAX_ORACLE_STALE_SLOTS: u32 = 50;
+/// USDT mint (devnet: EJwZgeZrdC8TXTQbQBoL6bfuAnFUQS5S4iC5A2ciQtCK)
+#[cfg(feature = "devnet")]
+pub const USDT_MINT: Pubkey = Pubkey::new_from_array([
+    197, 192, 127, 187, 120, 104, 92, 176, 205, 113, 5, 32, 101, 17, 150, 104, 203, 143, 154, 228,
+    250, 183, 167, 185, 219, 40, 96, 134, 25, 221, 153, 132,
+]);
 
-/// Minimum number of oracle samples required for a valid price.
-/// Switchboard examples commonly use 5; higher values improve median
-/// robustness.
-pub const MIN_ORACLE_SAMPLES: u32 = 5;
+/// USDT mint (mainnet: Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB)
+#[cfg(feature = "mainnet")]
+pub const USDT_MINT: Pubkey = Pubkey::new_from_array([
+    206, 1, 14, 96, 175, 237, 178, 39, 23, 189, 99, 25, 47, 84, 20, 90, 63, 150, 90, 51, 187, 130,
+    210, 199, 2, 158, 178, 206, 30, 32, 130, 100,
+]);
 
-/// Maximum confidence cap for adjusted pricing (BPS).
-/// 200 = 2%. Spot confidence is CAPPED at this level, bounding the
-/// maximum spending cap overcount for any token regardless of volatility.
-/// A $500 cap loses at most $10 to overcount; a $5M cap loses at most $100K.
-pub const MAX_CONF_CAP_BPS: u64 = 200;
+/// M8: Build-time guard — mainnet treasury must not be the zero address.
+/// Catches the all-zeros placeholder before it reaches production.
+#[cfg(test)]
+mod treasury_tests {
+    use super::*;
+    #[test]
+    #[cfg(feature = "mainnet")]
+    fn mainnet_treasury_must_not_be_zero() {
+        assert_ne!(
+            PROTOCOL_TREASURY,
+            Pubkey::default(),
+            "PROTOCOL_TREASURY must be set to a real address before mainnet deployment"
+        );
+    }
+}
 
-/// Safety valve: reject if spot confidence exceeds this (BPS).
-/// 2000 = 20%. Only fires for genuinely broken oracle feeds, not
-/// normal market volatility. Replaces the old 5% gate that blocked
-/// meme coin trading during routine confidence spikes.
-pub const ORACLE_SAFETY_VALVE_BPS: u64 = 2000;
+/// Check if a mint address is a recognized stablecoin (USDC or USDT).
+pub fn is_stablecoin_mint(mint: &Pubkey) -> bool {
+    *mint == USDC_MINT || *mint == USDT_MINT
+}
 
-/// Adaptive confidence multiplier. If spot_conf > MULTIPLIER × ema_conf,
-/// the oracle is showing unusual uncertainty for this specific token.
-/// 5× means SOL (ema_conf ~0.1%) blocks at 0.5%, BONK (ema_conf ~3%)
-/// blocks at 15%. Auto-calibrated per-token, no configuration needed.
-pub const ADAPTIVE_CONF_MULTIPLIER: u64 = 5;
+// --- Protocol program IDs (same address on mainnet and devnet) ---
 
-/// Minimum adaptive confidence threshold in BPS of spot price.
-/// Prevents ema_conf=0 (new/stable feeds) from blocking all trades.
-/// 50 BPS = 0.5%.
-pub const MIN_ADAPTIVE_CONF_BPS: u64 = 50;
+/// Jupiter V6 program
+/// Base58: JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4
+pub const JUPITER_PROGRAM: Pubkey = Pubkey::new_from_array([
+    4, 121, 213, 91, 242, 49, 192, 110, 238, 116, 197, 110, 206, 104, 21, 7, 253, 177, 178, 222,
+    163, 244, 142, 81, 2, 177, 205, 162, 86, 188, 19, 143,
+]);
 
-/// Max divergence between primary and fallback oracle (BPS).
-/// 500 = 5%. Rejects if both return valid but divergent prices.
-pub const MAX_ORACLE_DIVERGENCE_BPS: u64 = 500;
+/// Flash Trade (Perpetuals) program
+/// Base58: PERPHjGBqRHArX4DySjwM6UJHiR3sWAatqfdBS2qQJu
+pub const FLASH_TRADE_PROGRAM: Pubkey = Pubkey::new_from_array([
+    5, 177, 243, 202, 241, 148, 98, 239, 135, 96, 240, 171, 222, 117, 205, 61, 158, 227, 27, 58,
+    50, 198, 32, 232, 148, 18, 46, 156, 155, 129, 69, 250,
+]);
+
+/// Jupiter Lend program (wraps deposits/withdrawals)
+/// Base58: JLend2fEim9xUFcaHsyGePEoBzFLvkjMi3MnPcSuCdu
+pub const JUPITER_LEND_PROGRAM: Pubkey = Pubkey::new_from_array([
+    4, 113, 24, 1, 43, 4, 76, 56, 240, 98, 104, 189, 87, 231, 52, 36, 154, 118, 168, 157, 132, 58,
+    30, 222, 238, 9, 26, 161, 252, 73, 18, 120,
+]);
+
+/// Jupiter Earn program (on-chain deposit/withdraw target)
+/// Base58: jup3YeL8QhtSx1e253b2FDvsMNC87fDrgQZivbrndc9
+pub const JUPITER_EARN_PROGRAM: Pubkey = Pubkey::new_from_array([
+    10, 254, 27, 145, 46, 72, 94, 149, 253, 21, 235, 41, 55, 223, 252, 75, 55, 163, 22, 208, 166,
+    56, 18, 255, 2, 186, 73, 180, 198, 193, 141, 30,
+]);
+
+/// Jupiter Borrow/Vaults program
+/// Base58: jupr81YtYssSyPt8jbnGuiWon5f6x9TcDEFxYe3Bdzi
+pub const JUPITER_BORROW_PROGRAM: Pubkey = Pubkey::new_from_array([
+    10, 254, 31, 147, 34, 167, 161, 209, 195, 102, 29, 103, 23, 145, 202, 155, 48, 211, 32, 47,
+    30, 31, 214, 135, 58, 119, 204, 220, 113, 143, 17, 51,
+]);
 
 /// USD amounts use 6 decimal places (matching USDC/USDT precision).
 /// $1.00 = 1_000_000, $500.00 = 500_000_000
@@ -130,6 +162,17 @@ pub enum VaultStatus {
     Closed,
 }
 
+/// Position effect classification for action types
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum PositionEffect {
+    /// Action opens a new position or commits capital
+    Increment,
+    /// Action closes a position or releases capital
+    Decrement,
+    /// Action has no effect on position count
+    None,
+}
+
 /// Action types that agents can request
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
 pub enum ActionType {
@@ -149,4 +192,62 @@ pub enum ActionType {
     Withdraw,
     /// Direct token transfer to an allowed destination
     Transfer,
+    /// Add collateral to an existing position
+    AddCollateral,
+    /// Remove collateral from an existing position
+    RemoveCollateral,
+    /// Place a trigger order (take-profit / stop-loss)
+    PlaceTriggerOrder,
+    /// Edit an existing trigger order
+    EditTriggerOrder,
+    /// Cancel a trigger order
+    CancelTriggerOrder,
+    /// Place a limit order (collateral committed on-chain)
+    PlaceLimitOrder,
+    /// Edit an existing limit order
+    EditLimitOrder,
+    /// Cancel a limit order (collateral returned)
+    CancelLimitOrder,
+    /// Swap token then open a perpetual position
+    SwapAndOpenPosition,
+    /// Close a perpetual position then swap output token
+    CloseAndSwapPosition,
+}
+
+impl ActionType {
+    /// Whether this action spends tokens from the vault (fees, delegation,
+    /// and spend tracking apply). Risk-reducing actions (ClosePosition,
+    /// DecreasePosition, CloseAndSwapPosition) return collateral TO the
+    /// vault and are therefore non-spending.
+    pub fn is_spending(&self) -> bool {
+        matches!(
+            self,
+            ActionType::Swap
+                | ActionType::OpenPosition
+                | ActionType::IncreasePosition
+                | ActionType::Deposit
+                | ActionType::Transfer
+                | ActionType::AddCollateral
+                | ActionType::PlaceLimitOrder
+                | ActionType::SwapAndOpenPosition
+        )
+    }
+
+    /// The effect of this action on the vault's open position counter.
+    pub fn position_effect(&self) -> PositionEffect {
+        match self {
+            ActionType::OpenPosition
+            | ActionType::SwapAndOpenPosition
+            | ActionType::PlaceLimitOrder => PositionEffect::Increment,
+            ActionType::ClosePosition
+            | ActionType::CloseAndSwapPosition
+            | ActionType::CancelLimitOrder => PositionEffect::Decrement,
+            _ => PositionEffect::None,
+        }
+    }
+
+    /// Whether this action requires token delegation to the agent.
+    pub fn needs_delegation(&self) -> bool {
+        self.is_spending()
+    }
 }

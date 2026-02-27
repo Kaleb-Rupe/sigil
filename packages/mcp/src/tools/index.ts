@@ -85,3 +85,133 @@ export {
   configureFromFileSchema,
 } from "./configure-from-file";
 export { x402FetchTool, x402Fetch, x402FetchSchema } from "./x402-fetch";
+export {
+  addCollateralTool,
+  addCollateral,
+  addCollateralSchema,
+} from "./add-collateral";
+export {
+  removeCollateralTool,
+  removeCollateral,
+  removeCollateralSchema,
+} from "./remove-collateral";
+export {
+  placeTriggerOrderTool,
+  placeTriggerOrder,
+  placeTriggerOrderSchema,
+} from "./place-trigger-order";
+export {
+  cancelTriggerOrderTool,
+  cancelTriggerOrder,
+  cancelTriggerOrderSchema,
+} from "./cancel-trigger-order";
+export {
+  placeLimitOrderTool,
+  placeLimitOrder,
+  placeLimitOrderSchema,
+} from "./place-limit-order";
+export {
+  cancelLimitOrderTool,
+  cancelLimitOrder,
+  cancelLimitOrderSchema,
+} from "./cancel-limit-order";
+export {
+  syncPositionsTool,
+  syncPositions,
+  syncPositionsSchema,
+} from "./sync-positions";
+
+// --- Jupiter Expanded Integration ---
+export { getPricesTool, getPrices, getPricesSchema } from "./get-prices";
+export {
+  searchTokensTool,
+  searchTokens,
+  searchTokensSchema,
+} from "./search-tokens";
+export {
+  trendingTokensTool,
+  trendingTokens,
+  trendingTokensSchema,
+} from "./trending-tokens";
+export {
+  lendTokensTool,
+  lendTokens,
+  lendTokensSchema,
+} from "./lend-tokens";
+export {
+  lendDepositTool,
+  lendDeposit,
+  lendDepositSchema,
+} from "./lend-deposit";
+export {
+  lendWithdrawTool,
+  lendWithdraw,
+  lendWithdrawSchema,
+} from "./lend-withdraw";
+export {
+  createTriggerOrderJupTool,
+  createTriggerOrderJup,
+  createTriggerOrderJupSchema,
+} from "./create-trigger-order-jup";
+export {
+  getTriggerOrdersJupTool,
+  getTriggerOrdersJup,
+  getTriggerOrdersJupSchema,
+} from "./get-trigger-orders-jup";
+export {
+  cancelTriggerOrderJupTool,
+  cancelTriggerOrderJup,
+  cancelTriggerOrderJupSchema,
+} from "./cancel-trigger-order-jup";
+export {
+  createRecurringOrderTool,
+  createRecurringOrder,
+  createRecurringOrderSchema,
+} from "./create-recurring-order";
+export {
+  getRecurringOrdersTool,
+  getRecurringOrders,
+  getRecurringOrdersSchema,
+} from "./get-recurring-orders";
+export {
+  cancelRecurringOrderTool,
+  cancelRecurringOrder,
+  cancelRecurringOrderSchema,
+} from "./cancel-recurring-order";
+export {
+  jupiterPortfolioTool,
+  jupiterPortfolio,
+  jupiterPortfolioSchema,
+} from "./jupiter-portfolio";
+
+// --- Squads V4 Multisig Governance ---
+export {
+  squadsCreateMultisigTool,
+  squadsCreateMultisig,
+  squadsCreateMultisigSchema,
+} from "./squads-create-multisig";
+export {
+  squadsProposeActionTool,
+  squadsProposeAction,
+  squadsProposeActionSchema,
+} from "./squads-propose-action";
+export {
+  squadsApproveTool,
+  squadsApprove,
+  squadsApproveSchema,
+} from "./squads-approve";
+export {
+  squadsRejectTool,
+  squadsReject,
+  squadsRejectSchema,
+} from "./squads-reject";
+export {
+  squadsExecuteTool,
+  squadsExecute,
+  squadsExecuteSchema,
+} from "./squads-execute";
+export {
+  squadsStatusTool,
+  squadsStatus,
+  squadsStatusSchema,
+} from "./squads-status";

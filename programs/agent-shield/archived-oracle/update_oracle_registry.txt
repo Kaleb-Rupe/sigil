@@ -29,28 +29,14 @@ pub fn handler(
         AgentShieldError::UnauthorizedRegistryAdmin
     );
 
-    let mut count = registry.count as usize;
+    // Removals MUST go through the timelock queue (queue_oracle_update).
+    // This instant path is restricted to add-only operations.
+    require!(
+        mints_to_remove.is_empty(),
+        AgentShieldError::OracleRemovalRequiresTimelock
+    );
 
-    // Remove entries by mint (swap-remove for O(1) per removal)
-    let mut removed_count: u16 = 0;
-    for mint in &mints_to_remove {
-        let mut i = 0;
-        while i < count {
-            if registry.entries[i].mint == *mint {
-                // Swap with last active entry and shrink
-                count -= 1;
-                if i < count {
-                    registry.entries[i] = registry.entries[count];
-                }
-                // Zero out the removed slot
-                registry.entries[count] = OracleEntryZC::default();
-                removed_count = removed_count.saturating_add(1);
-                // Don't increment i — check the swapped entry
-            } else {
-                i += 1;
-            }
-        }
-    }
+    let mut count = registry.count as usize;
 
     // Add new entries (update existing duplicates)
     let mut added_count: u16 = 0;
@@ -79,7 +65,7 @@ pub fn handler(
 
     emit!(OracleRegistryUpdated {
         added_count,
-        removed_count,
+        removed_count: 0,
         total_entries: registry.count,
     });
 

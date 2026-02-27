@@ -66,7 +66,7 @@ describe("shield_agent_transfer", () => {
 
   it("returns error on SDK failure (DestinationNotAllowed)", async () => {
     const client = createMockClient({
-      shouldThrow: Object.assign(new Error("test"), { code: 6039 }),
+      shouldThrow: Object.assign(new Error("test"), { code: 6029 }),
     });
     const result = await agentTransfer(client as any, validInput);
     expect(result).to.include("DestinationNotAllowed");

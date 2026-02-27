@@ -12,8 +12,6 @@ import type {
   QueuePolicyUpdateParams,
   AgentTransferParams,
   AuthorizeParams,
-  InitializeOracleRegistryParams,
-  UpdateOracleRegistryParams,
 } from "./types";
 import {
   getVaultPDA,
@@ -21,64 +19,7 @@ import {
   getTrackerPDA,
   getSessionPDA,
   getPendingPolicyPDA,
-  getOracleRegistryPDA,
 } from "./accounts";
-
-export function buildInitializeOracleRegistry(
-  program: Program<AgentShield>,
-  authority: PublicKey,
-  params: InitializeOracleRegistryParams,
-) {
-  const [oracleRegistry] = getOracleRegistryPDA(program.programId);
-
-  return program.methods
-    .initializeOracleRegistry(params.entries as any)
-    .accounts({
-      authority,
-      oracleRegistry,
-      systemProgram: SystemProgram.programId,
-    } as any);
-}
-
-export function buildUpdateOracleRegistry(
-  program: Program<AgentShield>,
-  authority: PublicKey,
-  params: UpdateOracleRegistryParams,
-) {
-  const [oracleRegistry] = getOracleRegistryPDA(program.programId);
-
-  return program.methods
-    .updateOracleRegistry(params.entriesToAdd as any, params.mintsToRemove)
-    .accounts({
-      authority,
-      oracleRegistry,
-    } as any);
-}
-
-export function buildProposeOracleAuthority(
-  program: Program<AgentShield>,
-  authority: PublicKey,
-  newAuthority: PublicKey,
-) {
-  const [oracleRegistry] = getOracleRegistryPDA(program.programId);
-
-  return program.methods.proposeOracleAuthority(newAuthority).accounts({
-    authority,
-    oracleRegistry,
-  } as any);
-}
-
-export function buildAcceptOracleAuthority(
-  program: Program<AgentShield>,
-  newAuthority: PublicKey,
-) {
-  const [oracleRegistry] = getOracleRegistryPDA(program.programId);
-
-  return program.methods.acceptOracleAuthority().accounts({
-    newAuthority,
-    oracleRegistry,
-  } as any);
-}
 
 export function buildInitializeVault(
   program: Program<AgentShield>,
@@ -99,6 +40,7 @@ export function buildInitializeVault(
       params.maxLeverageBps,
       params.maxConcurrentPositions,
       params.developerFeeRate ?? 0,
+      params.maxSlippageBps ?? 100,
       params.timelockDuration ?? new BN(0),
       params.allowedDestinations ?? [],
     )
@@ -164,6 +106,7 @@ export function buildUpdatePolicy(
       params.canOpenPositions ?? null,
       params.maxConcurrentPositions ?? null,
       params.developerFeeRate ?? null,
+      params.maxSlippageBps ?? null,
       params.timelockDuration ?? null,
       params.allowedDestinations ?? null,
     )
@@ -176,11 +119,6 @@ export function buildUpdatePolicy(
 
 /**
  * Build a validate_and_authorize instruction.
- *
- * @param oracleFeedAccount - Required for non-stablecoin tokens. Omitting this
- *   for tokens that have an oracle feed in the registry will cause an on-chain
- *   `OracleAccountMissing` error (6032). Use `resolveOracleFeed()` to look up
- *   the correct feed account for a given token mint.
  */
 export function buildValidateAndAuthorize(
   program: Program<AgentShield>,
@@ -188,14 +126,12 @@ export function buildValidateAndAuthorize(
   vault: PublicKey,
   vaultTokenAccount: PublicKey,
   params: AuthorizeParams,
-  oracleFeedAccount?: PublicKey,
-  fallbackOracleFeedAccount?: PublicKey,
   protocolTreasuryTokenAccount?: PublicKey | null,
   feeDestinationTokenAccount?: PublicKey | null,
+  outputStablecoinAccount?: PublicKey,
 ) {
   const [policy] = getPolicyPDA(vault, program.programId);
   const [tracker] = getTrackerPDA(vault, program.programId);
-  const [oracleRegistry] = getOracleRegistryPDA(program.programId);
   const [session] = getSessionPDA(
     vault,
     agent,
@@ -203,7 +139,7 @@ export function buildValidateAndAuthorize(
     program.programId,
   );
 
-  let builder = program.methods
+  return program.methods
     .validateAndAuthorize(
       params.actionType as any,
       params.tokenMint,
@@ -216,33 +152,15 @@ export function buildValidateAndAuthorize(
       vault,
       policy,
       tracker,
-      oracleRegistry,
       session,
       vaultTokenAccount,
       tokenMintAccount: params.tokenMint,
       protocolTreasuryTokenAccount: protocolTreasuryTokenAccount ?? null,
       feeDestinationTokenAccount: feeDestinationTokenAccount ?? null,
+      outputStablecoinAccount: outputStablecoinAccount ?? null,
       tokenProgram: TOKEN_PROGRAM_ID,
       systemProgram: SystemProgram.programId,
     } as any);
-
-  if (oracleFeedAccount) {
-    const remaining: {
-      pubkey: PublicKey;
-      isWritable: boolean;
-      isSigner: boolean;
-    }[] = [{ pubkey: oracleFeedAccount, isWritable: false, isSigner: false }];
-    if (fallbackOracleFeedAccount) {
-      remaining.push({
-        pubkey: fallbackOracleFeedAccount,
-        isWritable: false,
-        isSigner: false,
-      });
-    }
-    builder = builder.remainingAccounts(remaining);
-  }
-
-  return builder;
 }
 
 export function buildFinalizeSession(
@@ -253,6 +171,7 @@ export function buildFinalizeSession(
   tokenMint: PublicKey,
   success: boolean,
   vaultTokenAccount: PublicKey,
+  outputStablecoinAccount?: PublicKey,
 ) {
   const [session] = getSessionPDA(vault, agent, tokenMint, program.programId);
 
@@ -262,6 +181,7 @@ export function buildFinalizeSession(
     session,
     sessionRentRecipient: agent,
     vaultTokenAccount,
+    outputStablecoinAccount: outputStablecoinAccount ?? null,
     tokenProgram: TOKEN_PROGRAM_ID,
     systemProgram: SystemProgram.programId,
   } as any);
@@ -346,6 +266,7 @@ export function buildQueuePolicyUpdate(
       params.canOpenPositions ?? null,
       params.maxConcurrentPositions ?? null,
       params.developerFeeRate ?? null,
+      params.maxSlippageBps ?? null,
       params.timelockDuration ?? null,
       params.allowedDestinations ?? null,
     )
@@ -390,30 +311,21 @@ export function buildCancelPendingPolicy(
 
 /**
  * Build an agent_transfer instruction.
- *
- * @param oracleFeedAccount - Required for non-stablecoin tokens. Omitting this
- *   for tokens that have an oracle feed in the registry will cause an on-chain
- *   `OracleAccountMissing` error (6032). Use `resolveOracleFeed()` to look up
- *   the correct feed account for a given token mint.
  */
 export function buildAgentTransfer(
   program: Program<AgentShield>,
   agent: PublicKey,
   vault: PublicKey,
   params: AgentTransferParams,
-  oracleFeedAccount?: PublicKey,
-  fallbackOracleFeedAccount?: PublicKey,
 ) {
   const [policy] = getPolicyPDA(vault, program.programId);
   const [tracker] = getTrackerPDA(vault, program.programId);
-  const [oracleRegistry] = getOracleRegistryPDA(program.programId);
 
-  let builder = program.methods.agentTransfer(params.amount).accounts({
+  return program.methods.agentTransfer(params.amount).accounts({
     agent,
     vault,
     policy,
     tracker,
-    oracleRegistry,
     vaultTokenAccount: params.vaultTokenAccount,
     tokenMintAccount: params.tokenMintAccount,
     destinationTokenAccount: params.destinationTokenAccount,
@@ -421,22 +333,21 @@ export function buildAgentTransfer(
     protocolTreasuryTokenAccount: params.protocolTreasuryTokenAccount ?? null,
     tokenProgram: TOKEN_PROGRAM_ID,
   } as any);
+}
 
-  if (oracleFeedAccount) {
-    const remaining: {
-      pubkey: PublicKey;
-      isWritable: boolean;
-      isSigner: boolean;
-    }[] = [{ pubkey: oracleFeedAccount, isWritable: false, isSigner: false }];
-    if (fallbackOracleFeedAccount) {
-      remaining.push({
-        pubkey: fallbackOracleFeedAccount,
-        isWritable: false,
-        isSigner: false,
-      });
-    }
-    builder = builder.remainingAccounts(remaining);
-  }
-
-  return builder;
+/**
+ * Build a sync_positions instruction.
+ * Owner-only: corrects the vault's open position counter
+ * after keeper-executed trigger orders or filled limit orders.
+ */
+export function buildSyncPositions(
+  program: Program<AgentShield>,
+  owner: PublicKey,
+  vault: PublicKey,
+  actualPositions: number,
+) {
+  return program.methods.syncPositions(actualPositions).accounts({
+    owner,
+    vault,
+  } as any);
 }

@@ -5,6 +5,7 @@ import {
   VersionedTransaction,
   TransactionMessage,
   Signer,
+  Keypair,
   AddressLookupTableAccount,
 } from "@solana/web3.js";
 import { AnchorProvider, BN, Program, Wallet } from "@coral-xyz/anchor";
@@ -15,15 +16,12 @@ import type {
   PolicyConfigAccount,
   SpendTrackerAccount,
   PendingPolicyUpdateAccount,
-  OracleRegistryAccount,
   InitializeVaultParams,
   UpdatePolicyParams,
   QueuePolicyUpdateParams,
   AgentTransferParams,
   AuthorizeParams,
   ComposeActionParams,
-  InitializeOracleRegistryParams,
-  UpdateOracleRegistryParams,
 } from "./types";
 import {
   getVaultPDA,
@@ -31,7 +29,6 @@ import {
   getTrackerPDA,
   getSessionPDA,
   getPendingPolicyPDA,
-  getOracleRegistryPDA,
   fetchVault,
   fetchPolicy,
   fetchTracker,
@@ -39,13 +36,8 @@ import {
   fetchPolicyByAddress,
   fetchTrackerByAddress,
   fetchPendingPolicy,
-  fetchOracleRegistry,
 } from "./accounts";
 import {
-  buildInitializeOracleRegistry,
-  buildUpdateOracleRegistry,
-  buildProposeOracleAuthority,
-  buildAcceptOracleAuthority,
   buildInitializeVault,
   buildDepositFunds,
   buildRegisterAgent,
@@ -76,34 +68,131 @@ import {
   type JupiterSwapParams,
 } from "./integrations/jupiter";
 import {
+  getJupiterPrices,
+  getTokenPriceUsd,
+  type JupiterPriceResponse,
+} from "./integrations/jupiter-price";
+import {
+  searchJupiterTokens,
+  getTrendingTokens,
+  type JupiterTokenInfo,
+  type TrendingInterval,
+} from "./integrations/jupiter-tokens";
+import {
+  getJupiterLendTokens,
+  getJupiterEarnPositions,
+  composeJupiterLendDeposit,
+  composeJupiterLendWithdraw,
+  type JupiterLendTokenInfo,
+  type JupiterEarnPosition,
+  type JupiterLendDepositParams,
+  type JupiterLendWithdrawParams,
+} from "./integrations/jupiter-lend";
+import {
+  createJupiterTriggerOrder,
+  cancelJupiterTriggerOrder,
+  getJupiterTriggerOrders,
+  type JupiterTriggerOrderParams,
+  type JupiterTriggerOrder,
+} from "./integrations/jupiter-trigger";
+import {
+  createJupiterRecurringOrder,
+  getJupiterRecurringOrders,
+  cancelJupiterRecurringOrder,
+  type JupiterRecurringOrderParams,
+  type JupiterRecurringOrder,
+} from "./integrations/jupiter-recurring";
+import {
+  getJupiterPortfolio,
+  type JupiterPortfolioSummary,
+} from "./integrations/jupiter-portfolio";
+import {
   createFlashTradeClient as _createFlashTradeClient,
   getPoolConfig,
   composeFlashTradeOpen,
   composeFlashTradeClose,
   composeFlashTradeIncrease,
   composeFlashTradeDecrease,
+  composeFlashTradeAddCollateral,
+  composeFlashTradeRemoveCollateral,
+  composeFlashTradePlaceTriggerOrder,
+  composeFlashTradeEditTriggerOrder,
+  composeFlashTradeCancelTriggerOrder,
+  composeFlashTradePlaceLimitOrder,
+  composeFlashTradeEditLimitOrder,
+  composeFlashTradeCancelLimitOrder,
+  composeFlashTradeSwapAndOpen,
+  composeFlashTradeCloseAndSwap,
   composeFlashTradeTransaction,
   type FlashTradeConfig,
   type FlashOpenPositionParams,
   type FlashClosePositionParams,
   type FlashIncreasePositionParams,
   type FlashDecreasePositionParams,
+  type FlashAddCollateralParams,
+  type FlashRemoveCollateralParams,
+  type FlashTriggerOrderParams,
+  type FlashEditTriggerOrderParams,
+  type FlashCancelTriggerOrderParams,
+  type FlashLimitOrderParams,
+  type FlashEditLimitOrderParams,
+  type FlashCancelLimitOrderParams,
+  type FlashSwapAndOpenParams,
+  type FlashCloseAndSwapParams,
   type FlashTradeResult,
 } from "./integrations/flash-trade";
+import {
+  reconcilePositions,
+  countFlashTradePositions,
+} from "./integrations/flash-trade-reconcile";
+import { buildSyncPositions } from "./instructions";
 import { PerpetualsClient, PoolConfig } from "flash-sdk";
 import { IDL as AgentShieldIDL } from "./idl-json";
+import {
+  configureJupiterApi,
+  type JupiterApiConfig,
+} from "./integrations/jupiter-api";
+import {
+  createSquadsMultisig,
+  proposeVaultAction,
+  approveProposal,
+  rejectProposal,
+  executeVaultTransaction,
+  fetchMultisigInfo,
+  fetchProposalInfo,
+  getSquadsVaultPda,
+  proposeUpdatePolicy as _proposeUpdatePolicy,
+  proposeQueuePolicyUpdate as _proposeQueuePolicyUpdate,
+  proposeApplyPendingPolicy as _proposeApplyPendingPolicy,
+  proposeSyncPositions as _proposeSyncPositions,
+  proposeInitializeVault as _proposeInitializeVault,
+  type CreateSquadsMultisigParams,
+  type ProposeVaultActionParams,
+  type ApproveProposalParams,
+  type RejectProposalParams,
+  type ExecuteVaultTransactionParams,
+  type MultisigInfo,
+  type ProposalInfo,
+} from "./integrations/squads";
 
 export interface AgentShieldClientOptions {
   programId?: PublicKey;
   idl?: any;
   /** When true, createVault() throws if allowedDestinations is empty */
   requireDestinations?: boolean;
+  /** Priority fee configuration. Enabled by default with "auto" strategy. */
+  priorityFees?: import("./priority-fees").PriorityFeeConfig | false;
+  /** Jupiter API configuration (API key, base URL, retry, timeout). */
+  jupiterApiConfig?: JupiterApiConfig;
 }
 
 export class AgentShieldClient {
   readonly program: Program<AgentShield>;
   readonly provider: AnchorProvider;
   private readonly requireDestinations: boolean;
+  private readonly priorityFeeConfig:
+    | import("./priority-fees").PriorityFeeConfig
+    | false;
 
   constructor(
     connection: Connection,
@@ -127,10 +216,15 @@ export class AgentShieldClient {
       programId = opts.programId;
       resolvedIdl = opts.idl ?? AgentShieldIDL;
       this.requireDestinations = opts.requireDestinations ?? false;
+      this.priorityFeeConfig = opts.priorityFees ?? {};
+      if (opts.jupiterApiConfig) {
+        configureJupiterApi(opts.jupiterApiConfig);
+      }
     } else {
       programId = programIdOrOptions as PublicKey | undefined;
       resolvedIdl = idl ?? AgentShieldIDL;
       this.requireDestinations = false;
+      this.priorityFeeConfig = {};
     }
 
     if (programId) {
@@ -165,10 +259,6 @@ export class AgentShieldClient {
     return getPendingPolicyPDA(vault, this.program.programId);
   }
 
-  getOracleRegistryPDA(): [PublicKey, number] {
-    return getOracleRegistryPDA(this.program.programId);
-  }
-
   // --- Account Fetching ---
 
   async fetchVault(owner: PublicKey, vaultId: BN): Promise<AgentVaultAccount> {
@@ -201,40 +291,6 @@ export class AgentShieldClient {
     vault: PublicKey,
   ): Promise<PendingPolicyUpdateAccount | null> {
     return fetchPendingPolicy(this.program, vault);
-  }
-
-  async fetchOracleRegistry(): Promise<OracleRegistryAccount> {
-    return fetchOracleRegistry(this.program);
-  }
-
-  // --- Oracle Registry ---
-
-  async initializeOracleRegistry(
-    params: InitializeOracleRegistryParams,
-  ): Promise<string> {
-    const authority = this.provider.wallet.publicKey;
-    return buildInitializeOracleRegistry(this.program, authority, params).rpc();
-  }
-
-  async updateOracleRegistry(
-    params: UpdateOracleRegistryParams,
-  ): Promise<string> {
-    const authority = this.provider.wallet.publicKey;
-    return buildUpdateOracleRegistry(this.program, authority, params).rpc();
-  }
-
-  async proposeOracleAuthority(newAuthority: PublicKey): Promise<string> {
-    const authority = this.provider.wallet.publicKey;
-    return buildProposeOracleAuthority(
-      this.program,
-      authority,
-      newAuthority,
-    ).rpc();
-  }
-
-  async acceptOracleAuthority(): Promise<string> {
-    const newAuthority = this.provider.wallet.publicKey;
-    return buildAcceptOracleAuthority(this.program, newAuthority).rpc();
   }
 
   // --- Instruction Execution (sends + confirms) ---
@@ -286,10 +342,9 @@ export class AgentShieldClient {
     vault: PublicKey,
     vaultTokenAccount: PublicKey,
     params: AuthorizeParams,
-    oracleFeedAccount?: PublicKey,
-    fallbackOracleFeedAccount?: PublicKey,
     protocolTreasuryTokenAccount?: PublicKey | null,
     feeDestinationTokenAccount?: PublicKey | null,
+    outputStablecoinAccount?: PublicKey,
   ): Promise<string> {
     const agent = this.provider.wallet.publicKey;
     return buildValidateAndAuthorize(
@@ -298,10 +353,9 @@ export class AgentShieldClient {
       vault,
       vaultTokenAccount,
       params,
-      oracleFeedAccount,
-      fallbackOracleFeedAccount,
       protocolTreasuryTokenAccount,
       feeDestinationTokenAccount,
+      outputStablecoinAccount,
     ).rpc();
   }
 
@@ -311,6 +365,7 @@ export class AgentShieldClient {
     tokenMint: PublicKey,
     success: boolean,
     vaultTokenAccount: PublicKey,
+    outputStablecoinAccount?: PublicKey,
   ): Promise<string> {
     const payer = this.provider.wallet.publicKey;
     return buildFinalizeSession(
@@ -321,6 +376,7 @@ export class AgentShieldClient {
       tokenMint,
       success,
       vaultTokenAccount,
+      outputStablecoinAccount,
     ).rpc();
   }
 
@@ -392,7 +448,6 @@ export class AgentShieldClient {
   async agentTransfer(
     vault: PublicKey,
     params: AgentTransferParams,
-    oracleFeedAccount?: PublicKey,
   ): Promise<string> {
     const agent = this.provider.wallet.publicKey;
     return buildAgentTransfer(
@@ -400,7 +455,6 @@ export class AgentShieldClient {
       agent,
       vault,
       params,
-      oracleFeedAccount,
     ).rpc();
   }
 
@@ -410,18 +464,31 @@ export class AgentShieldClient {
     params: ComposeActionParams,
     computeUnits?: number,
   ): Promise<TransactionInstruction[]> {
-    return composePermittedAction(this.program, params, computeUnits);
+    const conn =
+      this.priorityFeeConfig !== false ? this.provider.connection : undefined;
+    const feeConfig =
+      this.priorityFeeConfig !== false ? this.priorityFeeConfig : undefined;
+    return composePermittedAction(
+      this.program,
+      params,
+      computeUnits,
+      conn,
+      feeConfig || undefined,
+    );
   }
 
   async composePermittedTransaction(
     params: ComposeActionParams,
     computeUnits?: number,
   ): Promise<VersionedTransaction> {
+    const feeConfig =
+      this.priorityFeeConfig !== false ? this.priorityFeeConfig : undefined;
     return composePermittedTransaction(
       this.program,
       this.provider.connection,
       params,
       computeUnits,
+      feeConfig || undefined,
     );
   }
 
@@ -429,7 +496,17 @@ export class AgentShieldClient {
     params: Omit<ComposeActionParams, "actionType">,
     computeUnits?: number,
   ): Promise<TransactionInstruction[]> {
-    return composePermittedSwap(this.program, params, computeUnits);
+    const conn =
+      this.priorityFeeConfig !== false ? this.provider.connection : undefined;
+    const feeConfig =
+      this.priorityFeeConfig !== false ? this.priorityFeeConfig : undefined;
+    return composePermittedSwap(
+      this.program,
+      params,
+      computeUnits,
+      conn,
+      feeConfig || undefined,
+    );
   }
 
   /**
@@ -480,10 +557,16 @@ export class AgentShieldClient {
     params: WrapTransactionParams,
     signers?: Signer[],
   ): Promise<string> {
+    const feeConfig =
+      this.priorityFeeConfig !== false ? this.priorityFeeConfig : undefined;
+    const paramsWithFees: WrapTransactionParams = {
+      ...params,
+      priorityFeeConfig: params.priorityFeeConfig ?? (feeConfig || undefined),
+    };
     const tx = await wrapTransaction(
       this.program,
       this.provider.connection,
-      params,
+      paramsWithFees,
     );
 
     if (signers && signers.length > 0) {
@@ -569,6 +652,157 @@ export class AgentShieldClient {
     return sig;
   }
 
+  // --- Jupiter Price API ---
+
+  async getTokenPrices(mints: string[]): Promise<JupiterPriceResponse> {
+    return getJupiterPrices({ ids: mints });
+  }
+
+  async getTokenPriceUsd(mint: string): Promise<number | null> {
+    return getTokenPriceUsd(mint);
+  }
+
+  // --- Jupiter Token API ---
+
+  async searchTokens(
+    query: string,
+    limit?: number,
+  ): Promise<JupiterTokenInfo[]> {
+    return searchJupiterTokens({ query, limit });
+  }
+
+  async getTrendingTokens(
+    interval?: TrendingInterval,
+  ): Promise<JupiterTokenInfo[]> {
+    return getTrendingTokens(interval);
+  }
+
+  // --- Jupiter Lend/Earn Integration ---
+
+  async getJupiterLendTokens(): Promise<JupiterLendTokenInfo[]> {
+    return getJupiterLendTokens();
+  }
+
+  async getJupiterEarnPositions(
+    user: string,
+    positions: string[],
+  ): Promise<JupiterEarnPosition[]> {
+    return getJupiterEarnPositions(user, positions);
+  }
+
+  async jupiterLendDeposit(
+    params: JupiterLendDepositParams,
+  ): Promise<string> {
+    const { instructions } = await composeJupiterLendDeposit(
+      this.program,
+      this.provider.connection,
+      params,
+    );
+
+    const { blockhash, lastValidBlockHeight } =
+      await this.provider.connection.getLatestBlockhash();
+
+    const messageV0 = new TransactionMessage({
+      payerKey: params.agent,
+      recentBlockhash: blockhash,
+      instructions,
+    }).compileToV0Message();
+
+    const tx = new VersionedTransaction(messageV0);
+    const signed = await this.provider.wallet.signTransaction(tx);
+    const sig = await this.provider.connection.sendRawTransaction(
+      signed.serialize(),
+    );
+    await this.provider.connection.confirmTransaction(
+      { signature: sig, blockhash, lastValidBlockHeight },
+      "confirmed",
+    );
+
+    return sig;
+  }
+
+  async jupiterLendWithdraw(
+    params: JupiterLendWithdrawParams,
+  ): Promise<string> {
+    const { instructions } = await composeJupiterLendWithdraw(
+      this.program,
+      this.provider.connection,
+      params,
+    );
+
+    const { blockhash, lastValidBlockHeight } =
+      await this.provider.connection.getLatestBlockhash();
+
+    const messageV0 = new TransactionMessage({
+      payerKey: params.agent,
+      recentBlockhash: blockhash,
+      instructions,
+    }).compileToV0Message();
+
+    const tx = new VersionedTransaction(messageV0);
+    const signed = await this.provider.wallet.signTransaction(tx);
+    const sig = await this.provider.connection.sendRawTransaction(
+      signed.serialize(),
+    );
+    await this.provider.connection.confirmTransaction(
+      { signature: sig, blockhash, lastValidBlockHeight },
+      "confirmed",
+    );
+
+    return sig;
+  }
+
+  // --- Jupiter Trigger Orders ---
+
+  async createJupiterTriggerOrder(
+    params: JupiterTriggerOrderParams,
+  ): Promise<{ serializedTransaction: string }> {
+    return createJupiterTriggerOrder(params);
+  }
+
+  async getJupiterTriggerOrders(
+    authority: string,
+    state?: "active" | "completed" | "cancelled",
+  ): Promise<JupiterTriggerOrder[]> {
+    return getJupiterTriggerOrders(authority, state);
+  }
+
+  async cancelJupiterTriggerOrder(
+    orderId: string,
+    feePayer: string,
+    signer: string,
+  ): Promise<{ serializedTransaction: string }> {
+    return cancelJupiterTriggerOrder(orderId, feePayer, signer);
+  }
+
+  // --- Jupiter Recurring/DCA ---
+
+  async createJupiterRecurringOrder(
+    params: JupiterRecurringOrderParams,
+  ): Promise<{ transaction: string }> {
+    return createJupiterRecurringOrder(params);
+  }
+
+  async getJupiterRecurringOrders(
+    user: string,
+  ): Promise<JupiterRecurringOrder[]> {
+    return getJupiterRecurringOrders(user);
+  }
+
+  async cancelJupiterRecurringOrder(
+    orderId: string,
+    feePayer: string,
+    signer: string,
+  ): Promise<{ transaction: string }> {
+    return cancelJupiterRecurringOrder(orderId, feePayer, signer);
+  }
+
+  // --- Jupiter Portfolio ---
+
+  async getJupiterPortfolio(wallet: string): Promise<JupiterPortfolioSummary> {
+    return getJupiterPortfolio(wallet);
+  }
+
   // --- Flash Trade Integration ---
 
   private _perpClient: PerpetualsClient | null = null;
@@ -646,6 +880,192 @@ export class AgentShieldClient {
   }
 
   /**
+   * Add collateral to an existing Flash Trade position.
+   */
+  async flashTradeAddCollateral(
+    params: FlashAddCollateralParams,
+    poolConfig?: PoolConfig,
+  ): Promise<FlashTradeResult> {
+    const perpClient = this.createFlashTradeClient();
+    const config = poolConfig ?? this.getFlashPoolConfig();
+    return composeFlashTradeAddCollateral(
+      this.program, perpClient, config, params,
+    );
+  }
+
+  /**
+   * Remove collateral from an existing Flash Trade position.
+   */
+  async flashTradeRemoveCollateral(
+    params: FlashRemoveCollateralParams,
+    poolConfig?: PoolConfig,
+  ): Promise<FlashTradeResult> {
+    const perpClient = this.createFlashTradeClient();
+    const config = poolConfig ?? this.getFlashPoolConfig();
+    return composeFlashTradeRemoveCollateral(
+      this.program, perpClient, config, params,
+    );
+  }
+
+  /**
+   * Place a trigger order (TP/SL) on an existing Flash Trade position.
+   */
+  async flashTradePlaceTriggerOrder(
+    params: FlashTriggerOrderParams,
+    poolConfig?: PoolConfig,
+  ): Promise<FlashTradeResult> {
+    const perpClient = this.createFlashTradeClient();
+    const config = poolConfig ?? this.getFlashPoolConfig();
+    return composeFlashTradePlaceTriggerOrder(
+      this.program, perpClient, config, params,
+    );
+  }
+
+  /**
+   * Edit an existing trigger order on a Flash Trade position.
+   */
+  async flashTradeEditTriggerOrder(
+    params: FlashEditTriggerOrderParams,
+    poolConfig?: PoolConfig,
+  ): Promise<FlashTradeResult> {
+    const perpClient = this.createFlashTradeClient();
+    const config = poolConfig ?? this.getFlashPoolConfig();
+    return composeFlashTradeEditTriggerOrder(
+      this.program, perpClient, config, params,
+    );
+  }
+
+  /**
+   * Cancel a trigger order on a Flash Trade position.
+   */
+  async flashTradeCancelTriggerOrder(
+    params: FlashCancelTriggerOrderParams,
+    poolConfig?: PoolConfig,
+  ): Promise<FlashTradeResult> {
+    const perpClient = this.createFlashTradeClient();
+    const config = poolConfig ?? this.getFlashPoolConfig();
+    return composeFlashTradeCancelTriggerOrder(
+      this.program, perpClient, config, params,
+    );
+  }
+
+  /**
+   * Place a limit order via Flash Trade through AgentShield.
+   */
+  async flashTradePlaceLimitOrder(
+    params: FlashLimitOrderParams,
+    poolConfig?: PoolConfig,
+  ): Promise<FlashTradeResult> {
+    const perpClient = this.createFlashTradeClient();
+    const config = poolConfig ?? this.getFlashPoolConfig();
+    return composeFlashTradePlaceLimitOrder(
+      this.program, perpClient, config, params,
+    );
+  }
+
+  /**
+   * Edit an existing limit order on Flash Trade.
+   */
+  async flashTradeEditLimitOrder(
+    params: FlashEditLimitOrderParams,
+    poolConfig?: PoolConfig,
+  ): Promise<FlashTradeResult> {
+    const perpClient = this.createFlashTradeClient();
+    const config = poolConfig ?? this.getFlashPoolConfig();
+    return composeFlashTradeEditLimitOrder(
+      this.program, perpClient, config, params,
+    );
+  }
+
+  /**
+   * Cancel a limit order on Flash Trade.
+   */
+  async flashTradeCancelLimitOrder(
+    params: FlashCancelLimitOrderParams,
+    poolConfig?: PoolConfig,
+  ): Promise<FlashTradeResult> {
+    const perpClient = this.createFlashTradeClient();
+    const config = poolConfig ?? this.getFlashPoolConfig();
+    return composeFlashTradeCancelLimitOrder(
+      this.program, perpClient, config, params,
+    );
+  }
+
+  /**
+   * Swap tokens then open a Flash Trade position in one transaction.
+   */
+  async flashTradeSwapAndOpen(
+    params: FlashSwapAndOpenParams,
+    poolConfig?: PoolConfig,
+  ): Promise<FlashTradeResult> {
+    const perpClient = this.createFlashTradeClient();
+    const config = poolConfig ?? this.getFlashPoolConfig();
+    return composeFlashTradeSwapAndOpen(
+      this.program, perpClient, config, params,
+    );
+  }
+
+  /**
+   * Close a Flash Trade position and swap the output in one transaction.
+   */
+  async flashTradeCloseAndSwap(
+    params: FlashCloseAndSwapParams,
+    poolConfig?: PoolConfig,
+  ): Promise<FlashTradeResult> {
+    const perpClient = this.createFlashTradeClient();
+    const config = poolConfig ?? this.getFlashPoolConfig();
+    return composeFlashTradeCloseAndSwap(
+      this.program, perpClient, config, params,
+    );
+  }
+
+  /**
+   * Sync the vault's open position counter with actual Flash Trade state.
+   * Owner-only. Returns the transaction signature, or null if already in sync.
+   */
+  async syncPositions(
+    owner: PublicKey,
+    vault: PublicKey,
+    poolCustodyPairs: [PublicKey, PublicKey][],
+    flashProgramId: PublicKey,
+  ): Promise<string | null> {
+    const ix = await reconcilePositions(
+      this.program,
+      this.provider.connection,
+      owner,
+      vault,
+      poolCustodyPairs,
+      flashProgramId,
+    );
+    if (!ix) return null;
+
+    const { blockhash } =
+      await this.provider.connection.getLatestBlockhash();
+    const msg = new TransactionMessage({
+      payerKey: this.provider.wallet.publicKey,
+      recentBlockhash: blockhash,
+      instructions: [ix],
+    }).compileToV0Message();
+
+    const tx = new VersionedTransaction(msg);
+    const signed = await this.provider.wallet.signTransaction(tx);
+    const sig = await this.provider.connection.sendRawTransaction(
+      signed.serialize(),
+    );
+    const result =
+      await this.provider.connection.getLatestBlockhash();
+    await this.provider.connection.confirmTransaction(
+      {
+        signature: sig,
+        blockhash: result.blockhash,
+        lastValidBlockHeight: result.lastValidBlockHeight,
+      },
+      "confirmed",
+    );
+    return sig;
+  }
+
+  /**
    * Compose a Flash Trade action, sign, send, and confirm in one call.
    */
   async executeFlashTrade(
@@ -679,5 +1099,169 @@ export class AgentShieldClient {
     );
 
     return sig;
+  }
+
+  // --- Squads V4 Multisig Governance ---
+
+  /**
+   * Create a new Squads V4 multisig for governing an AgentShield vault.
+   * Returns the multisig PDA and default vault PDA (index 0).
+   */
+  async squadsCreateMultisig(
+    member: Keypair,
+    params: CreateSquadsMultisigParams,
+  ): Promise<{
+    signature: string;
+    multisigPda: PublicKey;
+    vaultPda: PublicKey;
+  }> {
+    return createSquadsMultisig(
+      this.provider.connection,
+      member,
+      params,
+    );
+  }
+
+  /**
+   * Wrap AgentShield instruction(s) in a Squads vault transaction + proposal.
+   * The member must have the Initiate permission.
+   */
+  async squadsProposeVaultAction(
+    member: Keypair,
+    params: ProposeVaultActionParams,
+  ): Promise<{ signature: string; transactionIndex: bigint }> {
+    return proposeVaultAction(
+      this.provider.connection,
+      member,
+      params,
+    );
+  }
+
+  /**
+   * Cast an approval vote on a Squads proposal.
+   */
+  async squadsApproveProposal(
+    member: Keypair,
+    params: ApproveProposalParams,
+  ): Promise<string> {
+    return approveProposal(
+      this.provider.connection,
+      member,
+      params,
+    );
+  }
+
+  /**
+   * Cast a rejection vote on a Squads proposal.
+   */
+  async squadsRejectProposal(
+    member: Keypair,
+    params: RejectProposalParams,
+  ): Promise<string> {
+    return rejectProposal(
+      this.provider.connection,
+      member,
+      params,
+    );
+  }
+
+  /**
+   * Execute an approved Squads vault transaction.
+   * The member must have the Execute permission.
+   */
+  async squadsExecuteTransaction(
+    member: Keypair,
+    params: ExecuteVaultTransactionParams,
+  ): Promise<string> {
+    return executeVaultTransaction(
+      this.provider.connection,
+      member,
+      params,
+    );
+  }
+
+  /**
+   * Fetch and normalize a Squads multisig account.
+   */
+  async squadsFetchMultisigInfo(
+    multisigPda: PublicKey,
+  ): Promise<MultisigInfo> {
+    return fetchMultisigInfo(this.provider.connection, multisigPda);
+  }
+
+  /**
+   * Fetch and normalize a Squads proposal account.
+   */
+  async squadsFetchProposalInfo(
+    multisigPda: PublicKey,
+    transactionIndex: bigint,
+  ): Promise<ProposalInfo> {
+    return fetchProposalInfo(
+      this.provider.connection,
+      multisigPda,
+      transactionIndex,
+    );
+  }
+
+  /**
+   * Build an AgentShield admin instruction and wrap it in a Squads proposal.
+   * Supported actions: update_policy, queue_policy_update, apply_pending_policy,
+   * sync_positions, initialize_vault.
+   */
+  async squadsProposeAction(
+    member: Keypair,
+    params: {
+      multisigPda: PublicKey;
+      vaultIndex?: number;
+      action: string;
+      agentShieldVault?: PublicKey;
+      actionParams?: any;
+      memo?: string;
+    },
+  ): Promise<{ signature: string; transactionIndex: bigint }> {
+    const conn = this.provider.connection;
+    const base = {
+      multisigPda: params.multisigPda,
+      vaultIndex: params.vaultIndex,
+      memo: params.memo,
+    };
+
+    switch (params.action) {
+      case "update_policy":
+        return _proposeUpdatePolicy(this.program, conn, member, {
+          ...base,
+          agentShieldVault: params.agentShieldVault!,
+          policyUpdate: params.actionParams,
+        });
+
+      case "queue_policy_update":
+        return _proposeQueuePolicyUpdate(this.program, conn, member, {
+          ...base,
+          agentShieldVault: params.agentShieldVault!,
+          policyUpdate: params.actionParams,
+        });
+
+      case "apply_pending_policy":
+        return _proposeApplyPendingPolicy(this.program, conn, member, {
+          ...base,
+          agentShieldVault: params.agentShieldVault!,
+        });
+
+      case "sync_positions":
+        return _proposeSyncPositions(this.program, conn, member, {
+          ...base,
+          agentShieldVault: params.agentShieldVault!,
+          actualPositions: params.actionParams?.actualPositions ?? 0,
+        });
+
+      case "initialize_vault":
+        return _proposeInitializeVault(this.program, conn, member, {
+          ...base,
+          initParams: params.actionParams,
+        });
+
+      default:
+        throw new Error(`Unknown Squads action: ${params.action}`);
+    }
   }
 }

@@ -139,7 +139,7 @@ pnpm install
 # Build
 pnpm build
 
-# Run tests (118 tests)
+# Run tests (280 tests)
 pnpm test
 
 # Smoke test

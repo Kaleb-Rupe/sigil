@@ -21,7 +21,7 @@
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
-    "test": "TS_NODE_PROJECT=tsconfig.test.json mocha --require ts-node/register tests/**/*.test.ts --timeout 30000"
+    "test": "NODE_OPTIONS='--no-experimental-strip-types' TS_NODE_PROJECT=tsconfig.test.json mocha --require ts-node/register tests/**/*.test.ts --timeout 30000"
   },
   "dependencies": {
     "@crossmint/wallets-sdk": "^0.19.0",

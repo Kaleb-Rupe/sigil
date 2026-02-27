@@ -5,7 +5,7 @@
  * agent_transfer spending tracked alongside session spends.
  *
  * V2: No per-token caps or rolling_spends. Tracker uses zero-copy epoch buckets.
- *     No recentTransactions. Tokens managed via OracleRegistry.
+ *     No recentTransactions. Stablecoin-only architecture.
  */
 import * as anchor from "@coral-xyz/anchor";
 import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
@@ -23,10 +23,6 @@ import {
   nextVaultId,
   derivePDAs,
   deriveSessionPda,
-  deriveOracleRegistryPda,
-  initializeOracleRegistry,
-  updateOracleRegistry,
-  makeOracleEntry,
   createFullVault,
   authorize,
   finalize,
@@ -46,8 +42,7 @@ describe("devnet-spending", () => {
   const jupiterProgramId = Keypair.generate().publicKey;
 
   let mintA: PublicKey; // 6 decimals (USDC-like stablecoin)
-  let mintB: PublicKey; // 9 decimals (SOL-like stablecoin, oracleFeed=default)
-  let oracleRegistryPda: PublicKey;
+  let mintB: PublicKey; // 9 decimals (SOL-like stablecoin)
 
   before(async () => {
     await fundKeypair(provider, agent.publicKey);
@@ -55,12 +50,6 @@ describe("devnet-spending", () => {
     mintB = await createMint(connection, payer, owner.publicKey, null, 9);
     console.log("  MintA (6 dec):", mintA.toString());
     console.log("  MintB (9 dec):", mintB.toString());
-
-    // Initialize oracle registry with both mints as stablecoins
-    oracleRegistryPda = await initializeOracleRegistry(program, owner, [
-      makeOracleEntry(mintA),
-      makeOracleEntry(mintB),
-    ]);
   });
 
   /** Helper to create a two-token vault and deposit both mints */
@@ -150,7 +139,6 @@ describe("devnet-spending", () => {
       vaultPda: vault.vaultPda,
       policyPda: vault.policyPda,
       trackerPda: vault.trackerPda,
-      oracleRegistryPda: vault.oracleRegistryPda,
       sessionPda: sessionA,
       vaultTokenAta: vault.vaultTokenAta,
       mint: mintA,
@@ -175,7 +163,6 @@ describe("devnet-spending", () => {
       vaultPda: vault.vaultPda,
       policyPda: vault.policyPda,
       trackerPda: vault.trackerPda,
-      oracleRegistryPda: vault.oracleRegistryPda,
       sessionPda: sessionB,
       vaultTokenAta: vault.mintBVaultAta,
       mint: mintB,
@@ -199,7 +186,6 @@ describe("devnet-spending", () => {
         vaultPda: vault.vaultPda,
         policyPda: vault.policyPda,
         trackerPda: vault.trackerPda,
-        oracleRegistryPda: vault.oracleRegistryPda,
         sessionPda: sessionC,
         vaultTokenAta: vault.vaultTokenAta,
         mint: mintA,
@@ -232,7 +218,6 @@ describe("devnet-spending", () => {
       vaultPda: vault.vaultPda,
       policyPda: vault.policyPda,
       trackerPda: vault.trackerPda,
-      oracleRegistryPda: vault.oracleRegistryPda,
       sessionPda,
       vaultTokenAta: vault.vaultTokenAta,
       mint: mintA,
@@ -263,7 +248,6 @@ describe("devnet-spending", () => {
         vaultPda: vault.vaultPda,
         policyPda: vault.policyPda,
         trackerPda: vault.trackerPda,
-        oracleRegistryPda: vault.oracleRegistryPda,
         sessionPda,
         vaultTokenAta: vault.vaultTokenAta,
         mint: mintA,
@@ -297,7 +281,6 @@ describe("devnet-spending", () => {
         vaultPda: vault.vaultPda,
         policyPda: vault.policyPda,
         trackerPda: vault.trackerPda,
-        oracleRegistryPda: vault.oracleRegistryPda,
         sessionPda,
         vaultTokenAta: vault.vaultTokenAta,
         mint: mintA,
@@ -335,7 +318,6 @@ describe("devnet-spending", () => {
       vaultPda: vault.vaultPda,
       policyPda: vault.policyPda,
       trackerPda: vault.trackerPda,
-      oracleRegistryPda: vault.oracleRegistryPda,
       sessionPda,
       vaultTokenAta: vault.vaultTokenAta,
       mint: mintA,
@@ -362,7 +344,6 @@ describe("devnet-spending", () => {
         vault: vault.vaultPda,
         policy: vault.policyPda,
         tracker: vault.trackerPda,
-        oracleRegistry: vault.oracleRegistryPda,
         vaultTokenAccount: vault.vaultTokenAta,
         tokenMintAccount: mintA,
         destinationTokenAccount: destAta.address,
@@ -387,7 +368,6 @@ describe("devnet-spending", () => {
         vaultPda: vault.vaultPda,
         policyPda: vault.policyPda,
         trackerPda: vault.trackerPda,
-        oracleRegistryPda: vault.oracleRegistryPda,
         sessionPda: sessionPda2,
         vaultTokenAta: vault.vaultTokenAta,
         mint: mintA,
@@ -420,7 +400,6 @@ describe("devnet-spending", () => {
       vaultPda: vault.vaultPda,
       policyPda: vault.policyPda,
       trackerPda: vault.trackerPda,
-      oracleRegistryPda: vault.oracleRegistryPda,
       sessionPda: sessionA,
       vaultTokenAta: vault.vaultTokenAta,
       mint: mintA,
@@ -468,7 +447,6 @@ describe("devnet-spending", () => {
       vaultPda: vault.vaultPda,
       policyPda: vault.policyPda,
       trackerPda: vault.trackerPda,
-      oracleRegistryPda: vault.oracleRegistryPda,
       sessionPda: sessionB,
       vaultTokenAta: vault.vaultTokenAta,
       mint: mintA,

@@ -1,11 +1,12 @@
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::instruction::get_stack_height;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 
 use crate::errors::AgentShieldError;
 use crate::events::{AgentTransferExecuted, FeesCollected};
 use crate::state::*;
 
-use super::utils::convert_to_usd;
+use super::utils::stablecoin_to_usd;
 
 #[derive(Accounts)]
 pub struct AgentTransfer<'info> {
@@ -34,13 +35,6 @@ pub struct AgentTransfer<'info> {
         bump,
     )]
     pub tracker: AccountLoader<'info, SpendTracker>,
-
-    /// Protocol-level oracle registry (zero-copy)
-    #[account(
-        seeds = [b"oracle_registry"],
-        bump,
-    )]
-    pub oracle_registry: AccountLoader<'info, OracleRegistry>,
 
     /// Vault's PDA-owned token account (source)
     #[account(
@@ -71,10 +65,16 @@ pub struct AgentTransfer<'info> {
     pub protocol_treasury_token_account: Option<Account<'info, TokenAccount>>,
 
     pub token_program: Program<'info, Token>,
-    // Oracle feed (Pyth/Switchboard) via remaining_accounts[0]
 }
 
 pub fn handler(ctx: Context<AgentTransfer>, amount: u64) -> Result<()> {
+    // 0. Reject CPI calls — only top-level transaction instructions allowed.
+    require!(
+        get_stack_height()
+            == anchor_lang::solana_program::instruction::TRANSACTION_LEVEL_STACK_HEIGHT,
+        AgentShieldError::CpiCallNotAllowed
+    );
+
     let vault = &ctx.accounts.vault;
     let policy = &ctx.accounts.policy;
     let clock = Clock::get()?;
@@ -87,17 +87,11 @@ pub fn handler(ctx: Context<AgentTransfer>, amount: u64) -> Result<()> {
 
     let token_mint = ctx.accounts.vault_token_account.mint;
 
-    // 3. Token must be in the oracle registry (zero-copy load)
-    let registry = ctx.accounts.oracle_registry.load()?;
-    let oracle_entry = registry
-        .find_entry(&token_mint)
-        .ok_or(error!(AgentShieldError::TokenNotRegistered))?;
-
-    // Extract entry fields before dropping borrow
-    let is_stablecoin = oracle_entry.is_stablecoin != 0;
-    let oracle_feed = oracle_entry.oracle_feed;
-    let fallback_feed = oracle_entry.fallback_feed;
-    drop(registry);
+    // 3. Token must be a stablecoin (stablecoin-only enforcement)
+    require!(
+        is_stablecoin_mint(&token_mint),
+        AgentShieldError::TokenNotRegistered
+    );
 
     // 4. Destination must be allowed
     require!(
@@ -114,16 +108,8 @@ pub fn handler(ctx: Context<AgentTransfer>, amount: u64) -> Result<()> {
     // 6. Get token decimals from validated mint account
     let token_decimals = ctx.accounts.token_mint_account.decimals;
 
-    // 7. Convert to USD
-    let (usd_amount, _oracle_price, _oracle_source) = convert_to_usd(
-        is_stablecoin,
-        &oracle_feed,
-        &fallback_feed,
-        token_decimals,
-        amount,
-        ctx.remaining_accounts,
-        &clock,
-    )?;
+    // 7. Convert stablecoin to USD (1:1)
+    let usd_amount = stablecoin_to_usd(amount, token_decimals)?;
 
     // 8. Single tx USD check
     require!(

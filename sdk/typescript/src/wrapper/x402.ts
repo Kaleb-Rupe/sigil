@@ -85,6 +85,9 @@ export interface ShieldedFetchOptions extends RequestInit {
   dryRun?: boolean;
   /** Max payment in token base units — reject if server asks more. */
   maxPayment?: string;
+  /** Number of extra settlement retries if non-2xx (default: 1, max: 3).
+   *  Re-sends the same PAYMENT-SIGNATURE header. */
+  maxRetries?: number;
 }
 
 /** Extended response with x402 payment metadata. */
@@ -316,14 +319,24 @@ export async function shieldedFetch(
   url: string | URL,
   options?: ShieldedFetchOptions,
 ): Promise<ShieldedFetchResponse> {
+  // H3: Protocol check — reject non-HTTP(S) URLs
+  const urlStr = url.toString();
+  if (!urlStr.startsWith("https://") && !urlStr.startsWith("http://")) {
+    throw new X402PaymentError(
+      "Only HTTP/HTTPS URLs are supported for x402 payments",
+    );
+  }
+
   const init: RequestInit = { ...options };
   const connection = options?.connection;
   const dryRun = options?.dryRun ?? false;
+  const maxRetries = Math.min(Math.max(options?.maxRetries ?? 1, 1), 3);
 
   // Strip our custom options from the fetch init
   delete (init as any).connection;
   delete (init as any).dryRun;
   delete (init as any).maxPayment;
+  delete (init as any).maxRetries;
 
   // Step 1: Initial request
   const response = await globalThis.fetch(url.toString(), init);
@@ -458,16 +471,29 @@ export async function shieldedFetch(
     selected,
   );
 
-  // Step 10: Retry with PAYMENT-SIGNATURE header
+  // Step 10: Retry with PAYMENT-SIGNATURE header (with settlement retries)
   const retryHeaders = new Headers(init.headers as any);
   retryHeaders.set("PAYMENT-SIGNATURE", encodedPayload);
 
-  const retryResponse = (await globalThis.fetch(url.toString(), {
+  let retryResponse = (await globalThis.fetch(url.toString(), {
     ...init,
     headers: retryHeaders,
   })) as ShieldedFetchResponse;
 
-  // Step 10: Parse PAYMENT-RESPONSE header if present
+  // Retry settlement if non-2xx (up to maxRetries total attempts)
+  for (
+    let attempt = 1;
+    attempt < maxRetries &&
+    !(retryResponse.status >= 200 && retryResponse.status < 300);
+    attempt++
+  ) {
+    retryResponse = (await globalThis.fetch(url.toString(), {
+      ...init,
+      headers: retryHeaders,
+    })) as ShieldedFetchResponse;
+  }
+
+  // Parse PAYMENT-RESPONSE header if present
   const paymentResponseHeader =
     retryResponse.headers.get("payment-response") ??
     retryResponse.headers.get("PAYMENT-RESPONSE");

@@ -75,7 +75,7 @@ describe("shield_queue_policy_update", () => {
 
   it("returns error on SDK failure", async () => {
     const client = createMockClient({
-      shouldThrow: Object.assign(new Error("test"), { code: 6037 }),
+      shouldThrow: Object.assign(new Error("test"), { code: 6027 }),
     });
     const result = await queuePolicyUpdate(client as any, {
       vault,

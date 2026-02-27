@@ -12,24 +12,32 @@ import {
   buildValidateAndAuthorize,
   buildFinalizeSession,
 } from "./instructions";
-
-/** Default compute budget for composed transactions (1.4M CU) */
-const DEFAULT_COMPUTE_UNITS = 1_400_000;
+import {
+  estimateComposedCU,
+  CU_DEFAULT_COMPOSED,
+  type PriorityFeeConfig,
+  getEstimator,
+} from "./priority-fees";
 
 /**
  * Build an atomic composed transaction:
- * [ComputeBudget, ValidateAndAuthorize, ...defiInstructions, FinalizeSession]
+ * [ComputeBudget, PriorityFee?, ValidateAndAuthorize, ...defiInstructions, FinalizeSession]
  *
  * All instructions succeed or all revert atomically.
+ *
+ * CU budget is automatically sized to the detected DeFi protocol unless overridden.
+ * Priority fees are injected when a connection is provided.
  */
 export async function composePermittedAction(
   program: Program<AgentShield>,
   params: ComposeActionParams,
-  computeUnits: number = DEFAULT_COMPUTE_UNITS,
+  computeUnits?: number,
+  connection?: Connection,
+  priorityFeeConfig?: PriorityFeeConfig,
 ): Promise<TransactionInstruction[]> {
-  const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
-    units: computeUnits,
-  });
+  const units = computeUnits ?? estimateComposedCU(params.defiInstructions);
+
+  const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({ units });
 
   const validateIx = await buildValidateAndAuthorize(
     program,
@@ -42,11 +50,11 @@ export async function composePermittedAction(
       amount: params.amount,
       targetProtocol: params.targetProtocol,
       leverageBps: params.leverageBps,
+      outputStablecoinAccount: params.outputStablecoinAccount,
     },
-    params.oracleFeedAccount,
-    params.fallbackOracleFeedAccount,
     params.protocolTreasuryTokenAccount,
     params.feeDestinationTokenAccount,
+    params.outputStablecoinAccount,
   ).instruction();
 
   const finalizeIx = await buildFinalizeSession(
@@ -57,25 +65,46 @@ export async function composePermittedAction(
     params.tokenMint,
     params.success ?? true,
     params.vaultTokenAccount,
+    params.outputStablecoinAccount,
   ).instruction();
 
-  return [computeBudgetIx, validateIx, ...params.defiInstructions, finalizeIx];
+  const instructions: TransactionInstruction[] = [computeBudgetIx];
+
+  // Inject priority fee if connection is available
+  if (connection) {
+    try {
+      const estimator = getEstimator(connection, priorityFeeConfig);
+      const priorityFeeIx = await estimator.buildPriorityFeeIx();
+      instructions.push(priorityFeeIx);
+    } catch {
+      // Priority fee estimation failed — proceed without it rather than blocking
+    }
+  }
+
+  instructions.push(validateIx, ...params.defiInstructions, finalizeIx);
+
+  return instructions;
 }
 
 /**
  * Build and return a VersionedTransaction for a composed permitted action.
  * The transaction is NOT signed — caller must sign with the agent keypair.
+ *
+ * Automatically includes right-sized CU budget and priority fees.
  */
 export async function composePermittedTransaction(
   program: Program<AgentShield>,
   connection: Connection,
   params: ComposeActionParams,
-  computeUnits: number = DEFAULT_COMPUTE_UNITS,
+  computeUnits?: number,
+  priorityFeeConfig?: PriorityFeeConfig,
 ): Promise<VersionedTransaction> {
   const instructions = await composePermittedAction(
     program,
     params,
     computeUnits,
+    connection,
+    priorityFeeConfig,
   );
   const { blockhash } = await connection.getLatestBlockhash();
 
@@ -95,11 +124,15 @@ export async function composePermittedTransaction(
 export async function composePermittedSwap(
   program: Program<AgentShield>,
   params: Omit<ComposeActionParams, "actionType">,
-  computeUnits: number = DEFAULT_COMPUTE_UNITS,
+  computeUnits?: number,
+  connection?: Connection,
+  priorityFeeConfig?: PriorityFeeConfig,
 ): Promise<TransactionInstruction[]> {
   return composePermittedAction(
     program,
     { ...params, actionType: { swap: {} } },
     computeUnits,
+    connection,
+    priorityFeeConfig,
   );
 }

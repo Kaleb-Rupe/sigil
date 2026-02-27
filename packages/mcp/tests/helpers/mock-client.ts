@@ -1,5 +1,8 @@
 import { PublicKey, Keypair } from "@solana/web3.js";
 import { BN } from "@coral-xyz/anchor";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import type {
   AgentVaultAccount,
   PolicyConfigAccount,
@@ -16,6 +19,32 @@ export const TEST_VAULT_PDA = Keypair.generate().publicKey;
 export const TEST_FEE_DEST = Keypair.generate().publicKey;
 export const TEST_MINT = Keypair.generate().publicKey;
 export const TEST_PROTOCOL = Keypair.generate().publicKey;
+
+/**
+ * Create a mock McpConfig with a real temporary keypair file.
+ * Call `cleanup()` in afterEach to remove the temp file.
+ */
+export function createMockConfig(): {
+  walletPath: string;
+  rpcUrl: string;
+  cleanup: () => void;
+} {
+  const kp = Keypair.generate();
+  const tmpPath = path.join(
+    os.tmpdir(),
+    `agentshield-test-kp-${Date.now()}-${Math.random().toString(36).slice(2)}.json`,
+  );
+  fs.writeFileSync(tmpPath, JSON.stringify(Array.from(kp.secretKey)));
+  return {
+    walletPath: tmpPath,
+    rpcUrl: "https://mock.rpc",
+    cleanup: () => {
+      try {
+        fs.unlinkSync(tmpPath);
+      } catch {}
+    },
+  };
+}
 
 export function makeVaultAccount(
   overrides: Partial<AgentVaultAccount> = {},
@@ -51,6 +80,7 @@ export function makePolicyAccount(
     developerFeeRate: 10,
     timelockDuration: new BN(0),
     allowedDestinations: [],
+    maxSlippageBps: 100,
     bump: 254,
     ...overrides,
   };
@@ -416,6 +446,110 @@ export function createMockClient(
       return { instructions: [], additionalSigners: [] };
     },
 
+    async flashTradeAddCollateral(params: any, poolConfig?: any) {
+      calls.push({
+        method: "flashTradeAddCollateral",
+        args: [params, poolConfig],
+      });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return { instructions: [], additionalSigners: [] };
+    },
+
+    async flashTradeRemoveCollateral(params: any, poolConfig?: any) {
+      calls.push({
+        method: "flashTradeRemoveCollateral",
+        args: [params, poolConfig],
+      });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return { instructions: [], additionalSigners: [] };
+    },
+
+    async flashTradePlaceTriggerOrder(params: any, poolConfig?: any) {
+      calls.push({
+        method: "flashTradePlaceTriggerOrder",
+        args: [params, poolConfig],
+      });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return { instructions: [], additionalSigners: [] };
+    },
+
+    async flashTradeEditTriggerOrder(params: any, poolConfig?: any) {
+      calls.push({
+        method: "flashTradeEditTriggerOrder",
+        args: [params, poolConfig],
+      });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return { instructions: [], additionalSigners: [] };
+    },
+
+    async flashTradeCancelTriggerOrder(params: any, poolConfig?: any) {
+      calls.push({
+        method: "flashTradeCancelTriggerOrder",
+        args: [params, poolConfig],
+      });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return { instructions: [], additionalSigners: [] };
+    },
+
+    async flashTradePlaceLimitOrder(params: any, poolConfig?: any) {
+      calls.push({
+        method: "flashTradePlaceLimitOrder",
+        args: [params, poolConfig],
+      });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return { instructions: [], additionalSigners: [] };
+    },
+
+    async flashTradeEditLimitOrder(params: any, poolConfig?: any) {
+      calls.push({
+        method: "flashTradeEditLimitOrder",
+        args: [params, poolConfig],
+      });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return { instructions: [], additionalSigners: [] };
+    },
+
+    async flashTradeCancelLimitOrder(params: any, poolConfig?: any) {
+      calls.push({
+        method: "flashTradeCancelLimitOrder",
+        args: [params, poolConfig],
+      });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return { instructions: [], additionalSigners: [] };
+    },
+
+    async flashTradeSwapAndOpen(params: any, poolConfig?: any) {
+      calls.push({
+        method: "flashTradeSwapAndOpen",
+        args: [params, poolConfig],
+      });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return { instructions: [], additionalSigners: [] };
+    },
+
+    async flashTradeCloseAndSwap(params: any, poolConfig?: any) {
+      calls.push({
+        method: "flashTradeCloseAndSwap",
+        args: [params, poolConfig],
+      });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return { instructions: [], additionalSigners: [] };
+    },
+
+    async syncPositions(
+      owner: PublicKey,
+      vault: PublicKey,
+      poolCustodyPairs: any[],
+      flashProgramId: PublicKey,
+    ) {
+      calls.push({
+        method: "syncPositions",
+        args: [owner, vault, poolCustodyPairs, flashProgramId],
+      });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return "mock-sig-sync";
+    },
+
     async executeFlashTrade(result: any, agent: PublicKey, signers?: any[]) {
       calls.push({
         method: "executeFlashTrade",
@@ -423,6 +557,302 @@ export function createMockClient(
       });
       if (overrides.shouldThrow) throw overrides.shouldThrow;
       return "mock-sig-flash";
+    },
+
+    // --- Jupiter Price API ---
+
+    async getTokenPrices(mints: string[]) {
+      calls.push({ method: "getTokenPrices", args: [mints] });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      const data: Record<string, any> = {};
+      for (const mint of mints) {
+        data[mint] = { id: mint, type: "derivedPrice", price: "1.50" };
+      }
+      return { data, timeTaken: 42 };
+    },
+
+    async getTokenPriceUsd(mint: string) {
+      calls.push({ method: "getTokenPriceUsd", args: [mint] });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return 1.5;
+    },
+
+    // --- Jupiter Token API ---
+
+    async searchTokens(query: string, limit?: number) {
+      calls.push({ method: "searchTokens", args: [query, limit] });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return [
+        {
+          address: "So11111111111111111111111111111111111111112",
+          name: "Wrapped SOL",
+          symbol: "SOL",
+          decimals: 9,
+          dailyVolume: 500000000,
+          isSus: false,
+        },
+      ];
+    },
+
+    async getTrendingTokens(interval?: string) {
+      calls.push({ method: "getTrendingTokens", args: [interval] });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return [
+        {
+          address: "So11111111111111111111111111111111111111112",
+          name: "Wrapped SOL",
+          symbol: "SOL",
+          decimals: 9,
+          dailyVolume: 500000000,
+        },
+      ];
+    },
+
+    // --- Jupiter Lend/Earn ---
+
+    async getJupiterLendTokens() {
+      calls.push({ method: "getJupiterLendTokens", args: [] });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return [
+        {
+          mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          symbol: "USDC",
+          name: "USD Coin",
+          decimals: 6,
+          apy: 0.085,
+          totalDeposited: "15000000000000",
+          totalBorrowed: "8000000000000",
+          utilizationRate: 0.533,
+        },
+      ];
+    },
+
+    async getJupiterEarnPositions(user: string, positions: string[]) {
+      calls.push({
+        method: "getJupiterEarnPositions",
+        args: [user, positions],
+      });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return [];
+    },
+
+    async jupiterLendDeposit(params: any) {
+      calls.push({ method: "jupiterLendDeposit", args: [params] });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return "mock-sig-lend-deposit";
+    },
+
+    async jupiterLendWithdraw(params: any) {
+      calls.push({ method: "jupiterLendWithdraw", args: [params] });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return "mock-sig-lend-withdraw";
+    },
+
+    // --- Jupiter Trigger Orders ---
+
+    async createJupiterTriggerOrder(params: any) {
+      calls.push({ method: "createJupiterTriggerOrder", args: [params] });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return { serializedTransaction: "mock-serialized-trigger-create-tx" };
+    },
+
+    async getJupiterTriggerOrders(authority: string, state?: string) {
+      calls.push({
+        method: "getJupiterTriggerOrders",
+        args: [authority, state],
+      });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return [
+        {
+          orderId: "mock-order-1",
+          maker: authority,
+          inputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          outputMint: "So11111111111111111111111111111111111111112",
+          makingAmount: "100000000",
+          takingAmount: "5000000000",
+          remainingMakingAmount: "100000000",
+          remainingTakingAmount: "5000000000",
+          state: "active",
+          createdAt: "2026-01-01T00:00:00Z",
+        },
+      ];
+    },
+
+    async cancelJupiterTriggerOrder(
+      orderId: string,
+      feePayer: string,
+      signer: string,
+    ) {
+      calls.push({
+        method: "cancelJupiterTriggerOrder",
+        args: [orderId, feePayer, signer],
+      });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return { serializedTransaction: "mock-serialized-trigger-cancel-tx" };
+    },
+
+    // --- Jupiter Recurring/DCA ---
+
+    async createJupiterRecurringOrder(params: any) {
+      calls.push({ method: "createJupiterRecurringOrder", args: [params] });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return { transaction: "mock-serialized-recurring-create-tx" };
+    },
+
+    async getJupiterRecurringOrders(user: string) {
+      calls.push({ method: "getJupiterRecurringOrders", args: [user] });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return [
+        {
+          orderId: "mock-recurring-1",
+          maker: user,
+          inputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          outputMint: "So11111111111111111111111111111111111111112",
+          inAmount: "1000000000",
+          inDeposited: "500000000",
+          inWithdrawn: "0",
+          outWithdrawn: "2500000000",
+          numberOfOrders: 10,
+          numberOfOrdersFilled: 5,
+          intervalSeconds: 86400,
+          state: "active",
+          createdAt: "2026-01-01T00:00:00Z",
+          nextExecutionAt: "2026-01-06T00:00:00Z",
+        },
+      ];
+    },
+
+    async cancelJupiterRecurringOrder(
+      orderId: string,
+      feePayer: string,
+      signer: string,
+    ) {
+      calls.push({
+        method: "cancelJupiterRecurringOrder",
+        args: [orderId, feePayer, signer],
+      });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return { transaction: "mock-serialized-recurring-cancel-tx" };
+    },
+
+    // --- Jupiter Portfolio ---
+
+    async getJupiterPortfolio(wallet: string) {
+      calls.push({ method: "getJupiterPortfolio", args: [wallet] });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return {
+        wallet,
+        totalValue: 12500.5,
+        positions: [
+          {
+            platform: "jupiter-lend",
+            platformName: "Jupiter Lend",
+            elementType: "borrowlend",
+            value: 5000,
+            tokens: [
+              {
+                mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                symbol: "USDC",
+                amount: 5000,
+                value: 5000,
+              },
+            ],
+          },
+        ],
+      };
+    },
+
+    // --- Squads V4 Multisig Governance ---
+
+    async squadsCreateMultisig(_member: any, params: any) {
+      calls.push({ method: "squadsCreateMultisig", args: [params] });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return {
+        signature: "mock-sig-squads-create",
+        multisigPda: Keypair.generate().publicKey,
+        vaultPda: Keypair.generate().publicKey,
+      };
+    },
+
+    async squadsProposeVaultAction(_member: any, params: any) {
+      calls.push({ method: "squadsProposeVaultAction", args: [params] });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return {
+        signature: "mock-sig-squads-propose",
+        transactionIndex: 1n,
+      };
+    },
+
+    async squadsApproveProposal(_member: any, params: any) {
+      calls.push({ method: "squadsApproveProposal", args: [params] });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return "mock-sig-squads-approve";
+    },
+
+    async squadsRejectProposal(_member: any, params: any) {
+      calls.push({ method: "squadsRejectProposal", args: [params] });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return "mock-sig-squads-reject";
+    },
+
+    async squadsExecuteTransaction(_member: any, params: any) {
+      calls.push({ method: "squadsExecuteTransaction", args: [params] });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return "mock-sig-squads-execute";
+    },
+
+    async squadsFetchMultisigInfo(multisigPda: any) {
+      calls.push({ method: "squadsFetchMultisigInfo", args: [multisigPda] });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return {
+        address: multisigPda,
+        threshold: 2,
+        memberCount: 3,
+        members: [
+          {
+            key: TEST_OWNER.publicKey,
+            permissions: { initiate: true, vote: true, execute: true },
+          },
+          {
+            key: TEST_AGENT.publicKey,
+            permissions: { initiate: false, vote: true, execute: false },
+          },
+          {
+            key: Keypair.generate().publicKey,
+            permissions: { initiate: true, vote: true, execute: true },
+          },
+        ],
+        transactionIndex: 5n,
+        timeLock: 0,
+        vaultPda: Keypair.generate().publicKey,
+      };
+    },
+
+    async squadsFetchProposalInfo(multisigPda: any, transactionIndex: any) {
+      calls.push({
+        method: "squadsFetchProposalInfo",
+        args: [multisigPda, transactionIndex],
+      });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return {
+        address: Keypair.generate().publicKey,
+        multisig: multisigPda,
+        transactionIndex: BigInt(transactionIndex?.toString?.() ?? "1"),
+        status: "Active",
+        statusTimestamp: 1700000000n,
+        approvals: [TEST_OWNER.publicKey],
+        rejections: [],
+        cancellations: [],
+      };
+    },
+
+    async squadsProposeAction(_member: any, params: any) {
+      calls.push({ method: "squadsProposeAction", args: [params] });
+      if (overrides.shouldThrow) throw overrides.shouldThrow;
+      return {
+        signature: "mock-sig-squads-propose-action",
+        transactionIndex: 1n,
+      };
     },
   };
 

@@ -4,9 +4,7 @@
  * Position tracking: open/close, max concurrent limit,
  * vault close prevention, and failed-open non-increment.
  *
- * V2: No makeAllowedToken. Tokens via OracleRegistry.
- *     validate_and_authorize requires oracleRegistry + tokenMintAccount.
- *     finalizeSession has no tracker account.
+ *     Stablecoin-only architecture.
  */
 import * as anchor from "@coral-xyz/anchor";
 import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
@@ -17,9 +15,6 @@ import {
   getDevnetProvider,
   nextVaultId,
   deriveSessionPda,
-  deriveOracleRegistryPda,
-  initializeOracleRegistry,
-  makeOracleEntry,
   createFullVault,
   authorize,
   finalize,
@@ -38,16 +33,10 @@ describe("devnet-positions", () => {
   const jupiterProgramId = Keypair.generate().publicKey;
 
   let mint: PublicKey;
-  let oracleRegistryPda: PublicKey;
 
   before(async () => {
     await fundKeypair(provider, agent.publicKey);
     mint = await createTestMint(connection, payer, owner.publicKey, 6);
-
-    // Initialize oracle registry with mint as stablecoin
-    oracleRegistryPda = await initializeOracleRegistry(program, owner, [
-      makeOracleEntry(mint),
-    ]);
   });
 
   /** Create a position-enabled vault */
@@ -84,7 +73,6 @@ describe("devnet-positions", () => {
       vaultPda: vault.vaultPda,
       policyPda: vault.policyPda,
       trackerPda: vault.trackerPda,
-      oracleRegistryPda: vault.oracleRegistryPda,
       sessionPda,
       vaultTokenAta: vault.vaultTokenAta,
       mint,
@@ -121,7 +109,6 @@ describe("devnet-positions", () => {
       vaultPda: vault.vaultPda,
       policyPda: vault.policyPda,
       trackerPda: vault.trackerPda,
-      oracleRegistryPda: vault.oracleRegistryPda,
       sessionPda,
       vaultTokenAta: vault.vaultTokenAta,
       mint,
@@ -191,7 +178,6 @@ describe("devnet-positions", () => {
         vaultPda: vault.vaultPda,
         policyPda: vault.policyPda,
         trackerPda: vault.trackerPda,
-        oracleRegistryPda: vault.oracleRegistryPda,
         sessionPda,
         vaultTokenAta: vault.vaultTokenAta,
         mint,

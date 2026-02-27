@@ -101,12 +101,7 @@ export async function waitForReady(
       if (fs.existsSync(idlPath)) {
         const idl = JSON.parse(fs.readFileSync(idlPath, "utf-8"));
         try {
-          await surfnetRpc(connection, "surfnet_registerIdl", [
-            {
-              programId: PROGRAM_ID.toString(),
-              idl: JSON.stringify(idl),
-            },
-          ]);
+          await surfnetRpc(connection, "surfnet_registerIdl", [idl]);
         } catch {
           // IDL registration is best-effort — tests work without it
         }
@@ -125,6 +120,56 @@ export async function waitForReady(
   throw new Error("unreachable");
 }
 
+// ─── Local program deployment ────────────────────────────────────────────────
+
+/**
+ * Deploy the local agent_shield.so to Surfnet, overriding the devnet-forked
+ * program. This ensures tests run against the current codebase, not the
+ * (possibly outdated) devnet-deployed version.
+ *
+ * Uses surfnet_setAccount to write the program data account directly.
+ */
+async function deployLocalProgram(connection: Connection): Promise<void> {
+  const soPath = path.resolve(
+    __dirname,
+    "../../target/deploy/agent_shield.so",
+  );
+  if (!fs.existsSync(soPath)) {
+    throw new Error(
+      `Program .so not found at ${soPath}. Run 'anchor build --no-idl' first.`,
+    );
+  }
+
+  const bytecode = fs.readFileSync(soPath);
+
+  // Get the program data address from the program account
+  const programInfo = await connection.getAccountInfo(PROGRAM_ID);
+  if (!programInfo) {
+    throw new Error("Program account not found on Surfnet");
+  }
+  const programDataAddress = new PublicKey(programInfo.data.subarray(4, 36));
+
+  // Read current program data to preserve the 45-byte header
+  const dataInfo = await connection.getAccountInfo(programDataAddress);
+  if (!dataInfo) {
+    throw new Error("Program data account not found on Surfnet");
+  }
+  const existingHeader = dataInfo.data.subarray(0, 45);
+
+  // Construct new program data: existing header + local bytecode
+  const newData = Buffer.concat([existingHeader, bytecode]);
+
+  // Write via surfnet_setAccount (data in hex encoding, no 0x prefix)
+  await surfnetRpc(connection, "surfnet_setAccount", [
+    programDataAddress.toString(),
+    {
+      data: newData.toString("hex"),
+      owner: "BPFLoaderUpgradeab1e11111111111111111111111",
+      lamports: dataInfo.lamports,
+    },
+  ]);
+}
+
 // ─── Test environment ───────────────────────────────────────────────────────
 
 export interface SurfpoolTestEnv {
@@ -137,9 +182,14 @@ export interface SurfpoolTestEnv {
 /**
  * Create a full Anchor test environment connected to Surfnet.
  * The payer is a fresh keypair funded via setAccountLamports.
+ * Deploys the local .so to ensure tests run against current code.
  */
 export async function createSurfpoolTestEnv(): Promise<SurfpoolTestEnv> {
   const connection = await waitForReady();
+
+  // Deploy local program (overrides devnet-forked version)
+  await deployLocalProgram(connection);
+
   const payer = Keypair.generate();
 
   // Fund payer via cheatcode
@@ -214,8 +264,7 @@ export async function fundWithTokens(
   await surfnetRpc(connection, "surfnet_setTokenAccount", [
     owner.toString(),
     mint.toString(),
-    TOKEN_PROGRAM_ID.toString(),
-    { amount: amount.toString() },
+    { amount: typeof amount === "string" ? Number(amount) : amount },
   ]);
   return ata;
 }

@@ -11,6 +11,7 @@ import {
   TransactionMessage,
   VersionedTransaction,
   ComputeBudgetProgram,
+  SYSVAR_INSTRUCTIONS_PUBKEY,
 } from "@solana/web3.js";
 import {
   TOKEN_PROGRAM_ID,
@@ -23,15 +24,21 @@ import {
   JUPITER_PROGRAM_ID,
   deserializeInstruction,
 } from "../sdk/typescript/src/integrations/jupiter";
+import { CU_JUPITER_SWAP } from "../sdk/typescript/src/priority-fees";
 import {
   createTestEnv,
   airdropSol,
   createMintHelper,
+  createMintAtAddress,
+  DEVNET_USDC_MINT,
   createAtaHelper,
   createAtaIdempotentHelper,
   mintToHelper,
   getTokenBalance,
   sendVersionedTx,
+  VersionedTxResult,
+  recordCU,
+  printCUSummary,
   TestEnv,
   LiteSVM,
   FailedTransactionMetadata,
@@ -69,8 +76,6 @@ describe("jupiter-integration", () => {
   let vaultPda: PublicKey;
   let policyPda: PublicKey;
   let trackerPda: PublicKey;
-  let oracleRegistryPda: PublicKey;
-
   // Protocol treasury (must match hardcoded constant in program)
   const protocolTreasury = new PublicKey(
     "ASHie1dFTnDSnrHMPGmniJhMgfJVGPm3rAaEPnrtWDiT",
@@ -113,7 +118,7 @@ describe("jupiter-integration", () => {
     targetProtocol: PublicKey,
     success: boolean = true,
     overrideVaultTokenAta?: PublicKey,
-  ): Promise<string> {
+  ): Promise<VersionedTxResult> {
     const effectiveVaultAta = overrideVaultTokenAta ?? vaultUsdcAta;
 
     const [session] = PublicKey.findProgramAddressSync(
@@ -128,7 +133,7 @@ describe("jupiter-integration", () => {
 
     // 1. Compute budget
     const computeIx = ComputeBudgetProgram.setComputeUnitLimit({
-      units: 1_400_000,
+      units: CU_JUPITER_SWAP,
     });
 
     // 2. Validate and authorize
@@ -145,14 +150,15 @@ describe("jupiter-integration", () => {
         vault,
         policy,
         tracker,
-        oracleRegistry: oracleRegistryPda,
         session,
         vaultTokenAccount: effectiveVaultAta,
         tokenMintAccount: tokenMint,
         protocolTreasuryTokenAccount: protocolTreasuryUsdcAta,
         feeDestinationTokenAccount: null,
+        outputStablecoinAccount: null,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
+        instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
       })
       .instruction();
 
@@ -168,18 +174,24 @@ describe("jupiter-integration", () => {
         session,
         sessionRentRecipient: agentKp.publicKey,
         vaultTokenAccount: effectiveVaultAta,
+        outputStablecoinAccount: null,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
+        instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
       })
       .instruction();
 
     // Build and send versioned transaction via LiteSVM
-    return sendVersionedTx(
+    const result = sendVersionedTx(
       svm,
       [computeIx, validateIx, mockSwapIx, finalizeIx],
       agentKp,
     );
+    recordCU("jupiter:composed_swap", result);
+    return result;
   }
+
+  after(() => printCUSummary());
 
   before(async () => {
     env = createTestEnv();
@@ -192,8 +204,9 @@ describe("jupiter-integration", () => {
     airdropSol(svm, agent.publicKey, 10 * LAMPORTS_PER_SOL);
     airdropSol(svm, feeDestination.publicKey, 2 * LAMPORTS_PER_SOL);
 
-    // Create USDC-like mint (6 decimals)
-    usdcMint = createMintHelper(svm, (owner as any).payer, owner.publicKey, 6);
+    // Create USDC mint at hardcoded devnet address (required by is_stablecoin_mint)
+    createMintAtAddress(svm, DEVNET_USDC_MINT, owner.publicKey, 6);
+    usdcMint = DEVNET_USDC_MINT;
 
     // Create disallowed token mint
     solMint = createMintHelper(svm, (owner as any).payer, owner.publicKey, 9);
@@ -225,28 +238,6 @@ describe("jupiter-integration", () => {
       true,
     );
 
-    // Derive oracle registry PDA and initialize it
-    [oracleRegistryPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("oracle_registry")],
-      program.programId,
-    );
-
-    await program.methods
-      .initializeOracleRegistry([
-        {
-          mint: usdcMint,
-          oracleFeed: PublicKey.default,
-          isStablecoin: true,
-          fallbackFeed: PublicKey.default,
-        },
-      ])
-      .accounts({
-        authority: owner.publicKey,
-        oracleRegistry: oracleRegistryPda,
-        systemProgram: SystemProgram.programId,
-      } as any)
-      .rpc();
-
     // Initialize vault
     await program.methods
       .initializeVault(
@@ -258,6 +249,7 @@ describe("jupiter-integration", () => {
         0, // max leverage (0 = disabled)
         1, // max concurrent positions
         0, // developer fee rate (0 = none)
+        100, // maxSlippageBps
         new BN(0), // timelockDuration
         [], // allowedDestinations
       )
@@ -331,7 +323,7 @@ describe("jupiter-integration", () => {
         jupiterProtocol,
       );
 
-      expect(sig).to.be.a("string");
+      expect(sig.signature).to.be.a("string");
 
       // Verify vault stats updated
       const vault = await program.account.agentVault.fetch(vaultPda);
@@ -447,7 +439,7 @@ describe("jupiter-integration", () => {
           policyPda,
           trackerPda,
           agent,
-          solMint, // not registered in oracle registry
+          solMint, // not registered as allowed token
           new BN(1_000_000),
           jupiterProtocol,
           true,
@@ -456,7 +448,10 @@ describe("jupiter-integration", () => {
         expect.fail("Should have thrown");
       } catch (err: any) {
         if (err.message === "Should have thrown") throw err;
-        expect(err.message || err.toString()).to.include("TokenNotRegistered");
+        // Non-stablecoin token without output_stablecoin_account → InvalidTokenAccount
+        expect(err.message || err.toString()).to.satisfy(
+          (s: string) => s.includes("InvalidTokenAccount") || s.includes("TokenNotRegistered"),
+        );
       }
     });
   });
@@ -524,6 +519,7 @@ describe("jupiter-integration", () => {
           0,
           1,
           0, // developer fee rate
+          100, // maxSlippageBps
           new BN(0),
           [],
         )
@@ -637,6 +633,7 @@ describe("jupiter-integration", () => {
           0,
           1,
           0, // developer fee rate
+          100, // maxSlippageBps
           new BN(0),
           [],
         )

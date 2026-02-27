@@ -5,6 +5,11 @@ export const KNOWN_PROTOCOLS: ReadonlyMap<string, string> = new Map([
   ["JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcPX7a", "Jupiter V4"],
   ["JUP2jxvXaqu7NQY1GmNF4m1vodw12LVXYxbFL2uN4e7", "Jupiter V2"],
 
+  // Jupiter Extended
+  ["JLend2fEim9xUFcaHsyGePEoBzFLvkjMi3MnPcSuCdu", "Jupiter Lend"],
+  ["j1to2GQCsfSHNPfVKMcrUNyRBK8DPYECpEVPLkz1MKv", "Jupiter Trigger"],
+  ["DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M", "Jupiter Recurring"],
+
   // DEXes
   ["whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc", "Orca Whirlpool"],
   ["9W959DqEETiGZocYWCQPaJ6sBmUzgfxXfqGeTEdp3aQP", "Orca Whirlpool V2"],

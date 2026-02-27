@@ -76,8 +76,8 @@ status.get("/api/actions/status/:sig", async (c) => {
 
     return c.json({ status: "pending" });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    return c.json({ status: "not_found", error: message }, 500);
+    console.error("[AgentShield] status error:", error);
+    return c.json({ status: "not_found", error: "Internal server error" }, 500);
   }
 });
 

@@ -765,4 +765,176 @@ describe("x402 — shieldedFetch()", () => {
       expect(ix.keys.length).to.be.greaterThan(0);
     });
   });
+
+  describe("x402 hardened wallet integration", () => {
+    it("shieldedFetch delegates to hardened wallet signTransaction", async () => {
+      const header = buildPaymentRequiredHeader();
+      mockFetch402Then200(header);
+      const wallet = createMockWallet();
+      const shielded = shield(wallet, {}, { storage: createMemoryStorage() });
+      // Mark as hardened (simulating post-harden() state)
+      (shielded as any).isHardened = true;
+      const res = await shieldedFetch(shielded, "https://example.com/paid", {
+        connection: mockConnection,
+      });
+      expect(res.status).to.equal(200);
+      // Wallet signTransaction was called during payment
+      expect(wallet.signCount).to.be.greaterThan(0);
+    });
+
+    it("hardened wallet x402 respects maxPayment ceiling", async () => {
+      const header = buildPaymentRequiredHeader();
+      mockFetch402Then200(header);
+      const wallet = createMockWallet();
+      const shielded = shield(wallet, {}, { storage: createMemoryStorage() });
+      (shielded as any).isHardened = true;
+      try {
+        await shieldedFetch(shielded, "https://example.com/paid", {
+          connection: mockConnection,
+          maxPayment: "100", // Way below 1 USDC (1000000)
+        });
+        expect.fail("should have thrown");
+      } catch (err: any) {
+        expect(err.message).to.include("maxPayment");
+      }
+    });
+
+    it("paused hardened wallet still processes x402 payments", async () => {
+      // Pausing only affects signTransaction policy enforcement, not x402.
+      // The x402 path uses evaluateX402Payment independently, so payments
+      // proceed even when the wallet is paused.
+      const header = buildPaymentRequiredHeader();
+      mockFetch402Then200(header);
+      const wallet = createMockWallet();
+      const shielded = shield(wallet, {}, { storage: createMemoryStorage() });
+      (shielded as any).isHardened = true;
+      shielded.pause();
+      expect(shielded.isPaused).to.be.true;
+      const res = await shieldedFetch(shielded, "https://example.com/paid", {
+        connection: mockConnection,
+      });
+      expect(res.status).to.equal(200);
+    });
+
+    it("createShieldedFetchForWallet works with hardened wallets", async () => {
+      mockFetchNon402(200, "ok");
+      const wallet = createMockWallet();
+      const shielded = shield(wallet, {}, { storage: createMemoryStorage() });
+      (shielded as any).isHardened = true;
+      const boundFetch = createShieldedFetchForWallet(shielded, {
+        connection: mockConnection,
+      });
+      expect(boundFetch).to.be.a("function");
+      const res = await boundFetch("https://example.com/free");
+      expect(res.status).to.equal(200);
+    });
+  });
+
+  describe("x402 settlement retry", () => {
+    it("retries settlement up to maxRetries times", async () => {
+      let callCount = 0;
+      fetchStub = async (_url: string, init?: RequestInit) => {
+        callCount++;
+        const headers = init?.headers;
+        const hasPayment =
+          (headers instanceof Headers && headers.has("PAYMENT-SIGNATURE")) ||
+          (headers &&
+            typeof headers === "object" &&
+            !Array.isArray(headers) &&
+            "PAYMENT-SIGNATURE" in headers);
+        if (hasPayment) {
+          // Fail first 2 retries, succeed on 3rd
+          if (callCount <= 3) {
+            return new Response("Server Error", { status: 500 });
+          }
+          return new Response('{"data":"ok"}', {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return new Response(null, {
+          status: 402,
+          headers: {
+            "PAYMENT-REQUIRED": buildPaymentRequiredHeader(),
+          },
+        });
+      };
+      const wallet = createMockWallet();
+      const shielded = shield(wallet, {}, { storage: createMemoryStorage() });
+      const res = await shieldedFetch(shielded, "https://example.com/paid", {
+        connection: mockConnection,
+        maxRetries: 3,
+      });
+      expect(res.status).to.equal(200);
+      // 1 initial + 3 retry attempts = 4 total calls
+      expect(callCount).to.equal(4);
+    });
+
+    it("stops retrying after successful response", async () => {
+      let callCount = 0;
+      const header = buildPaymentRequiredHeader();
+      fetchStub = async (_url: string, init?: RequestInit) => {
+        callCount++;
+        const headers = init?.headers;
+        const hasPayment =
+          (headers instanceof Headers && headers.has("PAYMENT-SIGNATURE")) ||
+          (headers &&
+            typeof headers === "object" &&
+            !Array.isArray(headers) &&
+            "PAYMENT-SIGNATURE" in headers);
+        if (hasPayment) {
+          return new Response('{"data":"ok"}', {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return new Response(null, {
+          status: 402,
+          headers: { "PAYMENT-REQUIRED": header },
+        });
+      };
+      const wallet = createMockWallet();
+      const shielded = shield(wallet, {}, { storage: createMemoryStorage() });
+      const res = await shieldedFetch(shielded, "https://example.com/paid", {
+        connection: mockConnection,
+        maxRetries: 3,
+      });
+      expect(res.status).to.equal(200);
+      // 1 initial + 1 retry (succeeds immediately) = 2 total
+      expect(callCount).to.equal(2);
+    });
+
+    it("default maxRetries is 1 (no extra retries)", async () => {
+      let callCount = 0;
+      fetchStub = async (_url: string, init?: RequestInit) => {
+        callCount++;
+        const headers = init?.headers;
+        const hasPayment =
+          (headers instanceof Headers && headers.has("PAYMENT-SIGNATURE")) ||
+          (headers &&
+            typeof headers === "object" &&
+            !Array.isArray(headers) &&
+            "PAYMENT-SIGNATURE" in headers);
+        if (hasPayment) {
+          return new Response("Server Error", { status: 500 });
+        }
+        return new Response(null, {
+          status: 402,
+          headers: {
+            "PAYMENT-REQUIRED": buildPaymentRequiredHeader(),
+          },
+        });
+      };
+      const wallet = createMockWallet();
+      const shielded = shield(wallet, {}, { storage: createMemoryStorage() });
+      const res = await shieldedFetch(shielded, "https://example.com/paid", {
+        connection: mockConnection,
+        // default maxRetries (1 = no extra retries)
+      });
+      // Server returns 500, no extra retries
+      expect(res.status).to.equal(500);
+      // 1 initial + 1 retry attempt = 2 total
+      expect(callCount).to.equal(2);
+    });
+  });
 });

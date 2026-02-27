@@ -33,6 +33,36 @@ import { cancelPendingPolicy } from "./tools/cancel-pending-policy";
 import { checkPendingPolicy } from "./tools/check-pending-policy";
 import { agentTransfer } from "./tools/agent-transfer";
 import { x402Fetch } from "./tools/x402-fetch";
+import { addCollateral } from "./tools/add-collateral";
+import { removeCollateral } from "./tools/remove-collateral";
+import { placeTriggerOrder } from "./tools/place-trigger-order";
+import { cancelTriggerOrder } from "./tools/cancel-trigger-order";
+import { placeLimitOrder } from "./tools/place-limit-order";
+import { cancelLimitOrder } from "./tools/cancel-limit-order";
+import { syncPositions } from "./tools/sync-positions";
+
+// Jupiter expanded integration tools
+import { getPrices } from "./tools/get-prices";
+
+// Squads V4 multisig governance tools
+import { squadsCreateMultisig } from "./tools/squads-create-multisig";
+import { squadsProposeAction } from "./tools/squads-propose-action";
+import { squadsApprove } from "./tools/squads-approve";
+import { squadsReject } from "./tools/squads-reject";
+import { squadsExecute } from "./tools/squads-execute";
+import { squadsStatus } from "./tools/squads-status";
+import { searchTokens } from "./tools/search-tokens";
+import { trendingTokens } from "./tools/trending-tokens";
+import { lendTokens } from "./tools/lend-tokens";
+import { lendDeposit } from "./tools/lend-deposit";
+import { lendWithdraw } from "./tools/lend-withdraw";
+import { createTriggerOrderJup } from "./tools/create-trigger-order-jup";
+import { getTriggerOrdersJup } from "./tools/get-trigger-orders-jup";
+import { cancelTriggerOrderJup } from "./tools/cancel-trigger-order-jup";
+import { createRecurringOrder } from "./tools/create-recurring-order";
+import { getRecurringOrders } from "./tools/get-recurring-orders";
+import { cancelRecurringOrder } from "./tools/cancel-recurring-order";
+import { jupiterPortfolio } from "./tools/jupiter-portfolio";
 
 // Setup & onboarding tools (work without SDK client)
 import { setupStatus } from "./tools/setup-status";
@@ -594,6 +624,170 @@ async function main() {
     ),
   );
 
+  registerTool(
+    server,
+    "shield_add_collateral",
+    "Add collateral to an existing Flash Trade position (spending-checked)",
+    {
+      vault: z.string().describe("Vault PDA address (base58)"),
+      market: z.string().describe("Market/pool name (e.g. 'SOL', 'ETH')"),
+      collateralMint: z
+        .string()
+        .describe("Collateral token mint address (base58)"),
+      collateralAmount: z
+        .string()
+        .describe("Collateral amount in token base units"),
+      side: z.enum(["long", "short"]).describe("Position side"),
+      positionPubKey: z
+        .string()
+        .describe("Position account address (base58)"),
+    },
+    requireClient((input) =>
+      addCollateral(client!, config!, input, custodyWallet),
+    ),
+  );
+
+  registerTool(
+    server,
+    "shield_remove_collateral",
+    "Remove collateral from a Flash Trade position (non-spending)",
+    {
+      vault: z.string().describe("Vault PDA address (base58)"),
+      market: z.string().describe("Market/pool name (e.g. 'SOL', 'ETH')"),
+      collateralDeltaUsd: z
+        .string()
+        .describe("Collateral USD delta to remove"),
+      side: z.enum(["long", "short"]).describe("Position side"),
+      positionPubKey: z
+        .string()
+        .describe("Position account address (base58)"),
+    },
+    requireClient((input) =>
+      removeCollateral(client!, config!, input, custodyWallet),
+    ),
+  );
+
+  registerTool(
+    server,
+    "shield_place_trigger_order",
+    "Place a TP/SL trigger order on a Flash Trade position (non-spending)",
+    {
+      vault: z.string().describe("Vault PDA address (base58)"),
+      market: z.string().describe("Market/pool name (e.g. 'SOL', 'ETH')"),
+      collateralMint: z
+        .string()
+        .describe("Collateral token mint address (base58)"),
+      receiveSymbol: z.string().describe("Token symbol to receive on trigger"),
+      side: z.enum(["long", "short"]).describe("Position side"),
+      triggerPrice: z.string().describe("Trigger price in base units"),
+      deltaSizeAmount: z.string().describe("Size delta in base units"),
+      isStopLoss: z
+        .boolean()
+        .describe("True for stop-loss, false for take-profit"),
+    },
+    requireClient((input) =>
+      placeTriggerOrder(client!, config!, input, custodyWallet),
+    ),
+  );
+
+  registerTool(
+    server,
+    "shield_cancel_trigger_order",
+    "Cancel a TP/SL trigger order on a Flash Trade position (non-spending)",
+    {
+      vault: z.string().describe("Vault PDA address (base58)"),
+      market: z.string().describe("Market/pool name (e.g. 'SOL', 'ETH')"),
+      collateralMint: z
+        .string()
+        .describe("Collateral token mint address (base58)"),
+      side: z.enum(["long", "short"]).describe("Position side"),
+      orderId: z.string().describe("Trigger order ID to cancel"),
+      isStopLoss: z
+        .boolean()
+        .describe("True for stop-loss, false for take-profit"),
+    },
+    requireClient((input) =>
+      cancelTriggerOrder(client!, config!, input, custodyWallet),
+    ),
+  );
+
+  registerTool(
+    server,
+    "shield_place_limit_order",
+    "Place a limit order via Flash Trade (spending + position increment)",
+    {
+      vault: z.string().describe("Vault PDA address (base58)"),
+      market: z.string().describe("Market/pool name (e.g. 'SOL', 'ETH')"),
+      collateralMint: z
+        .string()
+        .describe("Collateral token mint address (base58)"),
+      reserveSymbol: z.string().describe("Reserve token symbol"),
+      receiveSymbol: z.string().describe("Receive token symbol"),
+      side: z.enum(["long", "short"]).describe("Position side"),
+      limitPrice: z.string().describe("Limit price in base units"),
+      reserveAmount: z
+        .string()
+        .describe("Reserve amount in token base units"),
+      sizeAmount: z.string().describe("Position size in base units"),
+      leverageBps: z
+        .number()
+        .describe("Leverage in basis points (e.g. 20000 = 2x)"),
+      stopLossPrice: z
+        .string()
+        .optional()
+        .describe("Optional stop-loss trigger price"),
+      takeProfitPrice: z
+        .string()
+        .optional()
+        .describe("Optional take-profit trigger price"),
+    },
+    requireClient((input) =>
+      placeLimitOrder(client!, config!, input, custodyWallet),
+    ),
+  );
+
+  registerTool(
+    server,
+    "shield_cancel_limit_order",
+    "Cancel a limit order on Flash Trade (non-spending, position decrement)",
+    {
+      vault: z.string().describe("Vault PDA address (base58)"),
+      market: z.string().describe("Market/pool name (e.g. 'SOL', 'ETH')"),
+      collateralMint: z
+        .string()
+        .describe("Collateral token mint address (base58)"),
+      reserveSymbol: z.string().describe("Reserve token symbol"),
+      receiveSymbol: z.string().describe("Receive token symbol"),
+      side: z.enum(["long", "short"]).describe("Position side"),
+      orderId: z.string().describe("Limit order ID to cancel"),
+    },
+    requireClient((input) =>
+      cancelLimitOrder(client!, config!, input, custodyWallet),
+    ),
+  );
+
+  registerTool(
+    server,
+    "shield_sync_positions",
+    "Sync vault position counter with actual Flash Trade state (owner-only)",
+    {
+      vault: z.string().describe("Vault PDA address (base58)"),
+      poolCustodyPairs: z
+        .array(
+          z.object({
+            pool: z.string().describe("Flash Trade pool address"),
+            custody: z.string().describe("Custody account address"),
+          }),
+        )
+        .describe("Pool/custody pairs to check positions against"),
+      flashProgramId: z
+        .string()
+        .optional()
+        .describe("Flash Trade program ID (defaults to mainnet)"),
+    },
+    requireClient((input) => syncPositions(client!, config!, input)),
+  );
+
   // ── Platform Tools ─────────────────────────────────────────
 
   registerTool(
@@ -662,6 +856,363 @@ async function main() {
         .describe("Maximum payment in token base units"),
     },
     requireClient((input) => x402Fetch(client!, config!, input, custodyWallet)),
+  );
+
+  // ── Jupiter Expanded Tools (Read-Only) ─────────────────────
+
+  registerTool(
+    server,
+    "shield_get_prices",
+    "Get real-time USD prices for Solana tokens via Jupiter Price API. Read-only — no vault required. Supports up to 50 mints per request.",
+    {
+      mints: z
+        .array(z.string())
+        .min(1)
+        .max(50)
+        .describe("Token mint addresses (base58). Max 50."),
+      showExtraInfo: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe("Include confidence level, depth, and quoted prices"),
+    },
+    async (input) => ({
+      content: [{ type: "text", text: await getPrices(input) }],
+    }),
+  );
+
+  registerTool(
+    server,
+    "shield_search_tokens",
+    "Search for Solana tokens by name, symbol, or address. Returns verification status and safety indicators. Read-only — no vault required.",
+    {
+      query: z
+        .string()
+        .min(1)
+        .describe("Search query (name, symbol, or mint address)"),
+      limit: z
+        .number()
+        .optional()
+        .default(10)
+        .describe("Max results (default 10, max 50)"),
+    },
+    async (input) => ({
+      content: [{ type: "text", text: await searchTokens(input) }],
+    }),
+  );
+
+  registerTool(
+    server,
+    "shield_trending_tokens",
+    "Get trending Solana tokens from Jupiter with safety indicators. Read-only — no vault required.",
+    {
+      interval: z
+        .enum(["5m", "1h", "6h", "24h"])
+        .optional()
+        .default("24h")
+        .describe("Trending interval (default: 24h)"),
+    },
+    async (input) => ({
+      content: [{ type: "text", text: await trendingTokens(input) }],
+    }),
+  );
+
+  registerTool(
+    server,
+    "shield_lend_tokens",
+    "List available tokens for Jupiter Lend/Earn with APY rates. Read-only — no vault required.",
+    {},
+    async (input) => ({
+      content: [{ type: "text", text: await lendTokens(input) }],
+    }),
+  );
+
+  registerTool(
+    server,
+    "shield_get_trigger_orders_jup",
+    "List Jupiter trigger/limit orders for a wallet. Read-only — no vault required.",
+    {
+      authority: z
+        .string()
+        .describe("Wallet address to query orders for (base58)"),
+      state: z
+        .enum(["active", "completed", "cancelled"])
+        .optional()
+        .describe("Filter by order state"),
+    },
+    requireClient((input) => getTriggerOrdersJup(client!, input)),
+  );
+
+  registerTool(
+    server,
+    "shield_get_recurring_orders",
+    "List Jupiter recurring/DCA orders for a wallet. Read-only — no vault required.",
+    {
+      user: z
+        .string()
+        .describe("Wallet address to query orders for (base58)"),
+    },
+    requireClient((input) => getRecurringOrders(client!, input)),
+  );
+
+  registerTool(
+    server,
+    "shield_jupiter_portfolio",
+    "Get portfolio positions across Jupiter-supported platforms. Beta API. Read-only — no vault required.",
+    {
+      wallet: z
+        .string()
+        .describe("Wallet address to check portfolio (base58)"),
+    },
+    requireClient((input) => jupiterPortfolio(client!, input)),
+  );
+
+  // ── Jupiter Expanded Tools (Agent-Signed) ─────────────────
+
+  registerTool(
+    server,
+    "shield_lend_deposit",
+    "Deposit tokens into Jupiter Lend/Earn through an AgentShield vault. Full on-chain sandwich enforcement. Counts against daily spending cap.",
+    {
+      vault: z.string().describe("Vault PDA address (base58)"),
+      mint: z.string().describe("Token mint to deposit (base58)"),
+      amount: z.string().describe("Amount in token base units"),
+    },
+    requireClient((input) =>
+      lendDeposit(client!, config!, input, custodyWallet),
+    ),
+  );
+
+  registerTool(
+    server,
+    "shield_lend_withdraw",
+    "Withdraw tokens from Jupiter Lend/Earn through an AgentShield vault. Full on-chain sandwich enforcement. Non-spending action.",
+    {
+      vault: z.string().describe("Vault PDA address (base58)"),
+      mint: z.string().describe("Token mint to withdraw (base58)"),
+      amount: z.string().describe("Amount in token base units"),
+    },
+    requireClient((input) =>
+      lendWithdraw(client!, config!, input, custodyWallet),
+    ),
+  );
+
+  registerTool(
+    server,
+    "shield_create_trigger_order_jup",
+    "Create a Jupiter limit/trigger order. Client-side policy enforcement.",
+    {
+      inputMint: z.string().describe("Input token mint address (base58)"),
+      outputMint: z.string().describe("Output token mint address (base58)"),
+      makingAmount: z
+        .string()
+        .describe("Input amount in token base units"),
+      takingAmount: z
+        .string()
+        .describe("Minimum output amount in token base units"),
+      expiredAt: z
+        .number()
+        .optional()
+        .default(0)
+        .describe("Expiry timestamp (Unix seconds). 0 = no expiry."),
+    },
+    requireClient((input) =>
+      createTriggerOrderJup(client!, config!, input, custodyWallet),
+    ),
+  );
+
+  registerTool(
+    server,
+    "shield_cancel_trigger_order_jup",
+    "Cancel a Jupiter trigger/limit order. Client-side policy enforcement.",
+    {
+      orderId: z.string().describe("Jupiter trigger order ID to cancel"),
+    },
+    requireClient((input) =>
+      cancelTriggerOrderJup(client!, config!, input, custodyWallet),
+    ),
+  );
+
+  registerTool(
+    server,
+    "shield_create_recurring_order",
+    "Create a Jupiter recurring/DCA order. Automates periodic token buys. Client-side policy enforcement.",
+    {
+      inputMint: z.string().describe("Input token mint address (base58)"),
+      outputMint: z.string().describe("Output token mint address (base58)"),
+      inAmount: z
+        .string()
+        .describe("Total input amount across all orders (token base units)"),
+      numberOfOrders: z
+        .number()
+        .min(2)
+        .describe("Number of orders to split into (min 2)"),
+      intervalSeconds: z
+        .number()
+        .describe("Interval between orders in seconds"),
+    },
+    requireClient((input) =>
+      createRecurringOrder(client!, config!, input, custodyWallet),
+    ),
+  );
+
+  registerTool(
+    server,
+    "shield_cancel_recurring_order",
+    "Cancel a Jupiter recurring/DCA order. Client-side policy enforcement.",
+    {
+      orderId: z
+        .string()
+        .describe("Jupiter recurring order ID to cancel"),
+    },
+    requireClient((input) =>
+      cancelRecurringOrder(client!, config!, input, custodyWallet),
+    ),
+  );
+
+  // ── Squads V4 Multisig Governance Tools ─────────────────────
+
+  registerTool(
+    server,
+    "shield_squads_create_multisig",
+    "Create a new Squads V4 multisig for N-of-M governance over AgentShield vaults. " +
+      "The vault PDA becomes the AgentShield vault owner.",
+    {
+      members: z
+        .array(
+          z.object({
+            key: z.string().describe("Member wallet address (base58)"),
+            permissions: z
+              .object({
+                initiate: z.boolean().optional().default(true),
+                vote: z.boolean().optional().default(true),
+                execute: z.boolean().optional().default(true),
+              })
+              .describe("Member permissions"),
+          }),
+        )
+        .min(1)
+        .describe("Multisig members with permissions"),
+      threshold: z
+        .number()
+        .int()
+        .min(1)
+        .describe("Number of approvals required (N-of-M)"),
+      timeLock: z
+        .number()
+        .int()
+        .min(0)
+        .optional()
+        .default(0)
+        .describe("Delay in seconds between approval and execution"),
+      memo: z.string().optional().describe("Optional memo"),
+    },
+    requireClient((input) =>
+      squadsCreateMultisig(client!, config!, input),
+    ),
+  );
+
+  registerTool(
+    server,
+    "shield_squads_propose_action",
+    "Propose an AgentShield admin action through Squads multisig governance. " +
+      "Wraps the instruction in a vault transaction and opens a proposal.",
+    {
+      multisig: z.string().describe("Squads multisig address (base58)"),
+      vaultIndex: z
+        .number()
+        .int()
+        .min(0)
+        .optional()
+        .default(0)
+        .describe("Squads vault authority index (default 0)"),
+      action: z
+        .enum([
+          "update_policy",
+          "queue_policy_update",
+          "apply_pending_policy",
+          "emergency_close",
+          "sync_positions",
+        ])
+        .describe("AgentShield admin action to propose"),
+      agentShieldVault: z
+        .string()
+        .describe("AgentShield vault PDA address (base58)"),
+      actionParams: z
+        .string()
+        .optional()
+        .describe("JSON string with action-specific params"),
+      memo: z.string().optional().describe("Optional proposal memo"),
+    },
+    requireClient((input) =>
+      squadsProposeAction(client!, config!, input),
+    ),
+  );
+
+  registerTool(
+    server,
+    "shield_squads_approve",
+    "Cast an approval vote on a Squads proposal. " +
+      "Wallet must be a member with Vote permission.",
+    {
+      multisig: z.string().describe("Squads multisig address (base58)"),
+      transactionIndex: z
+        .string()
+        .describe("Transaction index to approve (numeric string)"),
+      memo: z.string().optional().describe("Optional approval memo"),
+    },
+    requireClient((input) =>
+      squadsApprove(client!, config!, input),
+    ),
+  );
+
+  registerTool(
+    server,
+    "shield_squads_reject",
+    "Cast a rejection vote on a Squads proposal. " +
+      "Wallet must be a member with Vote permission.",
+    {
+      multisig: z.string().describe("Squads multisig address (base58)"),
+      transactionIndex: z
+        .string()
+        .describe("Transaction index to reject (numeric string)"),
+    },
+    requireClient((input) =>
+      squadsReject(client!, config!, input),
+    ),
+  );
+
+  registerTool(
+    server,
+    "shield_squads_execute",
+    "Execute an approved Squads vault transaction. " +
+      "Wallet must be a member with Execute permission.",
+    {
+      multisig: z.string().describe("Squads multisig address (base58)"),
+      transactionIndex: z
+        .string()
+        .describe("Transaction index to execute (numeric string)"),
+    },
+    requireClient((input) =>
+      squadsExecute(client!, config!, input),
+    ),
+  );
+
+  registerTool(
+    server,
+    "shield_squads_status",
+    "Check Squads multisig status: members, threshold, transaction count. " +
+      "Optionally check a specific proposal's voting status.",
+    {
+      multisig: z.string().describe("Squads multisig address (base58)"),
+      transactionIndex: z
+        .string()
+        .optional()
+        .describe("Optional transaction index to check proposal status"),
+    },
+    requireClient((input) =>
+      squadsStatus(client!, input),
+    ),
   );
 
   // ── MCP Resources ───────────────────────────────────────────

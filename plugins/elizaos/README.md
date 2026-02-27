@@ -246,7 +246,7 @@ Providers give the agent continuous budget awareness. The evaluator proactively 
 
 ```bash
 npm test
-# Runs 32 tests covering all actions, providers, evaluator, config, caching, and event wiring
+# Runs 35 tests covering all actions, providers, evaluator, config, caching, and event wiring
 ```
 
 ## Related Packages

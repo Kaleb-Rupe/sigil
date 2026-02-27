@@ -22,7 +22,7 @@
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
-    "test": "mocha --require ts-node/register tests/**/*.test.ts --timeout 30000"
+    "test": "NODE_OPTIONS='--no-experimental-strip-types' mocha --require ts-node/register tests/**/*.test.ts --timeout 30000"
   },
   "dependencies": {
     "@agent-shield/core": "workspace:*",
@@ -34,7 +34,8 @@
     "@solana/web3.js": "^1.95.0"
   },
   "optionalDependencies": {
-    "flash-sdk": "^15.1.4"
+    "flash-sdk": "^15.1.4",
+    "@sqds/multisig": "^2.1.4"
   },
   "devDependencies": {
     "@types/bn.js": "^5.1.5",

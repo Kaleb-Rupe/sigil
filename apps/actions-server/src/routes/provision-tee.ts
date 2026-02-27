@@ -121,9 +121,8 @@ provisionTee.post("/api/actions/provision-tee", async (c) => {
 
     return c.json({ publicKey, locator }, 200, CORS_HEADERS);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(`[provision-tee] Error: ${message}`);
-    return c.json({ error: message }, 500, CORS_HEADERS);
+    console.error("[AgentShield] provision-tee error:", error);
+    return c.json({ error: "Internal server error" }, 500, CORS_HEADERS);
   }
 });
 

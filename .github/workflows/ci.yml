@@ -1,7 +1,7 @@
 # CI Pipeline for AgentShield
 #
 # Runs on every push to main and on pull requests.
-# Nine jobs (1 detection + 7 parallel + 1 gate):
+# Eight jobs (1 detection + 6 parallel + 1 gate):
 #   0. changes                — Detect which file groups changed (package-level path filtering)
 #   1. build-lint-test        — TypeScript builds, Prettier, 682 TS tests (conditional: any-ts or push)
 #   2. rust-checks            — cargo fmt + cargo clippy (conditional: rust changes or push)
@@ -106,7 +106,7 @@ jobs:
               - 'tsconfig*.json'
 
   # ──────────────────────────────────────────────────────────────
-  # Job 1: TypeScript build, lint, and tests (8 suites, 682 tests)
+  # Job 1: TypeScript build, lint, and tests (8 suites, 713 tests)
   # ──────────────────────────────────────────────────────────────
   build-lint-test:
     name: Build, Lint & TS Tests
@@ -214,7 +214,7 @@ jobs:
         working-directory: plugins/elizaos
         run: pnpm test
 
-      - name: MCP server tests (249 tests)
+      - name: MCP server tests (280 tests)
         if: >-
           needs.changes.outputs.packages == 'true' ||
           needs.changes.outputs.sdk-typescript == 'true' ||

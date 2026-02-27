@@ -11,29 +11,20 @@ import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import type { AgentShield, ComposeActionParams } from "../types";
 import { getVaultPDA } from "../accounts";
 import { composePermittedAction } from "../composer";
+import { jupiterFetch } from "./jupiter-api";
+
+// Re-export JupiterApiError from the canonical location
+export { JupiterApiError } from "./jupiter-api";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-export const JUPITER_V6_API = "https://quote-api.jup.ag/v6";
+/** @deprecated Use jupiterFetch with path constants instead. Kept for backwards compat. */
+export const JUPITER_V6_API = "https://api.jup.ag";
 export const JUPITER_PROGRAM_ID = new PublicKey(
   "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
 );
-
-// ---------------------------------------------------------------------------
-// Error
-// ---------------------------------------------------------------------------
-
-export class JupiterApiError extends Error {
-  constructor(
-    public readonly statusCode: number,
-    public readonly body: string,
-  ) {
-    super(`Jupiter API error (${statusCode}): ${body}`);
-    this.name = "JupiterApiError";
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -157,15 +148,9 @@ export async function fetchJupiterQuote(
     ...params.extraParams,
   });
 
-  const url = `${JUPITER_V6_API}/quote?${qs.toString()}`;
-  const res = await fetch(url);
-
-  if (!res.ok) {
-    const body = await res.text();
-    throw new JupiterApiError(res.status, body);
-  }
-
-  return (await res.json()) as JupiterQuoteResponse;
+  return jupiterFetch<JupiterQuoteResponse>(`/v6/quote?${qs.toString()}`, {
+    timeoutMs: 5_000,
+  });
 }
 
 /**
@@ -179,23 +164,17 @@ export async function fetchJupiterSwapInstructions(
   quote: JupiterQuoteResponse,
   userPublicKey: PublicKey,
 ): Promise<JupiterSwapInstructionsResponse> {
-  const url = `${JUPITER_V6_API}/swap-instructions`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      quoteResponse: quote,
-      userPublicKey: userPublicKey.toBase58(),
-      wrapAndUnwrapSol: true,
-    }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    throw new JupiterApiError(res.status, body);
-  }
-
-  return (await res.json()) as JupiterSwapInstructionsResponse;
+  return jupiterFetch<JupiterSwapInstructionsResponse>(
+    "/v6/swap-instructions",
+    {
+      method: "POST",
+      body: {
+        quoteResponse: quote,
+        userPublicKey: userPublicKey.toBase58(),
+        wrapAndUnwrapSol: true,
+      },
+    },
+  );
 }
 
 /**
@@ -247,7 +226,7 @@ export async function composeJupiterSwap(
   const [vault] = getVaultPDA(params.owner, params.vaultId, program.programId);
 
   // 1. Get quote (use pre-fetched or fetch new)
-  const quote =
+  let quote =
     params.quote ??
     (await fetchJupiterQuote({
       inputMint: params.inputMint,
@@ -255,6 +234,19 @@ export async function composeJupiterSwap(
       amount: params.amount,
       slippageBps: params.slippageBps,
     }));
+
+  // Staleness check: re-quote if pre-fetched quote is >30 slots old (~12s)
+  if (params.quote && quote.contextSlot) {
+    const currentSlot = await connection.getSlot("confirmed");
+    if (currentSlot - quote.contextSlot > 30) {
+      quote = await fetchJupiterQuote({
+        inputMint: params.inputMint,
+        outputMint: params.outputMint,
+        amount: params.amount,
+        slippageBps: params.slippageBps,
+      });
+    }
+  }
 
   // 2. Get swap instructions from Jupiter with vault PDA as the user
   const swapResponse = await fetchJupiterSwapInstructions(quote, vault);
@@ -300,7 +292,12 @@ export async function composeJupiterSwap(
     feeDestinationTokenAccount: params.feeDestinationTokenAccount,
   };
 
-  const instructions = await composePermittedAction(program, composeParams);
+  const instructions = await composePermittedAction(
+    program,
+    composeParams,
+    undefined,
+    connection,
+  );
 
   return { instructions, addressLookupTables };
 }

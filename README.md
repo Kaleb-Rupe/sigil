@@ -1,7 +1,7 @@
 # AgentShield
 
 [![CI](https://github.com/Kaleb-Rupe/agentshield/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Kaleb-Rupe/agentshield/actions/workflows/ci.yml)
-![Tests](https://img.shields.io/badge/tests-994-brightgreen)
+![Tests](https://img.shields.io/badge/tests-988-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 
 On-chain guardrails for AI agents on Solana. Your policies are enforced by Solana validators, not software promises.
@@ -190,8 +190,8 @@ cargo fmt --check --manifest-path programs/agent-shield/Cargo.toml
 | Core vault management & permission engine            |      67 |
 | Jupiter integration (composed swaps)                 |       8 |
 | Jupiter Lend integration (deposit/withdraw)          |       6 |
-| Flash Trade integration (leveraged perps)            |      30 |
-| Security exploit scenarios                           |     114 |
+| Flash Trade integration (leveraged perps)            |      29 |
+| Security exploit scenarios                           |     109 |
 | Devnet integration tests (real network)              |      56 |
 | Core policy engine (`@agent-shield/core`)            |      66 |
 | SDK tests (`@agent-shield/sdk`)                      |     192 |
@@ -201,7 +201,7 @@ cargo fmt --check --manifest-path programs/agent-shield/Cargo.toml
 | ElizaOS plugin (`@agent-shield/plugin-elizaos`)      |      35 |
 | MCP server (`@agent-shield/mcp`)                     |     280 |
 | Actions server (`@agent-shield/actions-server`)      |      65 |
-| **Total**                                            | **994** |
+| **Total**                                            | **988** |
 
 ## Security
 

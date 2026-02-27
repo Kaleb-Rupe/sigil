@@ -26,6 +26,7 @@ pub struct PendingPolicyUpdate {
     pub can_open_positions: Option<bool>,
     pub max_concurrent_positions: Option<u8>,
     pub developer_fee_rate: Option<u16>,
+    pub max_slippage_bps: Option<u16>,
     pub timelock_duration: Option<u64>,
     pub allowed_destinations: Option<Vec<Pubkey>>,
 
@@ -54,6 +55,7 @@ impl PendingPolicyUpdate {
         + (1 + 1) // can_open_positions
         + (1 + 1) // max_concurrent_positions
         + (1 + 2) // developer_fee_rate
+        + (1 + 2) // max_slippage_bps
         + (1 + 8) // timelock_duration
         + (1 + 4 + 32 * MAX_ALLOWED_DESTINATIONS) // allowed_destinations
         + 1; // bump

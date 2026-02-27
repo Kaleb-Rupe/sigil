@@ -203,7 +203,7 @@ Agent calls swap() → SAK builds transaction → shieldWallet() intercepts sign
 
 ```bash
 npm test
-# Runs 25 tests covering all tools, factory, config resolution, and event wiring
+# Runs 29 tests covering all tools, factory, config resolution, and event wiring
 ```
 
 ## Related Packages

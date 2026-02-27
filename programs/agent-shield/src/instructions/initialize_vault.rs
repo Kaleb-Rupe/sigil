@@ -55,6 +55,7 @@ pub fn handler(
     max_leverage_bps: u16,
     max_concurrent_positions: u8,
     developer_fee_rate: u16,
+    max_slippage_bps: u16,
     timelock_duration: u64,
     allowed_destinations: Vec<Pubkey>,
 ) -> Result<()> {
@@ -70,6 +71,10 @@ pub fn handler(
     require!(
         developer_fee_rate <= MAX_DEVELOPER_FEE_RATE,
         AgentShieldError::DeveloperFeeTooHigh
+    );
+    require!(
+        max_slippage_bps <= MAX_SLIPPAGE_BPS,
+        AgentShieldError::SlippageBpsTooHigh
     );
     require!(
         ctx.accounts.fee_destination.key() != Pubkey::default(),
@@ -107,6 +112,7 @@ pub fn handler(
     policy.can_open_positions = true;
     policy.max_concurrent_positions = max_concurrent_positions;
     policy.developer_fee_rate = developer_fee_rate;
+    policy.max_slippage_bps = max_slippage_bps;
     policy.timelock_duration = timelock_duration;
     policy.allowed_destinations = allowed_destinations;
     policy.bump = ctx.bumps.policy;

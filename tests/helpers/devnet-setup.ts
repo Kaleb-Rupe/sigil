@@ -3,8 +3,7 @@
  *
  * Used by all devnet-*.ts test files.
  *
- * V2: Tokens managed via global OracleRegistry, not per-vault AllowedToken arrays.
- *     No tracker tier model. SpendTracker is zero-copy with epoch buckets.
+ * Stablecoin-only architecture. SpendTracker is zero-copy with epoch buckets.
  */
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
@@ -67,105 +66,6 @@ export const FEE_RATE_DENOMINATOR = 1_000_000;
 export const MAX_DEVELOPER_FEE_RATE = 500;
 export const SESSION_EXPIRY_SLOTS = 20;
 export const ROLLING_WINDOW_SECONDS = 86_400;
-
-// ─── Pyth devnet feed constants ─────────────────────────────────────────────
-
-export const PYTH_SOL_USD_FEED = new PublicKey(
-  "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
-);
-export const NATIVE_SOL_MINT = new PublicKey(
-  "So11111111111111111111111111111111111111112",
-);
-
-// ─── Oracle Registry helpers ────────────────────────────────────────────────
-
-export function deriveOracleRegistryPda(
-  programId: PublicKey,
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("oracle_registry")],
-    programId,
-  );
-}
-
-/**
- * Build an OracleEntry object for the IDL.
- * @param mint    Token mint address
- * @param oracleFeed  Oracle feed account (PublicKey.default = stablecoin)
- * @param isStablecoin  Whether this is a stablecoin (1:1 USD)
- */
-export function makeOracleEntry(
-  mint: PublicKey,
-  oracleFeed: PublicKey = PublicKey.default,
-  isStablecoin: boolean = true,
-  fallbackFeed: PublicKey = PublicKey.default,
-) {
-  return { mint, oracleFeed, isStablecoin, fallbackFeed };
-}
-
-/**
- * Initialize the protocol-level oracle registry with the given entries.
- * Idempotent: if the registry already exists, falls back to update.
- */
-export async function initializeOracleRegistry(
-  program: Program<AgentShield>,
-  owner: anchor.Wallet,
-  entries: {
-    mint: PublicKey;
-    oracleFeed: PublicKey;
-    isStablecoin: boolean;
-    fallbackFeed: PublicKey;
-  }[],
-): Promise<PublicKey> {
-  const [registryPda] = deriveOracleRegistryPda(program.programId);
-
-  try {
-    await program.methods
-      .initializeOracleRegistry(entries)
-      .accounts({
-        authority: owner.publicKey,
-        oracleRegistry: registryPda,
-        systemProgram: SystemProgram.programId,
-      } as any)
-      .rpc();
-  } catch {
-    // Registry already exists — update entries instead
-    await program.methods
-      .updateOracleRegistry(entries, [])
-      .accounts({
-        authority: owner.publicKey,
-        oracleRegistry: registryPda,
-      } as any)
-      .rpc();
-  }
-
-  return registryPda;
-}
-
-/**
- * Update the oracle registry with additional entries and optional removals.
- */
-export async function updateOracleRegistry(
-  program: Program<AgentShield>,
-  owner: anchor.Wallet,
-  entries: {
-    mint: PublicKey;
-    oracleFeed: PublicKey;
-    isStablecoin: boolean;
-    fallbackFeed: PublicKey;
-  }[],
-  mintsToRemove: PublicKey[] = [],
-): Promise<void> {
-  const [registryPda] = deriveOracleRegistryPda(program.programId);
-
-  await program.methods
-    .updateOracleRegistry(entries, mintsToRemove)
-    .accounts({
-      authority: owner.publicKey,
-      oracleRegistry: registryPda,
-    } as any)
-    .rpc();
-}
 
 // ─── Collision-free vault ID generator ──────────────────────────────────────
 
@@ -285,7 +185,6 @@ export interface FullVaultResult {
   ownerTokenAta: PublicKey;
   protocolTreasuryAta: PublicKey;
   feeDestinationAta: PublicKey | null;
-  oracleRegistryPda: PublicKey;
 }
 
 export async function createFullVault(
@@ -315,7 +214,6 @@ export async function createFullVault(
 
   const payer = (owner as any).payer;
   const pdas = derivePDAs(owner.publicKey, vaultId, program.programId);
-  const [oracleRegistryPda] = deriveOracleRegistryPda(program.programId);
 
   // Derive vault token ATA
   const vaultTokenAta = anchor.utils.token.associatedAddress({
@@ -422,7 +320,6 @@ export async function createFullVault(
     ownerTokenAta,
     protocolTreasuryAta,
     feeDestinationAta,
-    oracleRegistryPda,
   };
 }
 
@@ -434,7 +331,6 @@ export interface AuthorizeOpts {
   vaultPda: PublicKey;
   policyPda: PublicKey;
   trackerPda: PublicKey;
-  oracleRegistryPda: PublicKey;
   sessionPda: PublicKey;
   vaultTokenAta: PublicKey;
   mint: PublicKey;
@@ -456,7 +352,6 @@ export async function authorize(opts: AuthorizeOpts): Promise<string> {
     vaultPda,
     policyPda,
     trackerPda,
-    oracleRegistryPda,
     sessionPda,
     vaultTokenAta,
     mint,
@@ -479,7 +374,6 @@ export async function authorize(opts: AuthorizeOpts): Promise<string> {
       vault: vaultPda,
       policy: policyPda,
       tracker: trackerPda,
-      oracleRegistry: oracleRegistryPda,
       session: sessionPda,
       vaultTokenAccount: vaultTokenAta,
       tokenMintAccount: mint,
@@ -641,31 +535,3 @@ export async function getTokenBalance(
   return Number(account.amount);
 }
 
-// ─── Oracle-aware authorize wrapper ─────────────────────────────────────────
-
-/**
- * Convenience wrapper around `authorize` that pre-fills `remainingAccounts`
- * with the primary (and optional fallback) oracle feed accounts.
- */
-export async function authorizeWithOracle(
-  opts: AuthorizeOpts & {
-    primaryOracleFeed: PublicKey;
-    fallbackOracleFeed?: PublicKey;
-  },
-): Promise<string> {
-  const remaining: {
-    pubkey: PublicKey;
-    isWritable: boolean;
-    isSigner: boolean;
-  }[] = [
-    { pubkey: opts.primaryOracleFeed, isWritable: false, isSigner: false },
-  ];
-  if (opts.fallbackOracleFeed) {
-    remaining.push({
-      pubkey: opts.fallbackOracleFeed,
-      isWritable: false,
-      isSigner: false,
-    });
-  }
-  return authorize({ ...opts, remainingAccounts: remaining });
-}

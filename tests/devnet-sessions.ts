@@ -4,8 +4,7 @@
  * Session expiration is the #1 thing LiteSVM cannot replicate.
  * On devnet, 20 slots = ~8-12 real seconds.
  *
- * V2: No makeAllowedToken. Tokens via OracleRegistry.
- *     validate_and_authorize requires oracleRegistry + tokenMintAccount.
+ *     Stablecoin-only architecture.
  *     finalizeSession has no tracker account.
  */
 import * as anchor from "@coral-xyz/anchor";
@@ -23,9 +22,6 @@ import {
   nextVaultId,
   derivePDAs,
   deriveSessionPda,
-  deriveOracleRegistryPda,
-  initializeOracleRegistry,
-  makeOracleEntry,
   createFullVault,
   authorize,
   finalize,
@@ -52,7 +48,6 @@ describe("devnet-sessions", () => {
   let vaultId: BN;
   let mintBVaultAta: PublicKey;
   let mintBTreasuryAta: PublicKey;
-  let oracleRegistryPda: PublicKey;
 
   before(async () => {
     // Fund agent and third party from owner
@@ -62,12 +57,6 @@ describe("devnet-sessions", () => {
     // Create two test mints
     mintA = await createMint(connection, payer, owner.publicKey, null, 6);
     mintB = await createMint(connection, payer, owner.publicKey, null, 6);
-
-    // Initialize oracle registry with both mints as stablecoins
-    oracleRegistryPda = await initializeOracleRegistry(program, owner, [
-      makeOracleEntry(mintA),
-      makeOracleEntry(mintB),
-    ]);
 
     vaultId = nextVaultId(3);
 
@@ -146,7 +135,6 @@ describe("devnet-sessions", () => {
       vaultPda: vault.vaultPda,
       policyPda: vault.policyPda,
       trackerPda: vault.trackerPda,
-      oracleRegistryPda: vault.oracleRegistryPda,
       sessionPda,
       vaultTokenAta: vault.vaultTokenAta,
       mint: mintA,
@@ -206,7 +194,6 @@ describe("devnet-sessions", () => {
       vaultPda: vault.vaultPda,
       policyPda: vault.policyPda,
       trackerPda: vault.trackerPda,
-      oracleRegistryPda: vault.oracleRegistryPda,
       sessionPda,
       vaultTokenAta: vault.vaultTokenAta,
       mint: mintA,
@@ -251,7 +238,6 @@ describe("devnet-sessions", () => {
       vaultPda: vault.vaultPda,
       policyPda: vault.policyPda,
       trackerPda: vault.trackerPda,
-      oracleRegistryPda: vault.oracleRegistryPda,
       sessionPda,
       vaultTokenAta: vault.vaultTokenAta,
       mint: mintA,
@@ -315,7 +301,6 @@ describe("devnet-sessions", () => {
       vaultPda: vault.vaultPda,
       policyPda: vault.policyPda,
       trackerPda: vault.trackerPda,
-      oracleRegistryPda: vault.oracleRegistryPda,
       sessionPda: sessionPdaA,
       vaultTokenAta: vault.vaultTokenAta,
       mint: mintA,
@@ -330,7 +315,6 @@ describe("devnet-sessions", () => {
       vaultPda: vault.vaultPda,
       policyPda: vault.policyPda,
       trackerPda: vault.trackerPda,
-      oracleRegistryPda: vault.oracleRegistryPda,
       sessionPda: sessionPdaB,
       vaultTokenAta: mintBVaultAta,
       mint: mintB,
@@ -389,7 +373,6 @@ describe("devnet-sessions", () => {
       vaultPda: vault.vaultPda,
       policyPda: vault.policyPda,
       trackerPda: vault.trackerPda,
-      oracleRegistryPda: vault.oracleRegistryPda,
       sessionPda,
       vaultTokenAta: vault.vaultTokenAta,
       mint: mintA,
@@ -405,7 +388,6 @@ describe("devnet-sessions", () => {
         vaultPda: vault.vaultPda,
         policyPda: vault.policyPda,
         trackerPda: vault.trackerPda,
-        oracleRegistryPda: vault.oracleRegistryPda,
         sessionPda,
         vaultTokenAta: vault.vaultTokenAta,
         mint: mintA,
@@ -450,7 +432,6 @@ describe("devnet-sessions", () => {
       vaultPda: vault.vaultPda,
       policyPda: vault.policyPda,
       trackerPda: vault.trackerPda,
-      oracleRegistryPda: vault.oracleRegistryPda,
       sessionPda,
       vaultTokenAta: vault.vaultTokenAta,
       mint: mintA,

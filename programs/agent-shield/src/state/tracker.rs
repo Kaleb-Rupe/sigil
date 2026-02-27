@@ -51,11 +51,9 @@ impl SpendTracker {
     /// Record a spend in the current epoch bucket.
     /// If the bucket is from a different epoch, reset it first.
     pub fn record_spend(&mut self, clock: &Clock, usd_amount: u64) -> Result<()> {
-        require!(
-            clock.unix_timestamp > 0,
-            AgentShieldError::OracleFeedInvalid
-        );
-        let current_epoch = clock.unix_timestamp / EPOCH_DURATION;
+        require!(clock.unix_timestamp > 0, AgentShieldError::Overflow);
+        // Safe: EPOCH_DURATION is a non-zero constant (600)
+        let current_epoch = clock.unix_timestamp.checked_div(EPOCH_DURATION).unwrap();
         let idx = (current_epoch % NUM_EPOCHS as i64) as usize;
 
         if self.buckets[idx].epoch_id != current_epoch {
@@ -83,7 +81,8 @@ impl SpendTracker {
         if clock.unix_timestamp <= 0 {
             return 0;
         }
-        let current_epoch = clock.unix_timestamp / EPOCH_DURATION;
+        // Safe: EPOCH_DURATION is a non-zero constant (600)
+        let current_epoch = clock.unix_timestamp.checked_div(EPOCH_DURATION).unwrap();
         let window_start_ts = clock.unix_timestamp.saturating_sub(ROLLING_WINDOW_SECONDS);
         let mut total: u128 = 0;
 
@@ -104,9 +103,12 @@ impl SpendTracker {
                 total = total.saturating_add(bucket.usd_amount as u128);
             } else {
                 // Boundary bucket — proportional scaling
-                let overlap = (bucket_end - window_start_ts) as u128;
-                let scaled =
-                    (bucket.usd_amount as u128).saturating_mul(overlap) / EPOCH_DURATION as u128;
+                // Safe: bucket_end > window_start_ts (checked above), EPOCH_DURATION non-zero
+                let overlap = bucket_end.checked_sub(window_start_ts).unwrap() as u128;
+                let scaled = (bucket.usd_amount as u128)
+                    .saturating_mul(overlap)
+                    .checked_div(EPOCH_DURATION as u128)
+                    .unwrap();
                 total = total.saturating_add(scaled);
             }
         }

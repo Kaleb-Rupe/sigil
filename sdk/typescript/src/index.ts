@@ -10,7 +10,6 @@ export {
   getTrackerPDA,
   getSessionPDA,
   getPendingPolicyPDA,
-  getOracleRegistryPDA,
   fetchVault,
   fetchPolicy,
   fetchTracker,
@@ -19,14 +18,9 @@ export {
   fetchPolicyByAddress,
   fetchTrackerByAddress,
   fetchPendingPolicy,
-  fetchOracleRegistry,
 } from "./accounts";
 
 export {
-  buildInitializeOracleRegistry,
-  buildUpdateOracleRegistry,
-  buildProposeOracleAuthority,
-  buildAcceptOracleAuthority,
   buildInitializeVault,
   buildDepositFunds,
   buildRegisterAgent,
@@ -41,6 +35,7 @@ export {
   buildApplyPendingPolicy,
   buildCancelPendingPolicy,
   buildAgentTransfer,
+  buildSyncPositions,
 } from "./instructions";
 
 export {
@@ -52,19 +47,26 @@ export {
 export { rewriteVaultAuthority, validateRewrite } from "./rewriter";
 
 export {
+  PriorityFeeEstimator,
+  getEstimator,
+  estimateComposedCU,
+  CU_AGENT_TRANSFER,
+  CU_JUPITER_SWAP,
+  CU_JUPITER_MULTI_HOP,
+  CU_JUPITER_LEND,
+  CU_FLASH_TRADE,
+  CU_DEFAULT_COMPOSED,
+  CU_VAULT_CREATION,
+  CU_OWNER_ACTION,
+  type PriorityFeeConfig,
+  type PriorityLevel,
+} from "./priority-fees";
+
+export {
   wrapTransaction,
   wrapInstructions,
   type WrapTransactionParams,
 } from "./wrap";
-
-export {
-  PYTH_RECEIVER_PROGRAM,
-  SWITCHBOARD_ON_DEMAND_PROGRAM,
-  PYTH_FEEDS,
-  SWITCHBOARD_FEEDS,
-  resolveOracleFeed,
-  detectOracleSource,
-} from "./oracle";
 
 export {
   AGENT_SHIELD_PROGRAM_ID,
@@ -74,13 +76,16 @@ export {
   PROTOCOL_MODE_ALL,
   PROTOCOL_MODE_ALLOWLIST,
   PROTOCOL_MODE_DENYLIST,
+  USDC_MINT_DEVNET,
+  USDC_MINT_MAINNET,
+  USDT_MINT_DEVNET,
+  USDT_MINT_MAINNET,
+  isStablecoinMint,
   type AgentShield,
   type AgentVaultAccount,
   type PolicyConfigAccount,
   type SpendTrackerAccount,
-  type OracleRegistryAccount,
   type SessionAuthorityAccount,
-  type OracleEntry,
   type EpochBucket,
   type VaultStatus,
   type ActionType,
@@ -90,11 +95,20 @@ export {
   type QueuePolicyUpdateParams,
   type AgentTransferParams,
   type AuthorizeParams,
-  type OracleSource,
   type ComposeActionParams,
-  type InitializeOracleRegistryParams,
-  type UpdateOracleRegistryParams,
+  type PositionEffect,
+  isSpendingAction,
+  getPositionEffect,
 } from "./types";
+
+export {
+  configureJupiterApi,
+  getJupiterApiConfig,
+  resetJupiterApiConfig,
+  jupiterFetch,
+  type JupiterApiConfig,
+  type JupiterFetchOptions,
+} from "./integrations/jupiter-api";
 
 export {
   JUPITER_V6_API,
@@ -115,6 +129,58 @@ export {
 } from "./integrations/jupiter";
 
 export {
+  getJupiterPrices,
+  getTokenPriceUsd,
+  type JupiterPriceData,
+  type JupiterPriceResponse,
+} from "./integrations/jupiter-price";
+
+export {
+  searchJupiterTokens,
+  getTrendingTokens,
+  isTokenSuspicious,
+  type JupiterTokenInfo,
+  type TrendingInterval,
+} from "./integrations/jupiter-tokens";
+
+export {
+  JUPITER_LEND_PROGRAM_ID,
+  JUPITER_BORROW_PROGRAM_ID,
+  getJupiterLendTokens,
+  getJupiterEarnPositions,
+  composeJupiterLendDeposit,
+  composeJupiterLendWithdraw,
+  type JupiterLendTokenInfo,
+  type JupiterEarnPosition,
+  type JupiterLendDepositParams,
+  type JupiterLendWithdrawParams,
+} from "./integrations/jupiter-lend";
+
+export {
+  createJupiterTriggerOrder,
+  cancelJupiterTriggerOrder,
+  getJupiterTriggerOrders,
+  type JupiterTriggerOrderParams,
+  type JupiterTriggerOrder,
+  type TriggerOrderPolicyCheck,
+} from "./integrations/jupiter-trigger";
+
+export {
+  createJupiterRecurringOrder,
+  getJupiterRecurringOrders,
+  cancelJupiterRecurringOrder,
+  type JupiterRecurringOrderParams,
+  type JupiterRecurringOrder,
+  type RecurringOrderPolicyCheck,
+} from "./integrations/jupiter-recurring";
+
+export {
+  getJupiterPortfolio,
+  type JupiterPortfolioSummary,
+  type JupiterPortfolioPosition,
+} from "./integrations/jupiter-portfolio";
+
+export {
   FLASH_TRADE_PROGRAM_ID,
   FLASH_COMPOSABILITY_PROGRAM_ID,
   FLASH_FB_NFT_REWARD_PROGRAM_ID,
@@ -127,15 +193,74 @@ export {
   composeFlashTradeClose,
   composeFlashTradeIncrease,
   composeFlashTradeDecrease,
+  composeFlashTradeAddCollateral,
+  composeFlashTradeRemoveCollateral,
+  composeFlashTradePlaceTriggerOrder,
+  composeFlashTradeEditTriggerOrder,
+  composeFlashTradeCancelTriggerOrder,
+  composeFlashTradePlaceLimitOrder,
+  composeFlashTradeEditLimitOrder,
+  composeFlashTradeCancelLimitOrder,
+  composeFlashTradeSwapAndOpen,
+  composeFlashTradeCloseAndSwap,
   composeFlashTradeTransaction,
+  validateDegenMode,
   type FlashTradeConfig,
   type ContractOraclePrice,
   type FlashOpenPositionParams,
   type FlashClosePositionParams,
   type FlashIncreasePositionParams,
   type FlashDecreasePositionParams,
+  type FlashAddCollateralParams,
+  type FlashRemoveCollateralParams,
+  type FlashTriggerOrderParams,
+  type FlashEditTriggerOrderParams,
+  type FlashCancelTriggerOrderParams,
+  type FlashLimitOrderParams,
+  type FlashEditLimitOrderParams,
+  type FlashCancelLimitOrderParams,
+  type FlashSwapAndOpenParams,
+  type FlashCloseAndSwapParams,
   type FlashTradeResult,
 } from "./integrations/flash-trade";
+
+export {
+  reconcilePositions,
+  countFlashTradePositions,
+} from "./integrations/flash-trade-reconcile";
+
+export {
+  SQUADS_V4_PROGRAM_ID,
+  getSquadsMultisigPda,
+  getSquadsVaultPda,
+  getSquadsTransactionPda,
+  getSquadsProposalPda,
+  createSquadsMultisig,
+  proposeVaultAction,
+  approveProposal,
+  rejectProposal,
+  executeVaultTransaction,
+  fetchMultisigInfo,
+  fetchProposalInfo,
+  proposeInitializeVault,
+  proposeUpdatePolicy,
+  proposeQueuePolicyUpdate,
+  proposeApplyPendingPolicy,
+  proposeSyncPositions,
+  type SquadsMember,
+  type CreateSquadsMultisigParams,
+  type ProposeVaultActionParams,
+  type ApproveProposalParams,
+  type RejectProposalParams,
+  type ExecuteVaultTransactionParams,
+  type MultisigInfo,
+  type ProposalInfo,
+  type ProposeInitializeVaultParams,
+  type ProposeUpdatePolicyParams,
+  type ProposeQueuePolicyUpdateParams,
+  type ProposeApplyPendingPolicyParams,
+  type ProposeSyncPositionsParams,
+} from "./integrations/squads";
 
 // --- Wrapper (client-side policy enforcement + on-chain hardening) ---
 

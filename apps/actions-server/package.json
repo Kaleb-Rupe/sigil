@@ -9,7 +9,7 @@
     "dev": "ts-node src/index.ts",
     "start": "node dist/index.js",
     "clean": "rm -rf dist",
-    "test": "mocha --require ts-node/register 'tests/*.test.ts' --timeout 30000",
+    "test": "NODE_OPTIONS='--no-experimental-strip-types' mocha --require ts-node/register 'tests/*.test.ts' --timeout 30000",
     "deploy": "vercel --prod",
     "deploy:preview": "vercel"
   },

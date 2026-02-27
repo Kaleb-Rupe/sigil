@@ -3,10 +3,11 @@
 // Verifies safety-critical constants and pure helper functions
 // that underpin AgentShield's authorization model.
 // V2: TrackerTier removed — epoch-based circular buffer replaces tiered tracking.
+// V3: Oracle system removed — stablecoin-only architecture.
 
 use crate::state::{
     EPOCH_DURATION, MAX_ALLOWED_DESTINATIONS, MAX_ALLOWED_PROTOCOLS, MAX_DEVELOPER_FEE_RATE,
-    MAX_ORACLE_ENTRIES, NUM_EPOCHS, ROLLING_WINDOW_SECONDS, SESSION_EXPIRY_SLOTS,
+    NUM_EPOCHS, ROLLING_WINDOW_SECONDS, SESSION_EXPIRY_SLOTS,
 };
 use cvlr::prelude::*;
 
@@ -53,16 +54,12 @@ pub fn rule_rolling_window_is_24h() {
 //
 // All on-chain vectors must have bounded max sizes. Verifies the
 // constants that enforce account size limits.
-// V2: MAX_ALLOWED_TOKENS removed (tokens use global OracleRegistry).
-//     MAX_RECENT_TRANSACTIONS removed (tracker uses fixed epoch array).
-//     MAX_ORACLE_ENTRIES added (global registry capacity).
 // ─────────────────────────────────────────────────────────────────
 
 #[rule]
 pub fn rule_vector_bounds_finite() {
     cvlr_assert!(MAX_ALLOWED_PROTOCOLS == 10);
     cvlr_assert!(MAX_ALLOWED_DESTINATIONS == 10);
-    cvlr_assert!(MAX_ORACLE_ENTRIES == 104);
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -80,27 +77,4 @@ pub fn rule_epoch_buffer_constants() {
     cvlr_assert!(NUM_EPOCHS == 144);
     // Invariant: buffer covers exactly the rolling window
     cvlr_assert!((EPOCH_DURATION as usize) * NUM_EPOCHS == (ROLLING_WINDOW_SECONDS as usize));
-}
-
-// ─────────────────────────────────────────────────────────────────
-// Rule 6: Oracle registry capacity within CPI account size limit
-//
-// V2 introduced a protocol-level OracleRegistry PDA shared across
-// all vaults. MAX_ORACLE_ENTRIES must fit within the 10,240-byte
-// CPI account creation limit.
-// Each OracleEntryZC is 97 bytes (32 mint + 32 oracle_feed + 1 is_stablecoin + 32 fallback_feed).
-// Zero-copy layout: disc(8) + authority(32) + pending_authority(32)
-//   + count(2) + bump(1) + padding(5) + entries(97 * 104)
-// ─────────────────────────────────────────────────────────────────
-
-#[rule]
-pub fn rule_oracle_registry_fits_cpi_limit() {
-    // OracleEntryZC::SIZE = 97 bytes
-    let entry_size: usize = 97;
-    // Zero-copy overhead: disc(8) + authority(32) + pending_authority(32)
-    //   + count(2) + bump(1) + padding(5) = 80
-    let overhead: usize = 80;
-    let total = overhead + entry_size * MAX_ORACLE_ENTRIES;
-    // Must fit in 10,240 byte CPI account creation limit
-    cvlr_assert!(total <= 10_240);
 }

@@ -25,6 +25,8 @@ import { evaluatePolicy, recordTransaction } from "./engine";
 import { ShieldState } from "./state";
 import { shield } from "./shield";
 import { isSystemProgram } from "./registry";
+import { JUPITER_PROGRAM_ID, type ActionType } from "../types";
+import { FLASH_TRADE_PROGRAM_ID } from "../integrations/flash-trade";
 import type { ShieldPolicies, SpendingSummary } from "./policies";
 import { AgentShieldClient } from "../client";
 import { getVaultPDA, getPolicyPDA, getPendingPolicyPDA } from "../accounts";
@@ -60,6 +62,8 @@ export interface HardenOptions {
   timelockDuration?: number;
   /** Allowed destination addresses for agent transfers. Empty = any address (default). */
   allowedDestinations?: PublicKey[];
+  /** Maximum slippage in basis points for on-chain swap verification. Default: 100 (1%) */
+  maxSlippageBps?: number;
 }
 
 /**
@@ -89,7 +93,7 @@ export interface HardenResult {
  * (blockUnknownPrograms, rateLimit, customCheck) stay client-side only.
  *
  * V2: No per-token allowlists on-chain — tokens are validated via the
- * global OracleRegistry. Protocol mode determines allowlist/denylist behavior.
+ * stablecoin-only enforcement. Protocol mode determines allowlist/denylist behavior.
  */
 export function mapPoliciesToVaultParams(
   resolved: ResolvedPolicies,
@@ -101,6 +105,7 @@ export function mapPoliciesToVaultParams(
     maxConcurrentPositions?: number;
     timelockDuration?: number;
     allowedDestinations?: PublicKey[];
+    maxSlippageBps?: number;
   },
 ): {
   vaultId: any; // BN — constructed at call site
@@ -114,6 +119,7 @@ export function mapPoliciesToVaultParams(
   developerFeeRate: number;
   timelockDuration: number;
   allowedDestinations: PublicKey[];
+  maxSlippageBps: number;
 } {
   // Collapse multiple spend limits to the largest (ceiling cap)
   let maxCap = BigInt(0);
@@ -148,6 +154,7 @@ export function mapPoliciesToVaultParams(
     developerFeeRate: opts?.developerFeeRate ?? 0,
     timelockDuration: opts?.timelockDuration ?? 0,
     allowedDestinations: opts?.allowedDestinations ?? [],
+    maxSlippageBps: opts?.maxSlippageBps ?? 100,
   };
 }
 
@@ -209,12 +216,22 @@ function inferTargetProtocol(analysis: TransactionAnalysis): PublicKey {
 /**
  * Infer the ActionType from a transaction analysis.
  *
- * Pure SPL token transfer transactions → Transfer.
- * Everything else (Jupiter, Flash Trade, etc.) → Swap.
+ * M2: Explicitly detects Jupiter and Flash Trade program IDs before
+ * falling back to the SPL-only heuristic. Previously only returned
+ * swap|transfer which misclassified Flash Trade position transactions.
  */
 function inferActionType(
   instructions: TransactionInstruction[],
-): { swap: Record<string, never> } | { transfer: Record<string, never> } {
+): ActionType {
+  // Detect Jupiter → always swap
+  if (instructions.some((ix) => ix.programId.equals(JUPITER_PROGRAM_ID))) {
+    return { swap: {} };
+  }
+  // Detect Flash Trade → default to swap (discriminator detection is future work)
+  if (instructions.some((ix) => ix.programId.equals(FLASH_TRADE_PROGRAM_ID))) {
+    return { swap: {} };
+  }
+  // SPL-only = transfer, else swap
   const TOKEN_2022_PROGRAM = new PublicKey(
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
   );
@@ -273,9 +290,14 @@ function createHardenedWallet(
     async signTransaction<T extends Transaction | VersionedTransaction>(
       tx: T,
     ): Promise<T> {
-      // If paused, pass through without enforcement
+      // H2: Paused wallets MUST NOT sign. Previously this passed through to
+      // innerWallet.signTransaction, bypassing on-chain vault composition entirely.
       if (original.isPaused) {
-        return innerWallet.signTransaction(tx);
+        throw new ShieldDeniedError([{
+          rule: "rate_limit",
+          message: "Wallet is paused — signing is blocked. Call resume() to re-enable.",
+          suggestion: "Call resume() on the shielded wallet to re-enable signing.",
+        }]);
       }
 
       // Step 1: Client-side policy check (fast deny)
@@ -339,8 +361,9 @@ function createHardenedWallet(
       // Step 3: Sign the composed transaction with the inner wallet
       const signed = await innerWallet.signTransaction(composedTx);
 
-      // Step 4: Record in client-side state
-      recordTransaction(analysis, state);
+      // M4: Client-side spend recording removed for hardened wallets.
+      // On-chain SpendTracker is the authoritative record. Recording here
+      // before send/confirmation would double-count on resubmit.
 
       return signed as unknown as T;
     },
@@ -496,6 +519,14 @@ export async function harden(
     );
   }
 
+  // L1: Warn when TEE check is bypassed
+  if (options.unsafeSkipTeeCheck) {
+    console.warn(
+      "[AgentShield] WARNING: unsafeSkipTeeCheck is enabled. On-chain vault enforcement " +
+        "is active but TEE key custody is bypassed. Do not use in production.",
+    );
+  }
+
   // Enforce TEE requirement — production agents must use TEE custody
   if (!options.unsafeSkipTeeCheck && !isTeeWallet(shieldedWallet.innerWallet)) {
     throw new TeeRequiredError();
@@ -525,6 +556,7 @@ export async function harden(
       maxConcurrentPositions: options.maxConcurrentPositions,
       timelockDuration,
       allowedDestinations: options.allowedDestinations,
+      maxSlippageBps: options.maxSlippageBps,
     },
   );
 
@@ -539,6 +571,7 @@ export async function harden(
     maxConcurrentPositions: mapped.maxConcurrentPositions,
     feeDestination: mapped.feeDestination,
     developerFeeRate: mapped.developerFeeRate,
+    maxSlippageBps: mapped.maxSlippageBps,
     timelockDuration: new BN(mapped.timelockDuration),
     allowedDestinations: mapped.allowedDestinations,
   };

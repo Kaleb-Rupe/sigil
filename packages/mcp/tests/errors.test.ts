@@ -3,8 +3,8 @@ import { lookupError, formatError, ERROR_MAP } from "../src/errors";
 
 describe("errors", () => {
   describe("ERROR_MAP", () => {
-    it("has entries for error codes 6000–6045", () => {
-      for (let code = 6000; code <= 6045; code++) {
+    it("has entries for error codes 6000–6044", () => {
+      for (let code = 6000; code <= 6044; code++) {
         expect(ERROR_MAP[code], `Missing error code ${code}`).to.exist;
         expect(ERROR_MAP[code].code).to.equal(code);
         expect(ERROR_MAP[code].name).to.be.a("string");
@@ -13,8 +13,8 @@ describe("errors", () => {
       }
     });
 
-    it("has exactly 46 entries", () => {
-      expect(Object.keys(ERROR_MAP)).to.have.length(46);
+    it("has exactly 45 entries", () => {
+      expect(Object.keys(ERROR_MAP)).to.have.length(45);
     });
   });
 
@@ -32,8 +32,8 @@ describe("errors", () => {
       expect(info.suggestion).to.include("rolling window");
     });
 
-    it("returns Overflow for code 6025", () => {
-      const info = lookupError(6025);
+    it("returns Overflow for code 6024", () => {
+      const info = lookupError(6024);
       expect(info.name).to.equal("Overflow");
     });
 
@@ -93,8 +93,37 @@ describe("errors", () => {
       expect(msg).to.be.a("string");
     });
 
+    it("formats Jupiter 429 rate limit errors", () => {
+      const error = Object.assign(
+        new Error("Jupiter API error (429): Too Many Requests"),
+        { name: "JupiterApiError", statusCode: 429 },
+      );
+      const msg = formatError(error);
+      expect(msg).to.include("rate limited");
+      expect(msg).to.include("portal.jup.ag");
+    });
+
+    it("formats Jupiter 500 server errors", () => {
+      const error = Object.assign(
+        new Error("Jupiter API error (503): Service Unavailable"),
+        { name: "JupiterApiError", statusCode: 503 },
+      );
+      const msg = formatError(error);
+      expect(msg).to.include("temporarily unavailable");
+    });
+
+    it("formats Jupiter 400 bad request errors", () => {
+      const error = Object.assign(
+        new Error("Jupiter API error (400): Invalid mint"),
+        { name: "JupiterApiError", statusCode: 400 },
+      );
+      const msg = formatError(error);
+      expect(msg).to.include("bad request");
+      expect(msg).to.include("liquidity");
+    });
+
     it("includes suggestion for every Anchor error", () => {
-      for (let code = 6000; code <= 6045; code++) {
+      for (let code = 6000; code <= 6044; code++) {
         const msg = formatError({ code });
         expect(msg, `Code ${code} missing suggestion`).to.include(
           "Suggestion:",
@@ -102,28 +131,15 @@ describe("errors", () => {
       }
     });
 
-    it("formatError maps code 6042 to OracleRegistryFull", () => {
-      const msg = formatError({ code: 6042 });
-      expect(msg).to.include("OracleRegistryFull");
-      expect(msg).to.include("105");
-    });
+    it("formatError maps new stablecoin-only errors", () => {
+      const slippage = formatError({ code: 6037 });
+      expect(slippage).to.include("SlippageTooHigh");
 
-    it("formatError maps code 6044 to OraclePriceDivergence", () => {
-      const msg = formatError({ code: 6044 });
-      expect(msg).to.include("OraclePriceDivergence");
-      expect(msg).to.include("diverge");
-    });
+      const dustDeposit = formatError({ code: 6041 });
+      expect(dustDeposit).to.include("DustDepositDetected");
 
-    it("formatError maps code 6045 to OracleBothFeedsFailed", () => {
-      const msg = formatError({ code: 6045 });
-      expect(msg).to.include("OracleBothFeedsFailed");
-      expect(msg).to.include("failed");
-    });
-
-    it("formatError maps code 6043 to UnauthorizedRegistryAdmin", () => {
-      const msg = formatError({ code: 6043 });
-      expect(msg).to.include("UnauthorizedRegistryAdmin");
-      expect(msg).to.include("authority");
+      const nonTracked = formatError({ code: 6036 });
+      expect(nonTracked).to.include("NonTrackedSwapMustReturnStablecoin");
     });
   });
 });

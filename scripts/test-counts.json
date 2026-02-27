@@ -20,13 +20,13 @@
     },
     {
       "name": "Flash Trade integration (leveraged perps)",
-      "count": 30,
+      "count": 29,
       "onChain": true,
       "claudePattern": "tests/flash-trade-integration.ts` (%d tests)"
     },
     {
       "name": "Security exploit scenarios",
-      "count": 114,
+      "count": 109,
       "onChain": true,
       "claudePattern": "tests/security-exploits.ts` (ts-mocha + LiteSVM, %d tests)"
     },

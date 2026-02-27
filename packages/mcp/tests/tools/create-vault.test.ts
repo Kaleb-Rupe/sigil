@@ -18,6 +18,7 @@ describe("shield_create_vault", () => {
     feeDestination: feeDest,
     developerFeeRate: 10,
     timelockDuration: 0,
+    maxSlippageBps: 100,
   };
 
   it("creates vault successfully", async () => {
@@ -51,7 +52,7 @@ describe("shield_create_vault", () => {
 
   it("returns error on SDK failure", async () => {
     const client = createMockClient({
-      shouldThrow: Object.assign(new Error("test"), { code: 6020 }),
+      shouldThrow: Object.assign(new Error("test"), { code: 6019 }),
     });
     const result = await createVault(client as any, validInput);
     expect(result).to.include("DeveloperFeeTooHigh");
