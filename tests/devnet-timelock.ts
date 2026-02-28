@@ -7,8 +7,7 @@
  * Uses timelockDuration=5 (5 seconds) for fast testing.
  *
  * V2: No makeAllowedToken, no allowedTokens in policy, no tracker in
- *     updatePolicy/applyPendingPolicy accounts. Tokens via OracleRegistry.
- *     queuePolicyUpdate takes 10 optional args matching updatePolicy V2.
+ *     updatePolicy/applyPendingPolicy accounts. Stablecoin-only architecture.
  */
 import * as anchor from "@coral-xyz/anchor";
 import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
@@ -19,9 +18,6 @@ import {
   getDevnetProvider,
   nextVaultId,
   deriveSessionPda,
-  deriveOracleRegistryPda,
-  initializeOracleRegistry,
-  makeOracleEntry,
   createFullVault,
   authorizeAndFinalize,
   fundKeypair,
@@ -40,16 +36,10 @@ describe("devnet-timelock", () => {
   const jupiterProgramId = Keypair.generate().publicKey;
 
   let mint: PublicKey;
-  let oracleRegistryPda: PublicKey;
 
   before(async () => {
     await fundKeypair(provider, agent.publicKey);
     mint = await createTestMint(connection, payer, owner.publicKey, 6);
-
-    // Initialize oracle registry with mint as stablecoin
-    oracleRegistryPda = await initializeOracleRegistry(program, owner, [
-      makeOracleEntry(mint),
-    ]);
   });
 
   /** Create a vault with timelock enabled */

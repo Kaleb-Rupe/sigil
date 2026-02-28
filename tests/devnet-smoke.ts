@@ -5,10 +5,7 @@
  * update_policy -> validate_and_authorize -> finalize_session ->
  * withdraw -> revoke -> reactivate -> close_vault.
  *
- * V2: No makeAllowedToken, no trackerTier. initializeVault takes 10 args.
- *     updatePolicy takes 10 optional args, no tracker in accounts.
- *     validate_and_authorize requires oracleRegistry + tokenMintAccount.
- *     finalizeSession has no tracker account.
+ *     Stablecoin-only architecture. initializeVault takes 11 args.
  */
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
@@ -34,9 +31,6 @@ import {
   getDevnetProvider,
   derivePDAs,
   deriveSessionPda,
-  deriveOracleRegistryPda,
-  initializeOracleRegistry,
-  makeOracleEntry,
   fundKeypair,
   createTestMint,
   nextVaultId,
@@ -58,8 +52,6 @@ describe("devnet-smoke-test", () => {
   let ownerUsdcAta: PublicKey;
   let vaultUsdcAta: PublicKey;
   let protocolTreasuryUsdcAta: PublicKey;
-  let oracleRegistryPda: PublicKey;
-
   const jupiterProgramId = Keypair.generate().publicKey;
 
   before(async () => {
@@ -79,11 +71,6 @@ describe("devnet-smoke-test", () => {
       6,
     );
     console.log("  Test mint:", usdcMint.toString());
-
-    // Initialize oracle registry with mint as stablecoin
-    oracleRegistryPda = await initializeOracleRegistry(program, owner, [
-      makeOracleEntry(usdcMint),
-    ]);
 
     // Create owner token account and mint tokens
     ownerUsdcAta = await createAssociatedTokenAccount(
@@ -224,7 +211,6 @@ describe("devnet-smoke-test", () => {
   });
 
   it("5. validate_and_authorize", async () => {
-    // V2: requires oracleRegistry + tokenMintAccount
     await program.methods
       .validateAndAuthorize(
         { swap: {} },
@@ -238,7 +224,6 @@ describe("devnet-smoke-test", () => {
         vault: vaultPda,
         policy: policyPda,
         tracker: trackerPda,
-        oracleRegistry: oracleRegistryPda,
         session: sessionPda,
         vaultTokenAccount: vaultUsdcAta,
         tokenMintAccount: usdcMint,

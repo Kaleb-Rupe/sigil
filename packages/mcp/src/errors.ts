@@ -6,7 +6,7 @@ export interface ErrorInfo {
 }
 
 /**
- * Maps all 46 AgentShield Anchor error codes (6000–6045) to
+ * Maps all 45 AgentShield Anchor error codes (6000–6044) to
  * human-readable messages with actionable suggestions for AI tools.
  */
 const ERROR_MAP: Record<number, ErrorInfo> = {
@@ -34,9 +34,9 @@ const ERROR_MAP: Record<number, ErrorInfo> = {
   6003: {
     code: 6003,
     name: "TokenNotRegistered",
-    message: "Token not registered in oracle registry",
+    message: "Token is not a recognized stablecoin",
     suggestion:
-      "Register the token in the oracle registry before using it, or use a token that is already registered.",
+      "Only USDC and USDT are supported for spending. Use a stablecoin for transfers, or swap non-stablecoins through a stablecoin pair.",
   },
   6004: {
     code: 6004,
@@ -81,251 +81,252 @@ const ERROR_MAP: Record<number, ErrorInfo> = {
   },
   6010: {
     code: 6010,
-    name: "SessionExpired",
-    message: "Session has expired",
-    suggestion:
-      "The session exceeded its 20-slot window. Retry the operation — a new session will be created.",
-  },
-  6011: {
-    code: 6011,
     name: "SessionNotAuthorized",
     message: "Session not authorized",
     suggestion:
       "The validate_and_authorize step may have failed. Check vault status and policy compliance.",
   },
-  6012: {
-    code: 6012,
+  6011: {
+    code: 6011,
     name: "InvalidSession",
     message: "Invalid session: does not belong to this vault",
     suggestion:
       "Ensure you are using the correct vault address for this session.",
   },
-  6013: {
-    code: 6013,
+  6012: {
+    code: 6012,
     name: "OpenPositionsExist",
     message: "Vault has open positions, cannot close",
     suggestion: "Close all open positions before closing the vault.",
   },
-  6014: {
-    code: 6014,
+  6013: {
+    code: 6013,
     name: "TooManyAllowedProtocols",
     message: "Policy configuration invalid: too many allowed protocols",
     suggestion:
       "Maximum 10 allowed protocols. Remove protocols you no longer need.",
   },
-  6015: {
-    code: 6015,
+  6014: {
+    code: 6014,
     name: "AgentAlreadyRegistered",
     message: "Agent already registered for this vault",
     suggestion: "Use shield_revoke_agent first, then register the new agent.",
   },
-  6016: {
-    code: 6016,
+  6015: {
+    code: 6015,
     name: "NoAgentRegistered",
     message: "No agent registered for this vault",
     suggestion:
       "Use shield_register_agent to register an agent before executing trades.",
   },
-  6017: {
-    code: 6017,
+  6016: {
+    code: 6016,
     name: "VaultNotFrozen",
     message: "Vault is not frozen (expected frozen for reactivation)",
     suggestion:
       "Only frozen vaults can be reactivated. The vault may already be active.",
   },
-  6018: {
-    code: 6018,
+  6017: {
+    code: 6017,
     name: "VaultAlreadyClosed",
     message: "Vault is already closed",
     suggestion:
       "This vault has been permanently closed. Create a new vault instead.",
   },
-  6019: {
-    code: 6019,
+  6018: {
+    code: 6018,
     name: "InsufficientBalance",
     message: "Insufficient vault balance for withdrawal",
     suggestion:
       "Use shield_check_vault to verify balances. Deposit more funds or reduce the withdrawal amount.",
   },
-  6020: {
-    code: 6020,
+  6019: {
+    code: 6019,
     name: "DeveloperFeeTooHigh",
     message: "Developer fee rate exceeds maximum (500 / 1,000,000 = 5 BPS)",
     suggestion: "Set developerFeeRate to 500 or less (maximum 0.05%).",
   },
-  6021: {
-    code: 6021,
+  6020: {
+    code: 6020,
     name: "InvalidFeeDestination",
     message: "Fee destination account invalid",
     suggestion: "Provide a valid Solana public key for the fee destination.",
   },
-  6022: {
-    code: 6022,
+  6021: {
+    code: 6021,
     name: "InvalidProtocolTreasury",
     message: "Protocol treasury account does not match expected address",
     suggestion:
       "This is an internal error. The protocol treasury address is hardcoded.",
   },
-  6023: {
-    code: 6023,
+  6022: {
+    code: 6022,
     name: "InvalidAgentKey",
     message: "Invalid agent: cannot be the zero address",
     suggestion: "Provide a valid Solana public key for the agent.",
   },
-  6024: {
-    code: 6024,
+  6023: {
+    code: 6023,
     name: "AgentIsOwner",
     message: "Invalid agent: agent cannot be the vault owner",
     suggestion:
       "The agent key must be different from the vault owner. Use a separate keypair.",
   },
-  6025: {
-    code: 6025,
+  6024: {
+    code: 6024,
     name: "Overflow",
     message: "Arithmetic overflow",
     suggestion: "The amount is too large. Reduce the value and try again.",
   },
-  6026: {
-    code: 6026,
-    name: "DelegationFailed",
-    message: "Token delegation approval failed",
-    suggestion:
-      "The vault may not have sufficient token balance. Check vault balance and try again.",
-  },
-  6027: {
-    code: 6027,
-    name: "RevocationFailed",
-    message: "Token delegation revocation failed",
-    suggestion:
-      "The session may have already been finalized. Check session status.",
-  },
-  6028: {
-    code: 6028,
-    name: "OracleFeedStale",
-    message: "Oracle feed value is too stale",
-    suggestion:
-      "The oracle price data is outdated (exceeds 100-slot staleness window). Wait for a fresh price update and retry.",
-  },
-  6029: {
-    code: 6029,
-    name: "OracleFeedInvalid",
-    message: "Cannot parse oracle feed data",
-    suggestion:
-      "The oracle feed account data is malformed. Verify the oracle configuration in the oracle registry.",
-  },
-  6030: {
-    code: 6030,
-    name: "TokenSpendBlocked",
-    message: "Unpriced token cannot be spent (receive-only)",
-    suggestion:
-      "This token has no oracle price feed and is configured as receive-only. It cannot be used for spending.",
-  },
-  6031: {
-    code: 6031,
+  6025: {
+    code: 6025,
     name: "InvalidTokenAccount",
     message: "Token account does not belong to vault or has wrong mint",
     suggestion:
       "Ensure the token account is owned by the vault PDA and matches the token mint.",
   },
-  6032: {
-    code: 6032,
-    name: "OracleAccountMissing",
-    message: "Oracle-priced token requires feed account in remaining_accounts",
-    suggestion:
-      "Pass the oracle feed account when transacting with oracle-priced tokens. The SDK resolves this automatically.",
-  },
-  6033: {
-    code: 6033,
-    name: "OracleConfidenceTooWide",
-    message: "Oracle price confidence interval too wide",
-    suggestion:
-      "The oracle price has high uncertainty (>10% confidence interval). Wait for more stable market conditions and retry.",
-  },
-  6034: {
-    code: 6034,
-    name: "OracleUnsupportedType",
-    message: "Oracle account owner is not a recognized oracle program",
-    suggestion:
-      "The oracle feed account must be owned by either Pyth Receiver or Switchboard On-Demand program. Check the oracle registry.",
-  },
-  6035: {
-    code: 6035,
-    name: "OracleNotVerified",
-    message: "Pyth price update not fully verified by Wormhole",
-    suggestion:
-      "The Pyth price update has not been verified by Wormhole guardians. Use a fully verified price feed.",
-  },
-  6036: {
-    code: 6036,
+  6026: {
+    code: 6026,
     name: "TimelockNotExpired",
     message: "Timelock period has not expired yet",
     suggestion:
       "Wait for the timelock period to expire before applying the pending policy update.",
   },
-  6037: {
-    code: 6037,
+  6027: {
+    code: 6027,
     name: "TimelockActive",
     message: "Vault has timelock active — use queue_policy_update instead",
     suggestion:
       "This vault has a timelock configured. Use shield_queue_policy_update to queue changes, then apply after the timelock expires.",
   },
-  6038: {
-    code: 6038,
+  6028: {
+    code: 6028,
     name: "NoTimelockConfigured",
     message: "No timelock configured on this vault",
     suggestion:
       "This vault does not have a timelock. Use shield_update_policy directly instead of queue_policy_update.",
   },
-  6039: {
-    code: 6039,
+  6029: {
+    code: 6029,
     name: "DestinationNotAllowed",
     message: "Destination not in allowed list",
     suggestion:
       "Use shield_update_policy to add the destination address to allowedDestinations.",
   },
-  6040: {
-    code: 6040,
+  6030: {
+    code: 6030,
     name: "TooManyDestinations",
     message: "Too many destinations (max 10)",
     suggestion:
       "Maximum 10 allowed destinations. Remove destinations you no longer need before adding new ones.",
   },
-  6041: {
-    code: 6041,
+  6031: {
+    code: 6031,
     name: "InvalidProtocolMode",
     message: "Invalid protocol mode (must be 0, 1, or 2)",
     suggestion:
       "Set protocolMode to 0 (allow all), 1 (allowlist), or 2 (denylist).",
   },
+  6032: {
+    code: 6032,
+    name: "InvalidNonSpendingAmount",
+    message: "Non-spending action must have amount = 0",
+    suggestion:
+      "Risk-reducing actions (ClosePosition, DecreasePosition, CloseAndSwapPosition) and other non-spending actions must pass amount = 0.",
+  },
+  6033: {
+    code: 6033,
+    name: "NoPositionsToClose",
+    message: "No open positions to close or cancel",
+    suggestion:
+      "The vault has no open positions. Use sync_positions to correct the counter if it is out of sync.",
+  },
+  6034: {
+    code: 6034,
+    name: "CpiCallNotAllowed",
+    message: "Instruction must be top-level (CPI calls not allowed)",
+    suggestion:
+      "validate_and_authorize must be called as a top-level instruction, not via CPI. Check the transaction composition.",
+  },
+  6035: {
+    code: 6035,
+    name: "MissingFinalizeInstruction",
+    message: "Transaction must include finalize_session after validate",
+    suggestion:
+      "Every validate_and_authorize must be followed by a finalize_session in the same transaction. Check the transaction composition.",
+  },
+  6036: {
+    code: 6036,
+    name: "NonTrackedSwapMustReturnStablecoin",
+    message:
+      "Non-stablecoin swap must return stablecoin (balance did not increase)",
+    suggestion:
+      "When swapping a non-stablecoin token, the output must be USDC or USDT and the vault's stablecoin balance must increase. Route through a stablecoin pair.",
+  },
+  6037: {
+    code: 6037,
+    name: "SlippageTooHigh",
+    message:
+      "Jupiter slippage exceeds policy max_slippage_bps or quoted_out is zero",
+    suggestion:
+      "Reduce the slippage tolerance or use shield_update_policy to increase maxSlippageBps.",
+  },
+  6038: {
+    code: 6038,
+    name: "InvalidJupiterInstruction",
+    message: "Cannot parse Jupiter swap instruction data",
+    suggestion:
+      "The Jupiter swap instruction has an unrecognized format. Ensure you are using Jupiter V6 SharedAccountsRoute or Route.",
+  },
+  6039: {
+    code: 6039,
+    name: "InvalidFlashTradeInstruction",
+    message: "Cannot parse Flash Trade instruction data",
+    suggestion:
+      "The Flash Trade instruction has an unrecognized discriminator. Ensure you are using a supported Flash Trade action.",
+  },
+  6040: {
+    code: 6040,
+    name: "FlashTradePriceZero",
+    message: "Flash Trade priceWithSlippage is zero",
+    suggestion:
+      "The Flash Trade instruction has a zero price, which would accept any fill price. Provide a valid priceWithSlippage.",
+  },
+  6041: {
+    code: 6041,
+    name: "DustDepositDetected",
+    message:
+      "SPL Transfer to vault stablecoin ATA detected (dust deposit attack)",
+    suggestion:
+      "A top-level SPL Token transfer to the vault's stablecoin account was detected between validate and finalize. Legitimate swaps use CPI through Jupiter/Flash Trade, not top-level transfers.",
+  },
   6042: {
     code: 6042,
-    name: "OracleRegistryFull",
-    message: "Oracle registry is full (max 105 entries)",
+    name: "InvalidJupiterLendInstruction",
+    message: "Cannot parse Jupiter Lend instruction data",
     suggestion:
-      "The oracle registry has reached its maximum capacity of 105 token entries. Remove unused entries before adding new ones.",
+      "The Jupiter Lend instruction has an unrecognized format. Ensure you are using Jupiter Lend deposit or withdraw instructions from the official API.",
   },
   6043: {
     code: 6043,
-    name: "UnauthorizedRegistryAdmin",
-    message: "Unauthorized: not the oracle registry authority",
+    name: "SlippageBpsTooHigh",
+    message: "Slippage BPS exceeds maximum (5000 = 50%)",
     suggestion:
-      "Only the oracle registry authority can modify the registry. Verify you are using the correct admin wallet.",
+      "The max_slippage_bps policy value exceeds the hard cap of 5000 (50%). Use a value between 0 and 5000.",
   },
   6044: {
     code: 6044,
-    name: "OraclePriceDivergence",
-    message: "Primary and fallback oracle prices diverge beyond threshold",
+    name: "ProtocolMismatch",
+    message: "DeFi instruction program does not match declared target_protocol",
     suggestion:
-      "The primary and fallback oracle feeds report prices that differ too much. Wait for price convergence or verify oracle feed configuration.",
-  },
-  6045: {
-    code: 6045,
-    name: "OracleBothFeedsFailed",
-    message: "Both primary and fallback oracle feeds failed",
-    suggestion:
-      "Neither oracle feed returned a valid price. Check that the oracle accounts are valid and not stale.",
+      "The DeFi instruction targets a different program than declared in target_protocol. Ensure target_protocol matches the actual program ID of the DeFi instruction in the transaction.",
   },
 };
+
+/** Truncate and strip control characters from external messages. */
+function sanitizeMessage(msg: string, maxLen = 200): string {
+  return msg.replace(/[\x00-\x1f]/g, "").slice(0, maxLen);
+}
 
 /**
  * Look up an Anchor error code and return a structured ErrorInfo.
@@ -380,6 +381,38 @@ export function formatError(error: unknown): string {
     return (
       `Error: ${info.message} (${info.name}, code ${info.code})\n` +
       `Suggestion: ${info.suggestion}`
+    );
+  }
+
+  // Jupiter API error (rate limit, server error, bad request)
+  if (
+    error instanceof Error &&
+    error.name === "JupiterApiError" &&
+    "statusCode" in error
+  ) {
+    const statusCode = (error as any).statusCode as number;
+    const safeMsg = sanitizeMessage(error.message);
+    if (statusCode === 429) {
+      return (
+        `Jupiter rate limited: ${safeMsg}\n` +
+        "Suggestion: Wait 10 seconds and retry. If this persists, configure a Jupiter API key at portal.jup.ag for higher rate limits."
+      );
+    }
+    if (statusCode >= 500) {
+      return (
+        `Jupiter service error: ${safeMsg}\n` +
+        "Suggestion: Jupiter API is temporarily unavailable. Retry in 30 seconds."
+      );
+    }
+    if (statusCode === 400) {
+      return (
+        `Jupiter bad request: ${safeMsg}\n` +
+        "Suggestion: Check that the input/output mints are valid, the amount is positive, and the token pair has sufficient liquidity."
+      );
+    }
+    return (
+      `Jupiter API error (${statusCode}): ${safeMsg}\n` +
+      "Suggestion: Check the Jupiter API status at status.jup.ag."
     );
   }
 

@@ -35,6 +35,7 @@ pub fn handler(
     can_open_positions: Option<bool>,
     max_concurrent_positions: Option<u8>,
     developer_fee_rate: Option<u16>,
+    max_slippage_bps: Option<u16>,
     timelock_duration: Option<u64>,
     allowed_destinations: Option<Vec<Pubkey>>,
 ) -> Result<()> {
@@ -88,6 +89,13 @@ pub fn handler(
         );
         policy.developer_fee_rate = fee_rate;
     }
+    if let Some(slippage) = max_slippage_bps {
+        require!(
+            slippage <= MAX_SLIPPAGE_BPS,
+            AgentShieldError::SlippageBpsTooHigh
+        );
+        policy.max_slippage_bps = slippage;
+    }
     if let Some(tl) = timelock_duration {
         policy.timelock_duration = tl;
     }
@@ -108,6 +116,7 @@ pub fn handler(
         protocols_count: policy.protocols.len() as u8,
         max_leverage_bps: policy.max_leverage_bps,
         developer_fee_rate: policy.developer_fee_rate,
+        max_slippage_bps: policy.max_slippage_bps,
         timestamp: clock.unix_timestamp,
     });
 

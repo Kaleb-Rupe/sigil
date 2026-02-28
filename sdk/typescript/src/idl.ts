@@ -14,53 +14,10 @@ export type AgentShield = {
   };
   instructions: [
     {
-      name: "acceptOracleAuthority";
-      docs: [
-        "Accept an oracle registry authority transfer (step 2 of 2).",
-        "Only the proposed new authority can call this.",
-      ];
-      discriminator: [15, 166, 225, 171, 229, 140, 199, 227];
-      accounts: [
-        {
-          name: "newAuthority";
-          signer: true;
-        },
-        {
-          name: "oracleRegistry";
-          writable: true;
-          pda: {
-            seeds: [
-              {
-                kind: "const";
-                value: [
-                  111,
-                  114,
-                  97,
-                  99,
-                  108,
-                  101,
-                  95,
-                  114,
-                  101,
-                  103,
-                  105,
-                  115,
-                  116,
-                  114,
-                  121,
-                ];
-              },
-            ];
-          };
-        },
-      ];
-      args: [];
-    },
-    {
       name: "agentTransfer";
       docs: [
         "Transfer tokens from the vault to an allowed destination.",
-        "Only the agent can call this.",
+        "Only the agent can call this. Stablecoin-only.",
       ];
       discriminator: [199, 111, 151, 49, 124, 13, 150, 44];
       accounts: [
@@ -120,34 +77,6 @@ export type AgentShield = {
               {
                 kind: "account";
                 path: "vault";
-              },
-            ];
-          };
-        },
-        {
-          name: "oracleRegistry";
-          docs: ["Protocol-level oracle registry (zero-copy)"];
-          pda: {
-            seeds: [
-              {
-                kind: "const";
-                value: [
-                  111,
-                  114,
-                  97,
-                  99,
-                  108,
-                  101,
-                  95,
-                  114,
-                  101,
-                  103,
-                  105,
-                  115,
-                  116,
-                  114,
-                  121,
-                ];
               },
             ];
           };
@@ -727,6 +656,15 @@ export type AgentShield = {
           optional: true;
         },
         {
+          name: "outputStablecoinAccount";
+          docs: [
+            "Vault's stablecoin ATA for non-stablecoin→stablecoin swap verification.",
+            "Required when session.output_mint != Pubkey::default().",
+          ];
+          writable: true;
+          optional: true;
+        },
+        {
           name: "tokenProgram";
           address: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
         },
@@ -739,65 +677,6 @@ export type AgentShield = {
         {
           name: "success";
           type: "bool";
-        },
-      ];
-    },
-    {
-      name: "initializeOracleRegistry";
-      docs: [
-        "Initialize the protocol-level oracle registry.",
-        "Only called once. The authority becomes the registry admin.",
-      ];
-      discriminator: [190, 92, 228, 114, 56, 71, 101, 220];
-      accounts: [
-        {
-          name: "authority";
-          writable: true;
-          signer: true;
-        },
-        {
-          name: "oracleRegistry";
-          writable: true;
-          pda: {
-            seeds: [
-              {
-                kind: "const";
-                value: [
-                  111,
-                  114,
-                  97,
-                  99,
-                  108,
-                  101,
-                  95,
-                  114,
-                  101,
-                  103,
-                  105,
-                  115,
-                  116,
-                  114,
-                  121,
-                ];
-              },
-            ];
-          };
-        },
-        {
-          name: "systemProgram";
-          address: "11111111111111111111111111111111";
-        },
-      ];
-      args: [
-        {
-          name: "entries";
-          type: {
-            vec: {
-              defined: {
-                name: "oracleEntry";
-              };
-            };
-          };
         },
       ];
     },
@@ -912,6 +791,10 @@ export type AgentShield = {
           type: "u16";
         },
         {
+          name: "maxSlippageBps";
+          type: "u16";
+        },
+        {
           name: "timelockDuration";
           type: "u64";
         },
@@ -920,54 +803,6 @@ export type AgentShield = {
           type: {
             vec: "pubkey";
           };
-        },
-      ];
-    },
-    {
-      name: "proposeOracleAuthority";
-      docs: [
-        "Propose a new authority for the oracle registry (step 1 of 2).",
-        "Only the current authority can call this.",
-      ];
-      discriminator: [146, 109, 205, 24, 129, 202, 217, 36];
-      accounts: [
-        {
-          name: "authority";
-          signer: true;
-        },
-        {
-          name: "oracleRegistry";
-          writable: true;
-          pda: {
-            seeds: [
-              {
-                kind: "const";
-                value: [
-                  111,
-                  114,
-                  97,
-                  99,
-                  108,
-                  101,
-                  95,
-                  114,
-                  101,
-                  103,
-                  105,
-                  115,
-                  116,
-                  114,
-                  121,
-                ];
-              },
-            ];
-          };
-        },
-      ];
-      args: [
-        {
-          name: "newAuthority";
-          type: "pubkey";
         },
       ];
     },
@@ -1101,6 +936,12 @@ export type AgentShield = {
         },
         {
           name: "developerFeeRate";
+          type: {
+            option: "u16";
+          };
+        },
+        {
+          name: "maxSlippageBps";
           type: {
             option: "u16";
           };
@@ -1242,41 +1083,32 @@ export type AgentShield = {
       args: [];
     },
     {
-      name: "updateOracleRegistry";
-      docs: [
-        "Add or remove entries from the oracle registry.",
-        "Only the registry authority can call this.",
-      ];
-      discriminator: [184, 234, 19, 21, 41, 240, 100, 14];
+      name: "syncPositions";
+      docs: ["Sync the vault's open position counter with the actual state."];
+      discriminator: [255, 102, 161, 80, 185, 74, 140, 60];
       accounts: [
         {
-          name: "authority";
+          name: "owner";
           signer: true;
         },
         {
-          name: "oracleRegistry";
+          name: "vault";
           writable: true;
           pda: {
             seeds: [
               {
                 kind: "const";
-                value: [
-                  111,
-                  114,
-                  97,
-                  99,
-                  108,
-                  101,
-                  95,
-                  114,
-                  101,
-                  103,
-                  105,
-                  115,
-                  116,
-                  114,
-                  121,
-                ];
+                value: [118, 97, 117, 108, 116];
+              },
+              {
+                kind: "account";
+                path: "vault.owner";
+                account: "agentVault";
+              },
+              {
+                kind: "account";
+                path: "vault.vault_id";
+                account: "agentVault";
               },
             ];
           };
@@ -1284,20 +1116,8 @@ export type AgentShield = {
       ];
       args: [
         {
-          name: "entriesToAdd";
-          type: {
-            vec: {
-              defined: {
-                name: "oracleEntry";
-              };
-            };
-          };
-        },
-        {
-          name: "mintsToRemove";
-          type: {
-            vec: "pubkey";
-          };
+          name: "actualPositions";
+          type: "u8";
         },
       ];
     },
@@ -1404,6 +1224,12 @@ export type AgentShield = {
           };
         },
         {
+          name: "maxSlippageBps";
+          type: {
+            option: "u16";
+          };
+        },
+        {
           name: "timelockDuration";
           type: {
             option: "u64";
@@ -1423,7 +1249,8 @@ export type AgentShield = {
       name: "validateAndAuthorize";
       docs: [
         "Core permission check. Called by the agent before a DeFi action.",
-        "Validates against policy constraints + oracle registry.",
+        "Validates against policy constraints, stablecoin-only enforcement,",
+        "and protocol slippage verification.",
         "Creates a SessionAuthority PDA, delegates tokens to agent.",
       ];
       discriminator: [22, 183, 48, 222, 218, 11, 197, 152];
@@ -1489,36 +1316,6 @@ export type AgentShield = {
           };
         },
         {
-          name: "oracleRegistry";
-          docs: [
-            "Protocol-level oracle registry (shared across all vaults, zero-copy)",
-          ];
-          pda: {
-            seeds: [
-              {
-                kind: "const";
-                value: [
-                  111,
-                  114,
-                  97,
-                  99,
-                  108,
-                  101,
-                  95,
-                  114,
-                  101,
-                  103,
-                  105,
-                  115,
-                  116,
-                  114,
-                  121,
-                ];
-              },
-            ];
-          };
-        },
-        {
           name: "session";
           docs: [
             "Ephemeral session PDA — `init` ensures no double-authorization.",
@@ -1553,7 +1350,9 @@ export type AgentShield = {
         },
         {
           name: "tokenMintAccount";
-          docs: ["The token mint being spent"];
+          docs: [
+            "The token mint being spent — constrained to match token_mint arg",
+          ];
         },
         {
           name: "protocolTreasuryTokenAccount";
@@ -1572,12 +1371,29 @@ export type AgentShield = {
           optional: true;
         },
         {
+          name: "outputStablecoinAccount";
+          docs: [
+            "Vault's stablecoin ATA to snapshot (for non-stablecoin input swaps).",
+            "Required when input token is NOT a stablecoin.",
+          ];
+          writable: true;
+          optional: true;
+        },
+        {
           name: "tokenProgram";
           address: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
         },
         {
           name: "systemProgram";
           address: "11111111111111111111111111111111";
+        },
+        {
+          name: "instructionsSysvar";
+          docs: [
+            "Instructions sysvar for verifying DeFi instruction program_id",
+            "and protocol slippage enforcement.",
+          ];
+          address: "Sysvar1nstructions1111111111111111111111111";
         },
       ];
       args: [
@@ -1844,10 +1660,6 @@ export type AgentShield = {
       discriminator: [232, 220, 237, 164, 157, 9, 215, 194];
     },
     {
-      name: "oracleRegistry";
-      discriminator: [94, 153, 19, 250, 94, 0, 12, 172];
-    },
-    {
       name: "pendingPolicyUpdate";
       discriminator: [77, 255, 2, 51, 79, 237, 183, 239];
     },
@@ -1898,22 +1710,6 @@ export type AgentShield = {
       discriminator: [56, 130, 230, 154, 35, 92, 11, 118];
     },
     {
-      name: "oracleAuthorityProposed";
-      discriminator: [72, 88, 217, 127, 125, 208, 157, 34];
-    },
-    {
-      name: "oracleAuthorityTransferred";
-      discriminator: [120, 195, 241, 123, 203, 81, 155, 61];
-    },
-    {
-      name: "oracleRegistryInitialized";
-      discriminator: [88, 111, 7, 92, 74, 14, 114, 205];
-    },
-    {
-      name: "oracleRegistryUpdated";
-      discriminator: [25, 85, 137, 57, 175, 133, 14, 77];
-    },
-    {
       name: "policyChangeApplied";
       discriminator: [104, 89, 5, 100, 180, 202, 52, 73];
     },
@@ -1928,6 +1724,10 @@ export type AgentShield = {
     {
       name: "policyUpdated";
       discriminator: [225, 112, 112, 67, 95, 236, 245, 161];
+    },
+    {
+      name: "positionsSynced";
+      discriminator: [83, 33, 144, 201, 168, 13, 0, 95];
     },
     {
       name: "sessionFinalized";
@@ -1965,7 +1765,7 @@ export type AgentShield = {
     {
       code: 6003;
       name: "tokenNotRegistered";
-      msg: "Token not registered in oracle registry";
+      msg: "Token is not a recognized stablecoin";
     },
     {
       code: 6004;
@@ -1999,198 +1799,173 @@ export type AgentShield = {
     },
     {
       code: 6010;
-      name: "sessionExpired";
-      msg: "Session has expired";
-    },
-    {
-      code: 6011;
       name: "sessionNotAuthorized";
       msg: "Session not authorized";
     },
     {
-      code: 6012;
+      code: 6011;
       name: "invalidSession";
       msg: "Invalid session: does not belong to this vault";
     },
     {
-      code: 6013;
+      code: 6012;
       name: "openPositionsExist";
       msg: "Vault has open positions, cannot close";
     },
     {
-      code: 6014;
+      code: 6013;
       name: "tooManyAllowedProtocols";
       msg: "Policy configuration invalid: too many allowed protocols";
     },
     {
-      code: 6015;
+      code: 6014;
       name: "agentAlreadyRegistered";
       msg: "Agent already registered for this vault";
     },
     {
-      code: 6016;
+      code: 6015;
       name: "noAgentRegistered";
       msg: "No agent registered for this vault";
     },
     {
-      code: 6017;
+      code: 6016;
       name: "vaultNotFrozen";
       msg: "Vault is not frozen (expected frozen for reactivation)";
     },
     {
-      code: 6018;
+      code: 6017;
       name: "vaultAlreadyClosed";
       msg: "Vault is already closed";
     },
     {
-      code: 6019;
+      code: 6018;
       name: "insufficientBalance";
       msg: "Insufficient vault balance for withdrawal";
     },
     {
-      code: 6020;
+      code: 6019;
       name: "developerFeeTooHigh";
       msg: "Developer fee rate exceeds maximum (500 / 1,000,000 = 5 BPS)";
     },
     {
-      code: 6021;
+      code: 6020;
       name: "invalidFeeDestination";
       msg: "Fee destination account invalid";
     },
     {
-      code: 6022;
+      code: 6021;
       name: "invalidProtocolTreasury";
       msg: "Protocol treasury account does not match expected address";
     },
     {
-      code: 6023;
+      code: 6022;
       name: "invalidAgentKey";
       msg: "Invalid agent: cannot be the zero address";
     },
     {
-      code: 6024;
+      code: 6023;
       name: "agentIsOwner";
       msg: "Invalid agent: agent cannot be the vault owner";
     },
     {
-      code: 6025;
+      code: 6024;
       name: "overflow";
       msg: "Arithmetic overflow";
     },
     {
-      code: 6026;
-      name: "delegationFailed";
-      msg: "Token delegation approval failed";
-    },
-    {
-      code: 6027;
-      name: "revocationFailed";
-      msg: "Token delegation revocation failed";
-    },
-    {
-      code: 6028;
-      name: "oracleFeedStale";
-      msg: "Oracle feed value is too stale";
-    },
-    {
-      code: 6029;
-      name: "oracleFeedInvalid";
-      msg: "Cannot parse oracle feed data";
-    },
-    {
-      code: 6030;
-      name: "tokenSpendBlocked";
-      msg: "Unpriced token cannot be spent (receive-only)";
-    },
-    {
-      code: 6031;
+      code: 6025;
       name: "invalidTokenAccount";
       msg: "Token account does not belong to vault or has wrong mint";
     },
     {
-      code: 6032;
-      name: "oracleAccountMissing";
-      msg: "Oracle-priced token requires feed account in remaining_accounts";
-    },
-    {
-      code: 6033;
-      name: "oracleConfidenceTooWide";
-      msg: "Oracle spot confidence exceeds 20% safety valve (feed likely broken)";
-    },
-    {
-      code: 6034;
-      name: "oracleUnsupportedType";
-      msg: "Oracle account owner is not a recognized oracle program";
-    },
-    {
-      code: 6035;
-      name: "oracleNotVerified";
-      msg: "Pyth price update not fully verified by Wormhole";
-    },
-    {
-      code: 6036;
+      code: 6026;
       name: "timelockNotExpired";
       msg: "Timelock period has not expired yet";
     },
     {
-      code: 6037;
+      code: 6027;
       name: "timelockActive";
       msg: "Vault has timelock active — use queue_policy_update instead";
     },
     {
-      code: 6038;
+      code: 6028;
       name: "noTimelockConfigured";
       msg: "No timelock configured on this vault";
     },
     {
-      code: 6039;
+      code: 6029;
       name: "destinationNotAllowed";
       msg: "Destination not in allowed list";
     },
     {
-      code: 6040;
+      code: 6030;
       name: "tooManyDestinations";
       msg: "Too many destinations (max 10)";
     },
     {
-      code: 6041;
+      code: 6031;
       name: "invalidProtocolMode";
       msg: "Invalid protocol mode (must be 0, 1, or 2)";
     },
     {
+      code: 6032;
+      name: "invalidNonSpendingAmount";
+      msg: "Non-spending action must have amount = 0";
+    },
+    {
+      code: 6033;
+      name: "noPositionsToClose";
+      msg: "No open positions to close or cancel";
+    },
+    {
+      code: 6034;
+      name: "cpiCallNotAllowed";
+      msg: "Instruction must be top-level (CPI calls not allowed)";
+    },
+    {
+      code: 6035;
+      name: "missingFinalizeInstruction";
+      msg: "Transaction must include finalize_session after validate";
+    },
+    {
+      code: 6036;
+      name: "nonTrackedSwapMustReturnStablecoin";
+      msg: "Non-stablecoin swap must return stablecoin (balance did not increase)";
+    },
+    {
+      code: 6037;
+      name: "slippageTooHigh";
+      msg: "Jupiter slippage exceeds policy max_slippage_bps or quoted_out is zero";
+    },
+    {
+      code: 6038;
+      name: "invalidJupiterInstruction";
+      msg: "Cannot parse Jupiter swap instruction data";
+    },
+    {
+      code: 6039;
+      name: "invalidFlashTradeInstruction";
+      msg: "Cannot parse Flash Trade instruction data";
+    },
+    {
+      code: 6040;
+      name: "flashTradePriceZero";
+      msg: "Flash Trade priceWithSlippage is zero";
+    },
+    {
+      code: 6041;
+      name: "dustDepositDetected";
+      msg: "SPL Transfer to vault stablecoin ATA detected (dust deposit attack)";
+    },
+    {
       code: 6042;
-      name: "oracleRegistryFull";
-      msg: "Oracle registry is full (max 104 entries)";
+      name: "invalidJupiterLendInstruction";
+      msg: "Cannot parse Jupiter Lend instruction data";
     },
     {
       code: 6043;
-      name: "unauthorizedRegistryAdmin";
-      msg: "Unauthorized: not the oracle registry authority";
-    },
-    {
-      code: 6044;
-      name: "oraclePriceDivergence";
-      msg: "Primary and fallback oracle prices diverge beyond threshold";
-    },
-    {
-      code: 6045;
-      name: "oracleBothFeedsFailed";
-      msg: "Both primary and fallback oracle feeds failed";
-    },
-    {
-      code: 6046;
-      name: "oracleConfidenceSpike";
-      msg: "Oracle confidence spike: spot_conf exceeds 5x ema_conf";
-    },
-    {
-      code: 6047;
-      name: "invalidAuthorityKey";
-      msg: "Invalid authority key: cannot be the zero address";
-    },
-    {
-      code: 6048;
-      name: "noPendingAuthority";
-      msg: "No pending authority transfer to accept";
+      name: "slippageBpsTooHigh";
+      msg: "Slippage BPS exceeds maximum (5000 = 50%)";
     },
   ];
   types: [
@@ -2244,18 +2019,6 @@ export type AgentShield = {
             type: "bool";
           },
           {
-            name: "oraclePrice";
-            type: {
-              option: "i128";
-            };
-          },
-          {
-            name: "oracleSource";
-            type: {
-              option: "u8";
-            };
-          },
-          {
             name: "timestamp";
             type: "i64";
           },
@@ -2291,6 +2054,36 @@ export type AgentShield = {
           },
           {
             name: "transfer";
+          },
+          {
+            name: "addCollateral";
+          },
+          {
+            name: "removeCollateral";
+          },
+          {
+            name: "placeTriggerOrder";
+          },
+          {
+            name: "editTriggerOrder";
+          },
+          {
+            name: "cancelTriggerOrder";
+          },
+          {
+            name: "placeLimitOrder";
+          },
+          {
+            name: "editLimitOrder";
+          },
+          {
+            name: "cancelLimitOrder";
+          },
+          {
+            name: "swapAndOpenPosition";
+          },
+          {
+            name: "closeAndSwapPosition";
           },
         ];
       };
@@ -2588,225 +2381,6 @@ export type AgentShield = {
       };
     },
     {
-      name: "oracleAuthorityProposed";
-      type: {
-        kind: "struct";
-        fields: [
-          {
-            name: "currentAuthority";
-            type: "pubkey";
-          },
-          {
-            name: "proposedAuthority";
-            type: "pubkey";
-          },
-        ];
-      };
-    },
-    {
-      name: "oracleAuthorityTransferred";
-      type: {
-        kind: "struct";
-        fields: [
-          {
-            name: "previousAuthority";
-            type: "pubkey";
-          },
-          {
-            name: "newAuthority";
-            type: "pubkey";
-          },
-        ];
-      };
-    },
-    {
-      name: "oracleEntry";
-      docs: [
-        "Borsh-serializable entry used as instruction argument.",
-        "Converted to/from OracleEntryZC for on-chain storage.",
-      ];
-      type: {
-        kind: "struct";
-        fields: [
-          {
-            name: "mint";
-            docs: ["SPL token mint address"];
-            type: "pubkey";
-          },
-          {
-            name: "oracleFeed";
-            docs: [
-              "Pyth or Switchboard oracle feed account.",
-              "Ignored when is_stablecoin is true.",
-            ];
-            type: "pubkey";
-          },
-          {
-            name: "isStablecoin";
-            docs: ["If true, token is 1:1 USD (no oracle read needed)"];
-            type: "bool";
-          },
-          {
-            name: "fallbackFeed";
-            docs: [
-              "Optional fallback oracle feed. Pubkey::default() = no fallback.",
-            ];
-            type: "pubkey";
-          },
-        ];
-      };
-    },
-    {
-      name: "oracleEntryZc";
-      docs: [
-        "Zero-copy individual entry mapping a token mint to its oracle feed.",
-        "97 bytes per entry, no padding needed (32+32+1+32 = 97).",
-      ];
-      serialization: "bytemuck";
-      repr: {
-        kind: "c";
-      };
-      type: {
-        kind: "struct";
-        fields: [
-          {
-            name: "mint";
-            docs: ["SPL token mint address"];
-            type: "pubkey";
-          },
-          {
-            name: "oracleFeed";
-            docs: [
-              "Pyth or Switchboard oracle feed account.",
-              "Ignored when is_stablecoin is 1.",
-            ];
-            type: "pubkey";
-          },
-          {
-            name: "isStablecoin";
-            docs: [
-              "1 = stablecoin (1:1 USD, no oracle read needed), 0 = oracle-priced",
-            ];
-            type: "u8";
-          },
-          {
-            name: "fallbackFeed";
-            docs: [
-              "Optional fallback oracle feed. Pubkey::default() = no fallback.",
-              "Used when primary is stale/invalid. Cross-checked for divergence",
-              "when both are available.",
-            ];
-            type: "pubkey";
-          },
-        ];
-      };
-    },
-    {
-      name: "oracleRegistry";
-      docs: [
-        "Zero-copy protocol-level oracle registry — maps token mints to oracle",
-        "feeds. Maintained by protocol admin. Shared across ALL vaults.",
-        "Any vault can use any registered token without per-vault configuration.",
-        "",
-        'Seeds: `[b"oracle_registry"]`',
-        "",
-        "Layout: disc(8) + authority(32) + pending_authority(32) + count(2) +",
-        "bump(1) + padding(5) + entries(97*104=10,088) = 10,168 bytes",
-        "(under 10,240 CPI limit)",
-      ];
-      serialization: "bytemuck";
-      repr: {
-        kind: "c";
-      };
-      type: {
-        kind: "struct";
-        fields: [
-          {
-            name: "authority";
-            docs: [
-              "Authority who can add/remove entries (upgradeable to multisig/DAO",
-              "via 2-step transfer)",
-            ];
-            type: "pubkey";
-          },
-          {
-            name: "pendingAuthority";
-            docs: [
-              "Pending authority for 2-step transfer. Pubkey::default() = none.",
-            ];
-            type: "pubkey";
-          },
-          {
-            name: "count";
-            docs: ["Number of active entries in the `entries` array"];
-            type: "u16";
-          },
-          {
-            name: "bump";
-            docs: ["Bump seed for PDA"];
-            type: "u8";
-          },
-          {
-            name: "padding";
-            docs: ["Padding for 8-byte alignment"];
-            type: {
-              array: ["u8", 5];
-            };
-          },
-          {
-            name: "entries";
-            docs: ["Fixed-size entry array (only entries[..count] are active)"];
-            type: {
-              array: [
-                {
-                  defined: {
-                    name: "oracleEntryZc";
-                  };
-                },
-                104,
-              ];
-            };
-          },
-        ];
-      };
-    },
-    {
-      name: "oracleRegistryInitialized";
-      type: {
-        kind: "struct";
-        fields: [
-          {
-            name: "authority";
-            type: "pubkey";
-          },
-          {
-            name: "entryCount";
-            type: "u16";
-          },
-        ];
-      };
-    },
-    {
-      name: "oracleRegistryUpdated";
-      type: {
-        kind: "struct";
-        fields: [
-          {
-            name: "addedCount";
-            type: "u16";
-          },
-          {
-            name: "removedCount";
-            type: "u16";
-          },
-          {
-            name: "totalEntries";
-            type: "u16";
-          },
-        ];
-      };
-    },
-    {
       name: "pendingPolicyUpdate";
       docs: [
         "Queued policy update that becomes executable after a timelock period.",
@@ -2879,6 +2453,12 @@ export type AgentShield = {
           },
           {
             name: "developerFeeRate";
+            type: {
+              option: "u16";
+            };
+          },
+          {
+            name: "maxSlippageBps";
             type: {
               option: "u16";
             };
@@ -3021,6 +2601,15 @@ export type AgentShield = {
             type: "u16";
           },
           {
+            name: "maxSlippageBps";
+            docs: [
+              "Maximum slippage tolerance for Jupiter swaps in basis points.",
+              "0 = reject all swaps (vault owner must explicitly configure).",
+              "Enforced on-chain via instruction introspection of Jupiter data.",
+            ];
+            type: "u16";
+          },
+          {
             name: "timelockDuration";
             docs: [
               "Timelock duration in seconds for policy changes. 0 = no timelock.",
@@ -3077,6 +2666,34 @@ export type AgentShield = {
           {
             name: "developerFeeRate";
             type: "u16";
+          },
+          {
+            name: "maxSlippageBps";
+            type: "u16";
+          },
+          {
+            name: "timestamp";
+            type: "i64";
+          },
+        ];
+      };
+    },
+    {
+      name: "positionsSynced";
+      type: {
+        kind: "struct";
+        fields: [
+          {
+            name: "vault";
+            type: "pubkey";
+          },
+          {
+            name: "oldCount";
+            type: "u8";
+          },
+          {
+            name: "newCount";
+            type: "u8";
           },
           {
             name: "timestamp";
@@ -3160,6 +2777,22 @@ export type AgentShield = {
             name: "developerFee";
             docs: [
               "Developer fee collected during validate (for event logging in finalize)",
+            ];
+            type: "u64";
+          },
+          {
+            name: "outputMint";
+            docs: [
+              "Expected output stablecoin mint for non-stablecoin→stablecoin swaps.",
+              "Pubkey::default() when input is already a stablecoin (no snapshot needed).",
+            ];
+            type: "pubkey";
+          },
+          {
+            name: "stablecoinBalanceBefore";
+            docs: [
+              "Snapshot of vault's stablecoin ATA balance before swap.",
+              "0 when input is already a stablecoin.",
             ];
             type: "u64";
           },

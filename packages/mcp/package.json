@@ -18,7 +18,7 @@
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
-    "test": "mocha --require ts-node/register 'tests/*.test.ts' 'tests/**/*.test.ts' --timeout 30000"
+    "test": "NODE_OPTIONS='--no-experimental-strip-types' mocha --require ts-node/register 'tests/*.test.ts' 'tests/**/*.test.ts' --timeout 30000"
   },
   "files": [
     "dist/**/*",
@@ -36,10 +36,14 @@
     "@coral-xyz/anchor": ">=0.32.1",
     "@solana/spl-token": ">=0.4.0",
     "@solana/web3.js": ">=1.95.0",
-    "zod": "^3.25.0 || ^4.0.0"
+    "zod": "^3.25.0 || ^4.0.0",
+    "@sqds/multisig": ">=2.1.0"
   },
   "peerDependenciesMeta": {
     "@agent-shield/custody-crossmint": {
+      "optional": true
+    },
+    "@sqds/multisig": {
       "optional": true
     }
   },
@@ -57,6 +61,7 @@
     "sinon": "^21.0.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3",
+    "@sqds/multisig": "^2.1.4",
     "zod": "^4.3.6"
   },
   "keywords": [

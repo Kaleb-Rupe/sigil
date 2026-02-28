@@ -50,7 +50,7 @@ describe("shield_update_policy", () => {
 
   it("returns error on SDK failure", async () => {
     const client = createMockClient({
-      shouldThrow: Object.assign(new Error("test"), { code: 6014 }),
+      shouldThrow: Object.assign(new Error("test"), { code: 6013 }),
     });
     const result = await updatePolicy(client as any, {
       vault: TEST_VAULT_PDA.toBase58(),

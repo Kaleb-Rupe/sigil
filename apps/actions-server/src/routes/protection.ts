@@ -69,7 +69,7 @@ protection.get("/api/actions/protection", (c) => {
         "Protocol whitelists (Jupiter, Flash Trade, Orca, Raydium)",
         "Owner kill-switch (revoke agent instantly)",
         "Immutable fee destination (cannot be redirected)",
-        "Dual-oracle price feeds (Pyth + Switchboard)",
+        "Stablecoin-only USD tracking with on-chain slippage enforcement",
         "On-chain audit trail (Anchor events + SpendTracker)",
         "Timelocked policy updates for institutional guardrails",
         "Ephemeral session authority (20-slot expiry, prevents replay)",

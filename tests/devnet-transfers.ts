@@ -4,8 +4,7 @@
  * Exercises agent_transfer: destination allowlist enforcement,
  * fee correctness, access control, and spending cap interaction.
  *
- * V2: No makeAllowedToken. Tokens via OracleRegistry.
- *     agentTransfer requires oracleRegistry + tokenMintAccount accounts.
+ *     Stablecoin-only architecture. agentTransfer requires tokenMintAccount.
  *     Removed per-token max_tx_base test (V1 concept not in V2).
  */
 import * as anchor from "@coral-xyz/anchor";
@@ -19,8 +18,6 @@ import BN from "bn.js";
 import {
   getDevnetProvider,
   nextVaultId,
-  initializeOracleRegistry,
-  makeOracleEntry,
   createFullVault,
   fundKeypair,
   createTestMint,
@@ -45,7 +42,6 @@ describe("devnet-transfers", () => {
   let mint: PublicKey;
   let destAAta: PublicKey;
   let destBAta: PublicKey;
-  let oracleRegistryPda: PublicKey;
 
   // Vault with allowlist = [destA]
   let vaultAllowlist: FullVaultResult;
@@ -57,11 +53,6 @@ describe("devnet-transfers", () => {
     await fundKeypair(provider, attacker.publicKey);
 
     mint = await createTestMint(connection, payer, owner.publicKey, 6);
-
-    // Initialize oracle registry with mint as stablecoin
-    oracleRegistryPda = await initializeOracleRegistry(program, owner, [
-      makeOracleEntry(mint),
-    ]);
 
     // Create destination ATAs
     const ataA = await getOrCreateAssociatedTokenAccount(
@@ -127,7 +118,6 @@ describe("devnet-transfers", () => {
         vault: vaultAllowlist.vaultPda,
         policy: vaultAllowlist.policyPda,
         tracker: vaultAllowlist.trackerPda,
-        oracleRegistry: vaultAllowlist.oracleRegistryPda,
         vaultTokenAccount: vaultAllowlist.vaultTokenAta,
         tokenMintAccount: mint,
         destinationTokenAccount: destAAta,
@@ -153,7 +143,6 @@ describe("devnet-transfers", () => {
           vault: vaultAllowlist.vaultPda,
           policy: vaultAllowlist.policyPda,
           tracker: vaultAllowlist.trackerPda,
-          oracleRegistry: vaultAllowlist.oracleRegistryPda,
           vaultTokenAccount: vaultAllowlist.vaultTokenAta,
           tokenMintAccount: mint,
           destinationTokenAccount: destBAta, // destB not in allowlist
@@ -186,7 +175,6 @@ describe("devnet-transfers", () => {
         vault: vaultAnyDest.vaultPda,
         policy: vaultAnyDest.policyPda,
         tracker: vaultAnyDest.trackerPda,
-        oracleRegistry: vaultAnyDest.oracleRegistryPda,
         vaultTokenAccount: vaultAnyDest.vaultTokenAta,
         tokenMintAccount: mint,
         destinationTokenAccount: randomDestAta.address,
@@ -223,7 +211,6 @@ describe("devnet-transfers", () => {
         vault: vaultAllowlist.vaultPda,
         policy: vaultAllowlist.policyPda,
         tracker: vaultAllowlist.trackerPda,
-        oracleRegistry: vaultAllowlist.oracleRegistryPda,
         vaultTokenAccount: vaultAllowlist.vaultTokenAta,
         tokenMintAccount: mint,
         destinationTokenAccount: destAAta,
@@ -261,7 +248,6 @@ describe("devnet-transfers", () => {
           vault: vaultAllowlist.vaultPda,
           policy: vaultAllowlist.policyPda,
           tracker: vaultAllowlist.trackerPda,
-          oracleRegistry: vaultAllowlist.oracleRegistryPda,
           vaultTokenAccount: vaultAllowlist.vaultTokenAta,
           tokenMintAccount: mint,
           destinationTokenAccount: destAAta,
@@ -303,7 +289,6 @@ describe("devnet-transfers", () => {
         vault: smallCapVault.vaultPda,
         policy: smallCapVault.policyPda,
         tracker: smallCapVault.trackerPda,
-        oracleRegistry: smallCapVault.oracleRegistryPda,
         vaultTokenAccount: smallCapVault.vaultTokenAta,
         tokenMintAccount: mint,
         destinationTokenAccount: destAAta,
@@ -323,7 +308,6 @@ describe("devnet-transfers", () => {
           vault: smallCapVault.vaultPda,
           policy: smallCapVault.policyPda,
           tracker: smallCapVault.trackerPda,
-          oracleRegistry: smallCapVault.oracleRegistryPda,
           vaultTokenAccount: smallCapVault.vaultTokenAta,
           tokenMintAccount: mint,
           destinationTokenAccount: destAAta,

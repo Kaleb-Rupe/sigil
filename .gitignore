@@ -29,3 +29,17 @@ trident-tests/fuzz_tests/fuzzing/hfuzz_workspace/
 .certora-venv/
 .certora_internal/
 certora/output/
+
+.vscode
+
+# Surfpool
+.surfpool/
+
+# Sec3 X-Ray scan artifacts
+.xray/
+
+# LLVM IR build artifacts
+*.ll
+
+# Claude Code skills (local development tools)
+.claude/skills/

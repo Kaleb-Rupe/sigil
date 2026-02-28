@@ -5,7 +5,7 @@
 #   - Nightly at 2 AM UTC (catches network/RPC drift, oracle staleness)
 #   - Manual dispatch (optional: specific test file or verbose mode)
 #
-# 61 tests across 8 files. Costs SOL — never runs on PRs.
+# 56 tests across 8 files. Costs SOL — never runs on PRs.
 
 name: Devnet Tests
 
@@ -32,6 +32,10 @@ concurrency:
   group: devnet-tests
   cancel-in-progress: false
 
+# M6: Least-privilege — only read repo contents
+permissions:
+  contents: read
+
 jobs:
   devnet-test:
     runs-on: ubuntu-latest
@@ -52,7 +56,7 @@ jobs:
 
       - name: Install Solana CLI
         run: |
-          sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+          sh -c "$(curl -sSfL https://release.anza.xyz/v2.1.14/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
 
       - name: Configure devnet wallet
@@ -99,13 +103,15 @@ jobs:
           echo "ANCHOR_PROVIDER_URL=${{ secrets.DEVNET_RPC_URL }}" >> "$GITHUB_ENV"
 
       - name: Run devnet tests
+        env:
+          TEST_FILTER: ${{ github.event.inputs.test-filter || 'all' }}
         run: |
-          FILTER="${{ github.event.inputs.test-filter || 'all' }}"
+          FILTER="$TEST_FILTER"
           if [ "$FILTER" != "all" ] && [ -f "tests/$FILTER" ]; then
             echo "Running single test file: tests/$FILTER"
             npx ts-mocha -p ./tsconfig.json -t 600000 "tests/$FILTER"
           else
-            echo "Running all devnet tests (61 tests, 8 files)"
+            echo "Running all devnet tests (56 tests, 8 files)"
             npx ts-mocha -p ./tsconfig.json -t 600000 \
               tests/devnet-smoke.ts \
               tests/devnet-sessions.ts \

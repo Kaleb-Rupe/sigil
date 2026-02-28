@@ -1,9 +1,10 @@
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::instruction::get_stack_height;
 use anchor_spl::token::{self, Revoke, Token, TokenAccount};
 
 use crate::errors::AgentShieldError;
 use crate::events::{DelegationRevoked, SessionFinalized};
-use crate::state::*;
+use crate::state::{PositionEffect, *};
 
 #[derive(Accounts)]
 pub struct FinalizeSession<'info> {
@@ -41,11 +42,23 @@ pub struct FinalizeSession<'info> {
     #[account(mut)]
     pub vault_token_account: Option<Account<'info, TokenAccount>>,
 
+    /// Vault's stablecoin ATA for non-stablecoin→stablecoin swap verification.
+    /// Required when session.output_mint != Pubkey::default().
+    #[account(mut)]
+    pub output_stablecoin_account: Option<Account<'info, TokenAccount>>,
+
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
 }
 
 pub fn handler(ctx: Context<FinalizeSession>, success: bool) -> Result<()> {
+    // 0. Reject CPI calls — only top-level transaction instructions allowed.
+    require!(
+        get_stack_height()
+            == anchor_lang::solana_program::instruction::TRANSACTION_LEVEL_STACK_HEIGHT,
+        AgentShieldError::CpiCallNotAllowed
+    );
+
     let session = &ctx.accounts.session;
     let clock = Clock::get()?;
 
@@ -76,6 +89,9 @@ pub fn handler(ctx: Context<FinalizeSession>, success: bool) -> Result<()> {
     let session_action_type = session.action_type;
     let session_delegated = session.delegated;
     let session_developer_fee = session.developer_fee;
+    let session_output_mint = session.output_mint;
+    let session_balance_before = session.stablecoin_balance_before;
+    let session_delegation_token_account = session.delegation_token_account;
 
     let vault = &mut ctx.accounts.vault;
 
@@ -92,6 +108,23 @@ pub fn handler(ctx: Context<FinalizeSession>, success: bool) -> Result<()> {
         bump_slice.as_ref(),
     ];
     let binding = [signer_seeds.as_slice()];
+
+    // Security fix (Finding C): Validate vault_token_account matches session
+    if session_delegated {
+        // H1: vault_token_account MUST be provided when session was delegated.
+        // Without this, passing None silently skips revocation and the agent
+        // retains SPL token delegation authority.
+        require!(
+            ctx.accounts.vault_token_account.is_some(),
+            AgentShieldError::InvalidTokenAccount
+        );
+        if let Some(ref vault_token) = ctx.accounts.vault_token_account {
+            require!(
+                vault_token.key() == session_delegation_token_account,
+                AgentShieldError::InvalidTokenAccount
+            );
+        }
+    }
 
     // Revoke delegation
     if session_delegated {
@@ -115,16 +148,41 @@ pub fn handler(ctx: Context<FinalizeSession>, success: bool) -> Result<()> {
         }
     }
 
+    // Stablecoin balance verification for non-stablecoin→stablecoin swaps
+    if session_output_mint != Pubkey::default() && success {
+        let stablecoin_account = ctx
+            .accounts
+            .output_stablecoin_account
+            .as_ref()
+            .ok_or(error!(AgentShieldError::InvalidTokenAccount))?;
+        require!(
+            stablecoin_account.owner == vault.key(),
+            AgentShieldError::InvalidTokenAccount
+        );
+        require!(
+            stablecoin_account.mint == session_output_mint,
+            AgentShieldError::InvalidTokenAccount
+        );
+        require!(
+            stablecoin_account.amount > session_balance_before,
+            AgentShieldError::NonTrackedSwapMustReturnStablecoin
+        );
+    }
+
     // Update vault stats on success (fees already collected in validate)
     if success && !is_expired {
         vault.total_transactions = vault
             .total_transactions
             .checked_add(1)
             .ok_or(AgentShieldError::Overflow)?;
-        vault.total_volume = vault
-            .total_volume
-            .checked_add(session_amount)
-            .ok_or(AgentShieldError::Overflow)?;
+
+        // Only add to total_volume for spending actions
+        if session_action_type.is_spending() {
+            vault.total_volume = vault
+                .total_volume
+                .checked_add(session_amount)
+                .ok_or(AgentShieldError::Overflow)?;
+        }
 
         if session_developer_fee > 0 {
             vault.total_fees_collected = vault
@@ -133,21 +191,21 @@ pub fn handler(ctx: Context<FinalizeSession>, success: bool) -> Result<()> {
                 .ok_or(AgentShieldError::Overflow)?;
         }
 
-        // Update position count for perpetual actions
-        match session_action_type {
-            ActionType::OpenPosition => {
+        // Update position count based on position effect
+        match session_action_type.position_effect() {
+            PositionEffect::Increment => {
                 vault.open_positions = vault
                     .open_positions
                     .checked_add(1)
                     .ok_or(AgentShieldError::Overflow)?;
             }
-            ActionType::ClosePosition => {
+            PositionEffect::Decrement => {
                 vault.open_positions = vault
                     .open_positions
                     .checked_sub(1)
                     .ok_or(AgentShieldError::Overflow)?;
             }
-            _ => {}
+            PositionEffect::None => {}
         }
     }
 

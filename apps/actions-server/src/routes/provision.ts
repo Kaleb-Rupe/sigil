@@ -153,8 +153,12 @@ provision.post("/api/actions/provision", async (c) => {
       ACTIONS_CORS_HEADERS,
     );
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    return c.json({ error: message }, 500, ACTIONS_CORS_HEADERS);
+    console.error("[AgentShield] provision error:", error);
+    return c.json(
+      { error: "Internal server error" },
+      500,
+      ACTIONS_CORS_HEADERS,
+    );
   }
 });
 

@@ -9,40 +9,10 @@ export const IDL = {
   },
   instructions: [
     {
-      name: "accept_oracle_authority",
-      docs: [
-        "Accept an oracle registry authority transfer (step 2 of 2).",
-        "Only the proposed new authority can call this.",
-      ],
-      discriminator: [15, 166, 225, 171, 229, 140, 199, 227],
-      accounts: [
-        {
-          name: "new_authority",
-          signer: true,
-        },
-        {
-          name: "oracle_registry",
-          writable: true,
-          pda: {
-            seeds: [
-              {
-                kind: "const",
-                value: [
-                  111, 114, 97, 99, 108, 101, 95, 114, 101, 103, 105, 115, 116,
-                  114, 121,
-                ],
-              },
-            ],
-          },
-        },
-      ],
-      args: [],
-    },
-    {
       name: "agent_transfer",
       docs: [
         "Transfer tokens from the vault to an allowed destination.",
-        "Only the agent can call this.",
+        "Only the agent can call this. Stablecoin-only.",
       ],
       discriminator: [199, 111, 151, 49, 124, 13, 150, 44],
       accounts: [
@@ -102,21 +72,6 @@ export const IDL = {
               {
                 kind: "account",
                 path: "vault",
-              },
-            ],
-          },
-        },
-        {
-          name: "oracle_registry",
-          docs: ["Protocol-level oracle registry (zero-copy)"],
-          pda: {
-            seeds: [
-              {
-                kind: "const",
-                value: [
-                  111, 114, 97, 99, 108, 101, 95, 114, 101, 103, 105, 115, 116,
-                  114, 121,
-                ],
               },
             ],
           },
@@ -556,6 +511,15 @@ export const IDL = {
           optional: true,
         },
         {
+          name: "output_stablecoin_account",
+          docs: [
+            "Vault's stablecoin ATA for non-stablecoin→stablecoin swap verification.",
+            "Required when session.output_mint != Pubkey::default().",
+          ],
+          writable: true,
+          optional: true,
+        },
+        {
           name: "token_program",
           address: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
         },
@@ -568,52 +532,6 @@ export const IDL = {
         {
           name: "success",
           type: "bool",
-        },
-      ],
-    },
-    {
-      name: "initialize_oracle_registry",
-      docs: [
-        "Initialize the protocol-level oracle registry.",
-        "Only called once. The authority becomes the registry admin.",
-      ],
-      discriminator: [190, 92, 228, 114, 56, 71, 101, 220],
-      accounts: [
-        {
-          name: "authority",
-          writable: true,
-          signer: true,
-        },
-        {
-          name: "oracle_registry",
-          writable: true,
-          pda: {
-            seeds: [
-              {
-                kind: "const",
-                value: [
-                  111, 114, 97, 99, 108, 101, 95, 114, 101, 103, 105, 115, 116,
-                  114, 121,
-                ],
-              },
-            ],
-          },
-        },
-        {
-          name: "system_program",
-          address: "11111111111111111111111111111111",
-        },
-      ],
-      args: [
-        {
-          name: "entries",
-          type: {
-            vec: {
-              defined: {
-                name: "OracleEntry",
-              },
-            },
-          },
         },
       ],
     },
@@ -728,6 +646,10 @@ export const IDL = {
           type: "u16",
         },
         {
+          name: "max_slippage_bps",
+          type: "u16",
+        },
+        {
           name: "timelock_duration",
           type: "u64",
         },
@@ -736,41 +658,6 @@ export const IDL = {
           type: {
             vec: "pubkey",
           },
-        },
-      ],
-    },
-    {
-      name: "propose_oracle_authority",
-      docs: [
-        "Propose a new authority for the oracle registry (step 1 of 2).",
-        "Only the current authority can call this.",
-      ],
-      discriminator: [146, 109, 205, 24, 129, 202, 217, 36],
-      accounts: [
-        {
-          name: "authority",
-          signer: true,
-        },
-        {
-          name: "oracle_registry",
-          writable: true,
-          pda: {
-            seeds: [
-              {
-                kind: "const",
-                value: [
-                  111, 114, 97, 99, 108, 101, 95, 114, 101, 103, 105, 115, 116,
-                  114, 121,
-                ],
-              },
-            ],
-          },
-        },
-      ],
-      args: [
-        {
-          name: "new_authority",
-          type: "pubkey",
         },
       ],
     },
@@ -892,6 +779,12 @@ export const IDL = {
         },
         {
           name: "developer_fee_rate",
+          type: {
+            option: "u16",
+          },
+        },
+        {
+          name: "max_slippage_bps",
           type: {
             option: "u16",
           },
@@ -1033,28 +926,32 @@ export const IDL = {
       args: [],
     },
     {
-      name: "update_oracle_registry",
-      docs: [
-        "Add or remove entries from the oracle registry.",
-        "Only the registry authority can call this.",
-      ],
-      discriminator: [184, 234, 19, 21, 41, 240, 100, 14],
+      name: "sync_positions",
+      docs: ["Sync the vault's open position counter with the actual state."],
+      discriminator: [255, 102, 161, 80, 185, 74, 140, 60],
       accounts: [
         {
-          name: "authority",
+          name: "owner",
           signer: true,
         },
         {
-          name: "oracle_registry",
+          name: "vault",
           writable: true,
           pda: {
             seeds: [
               {
                 kind: "const",
-                value: [
-                  111, 114, 97, 99, 108, 101, 95, 114, 101, 103, 105, 115, 116,
-                  114, 121,
-                ],
+                value: [118, 97, 117, 108, 116],
+              },
+              {
+                kind: "account",
+                path: "vault.owner",
+                account: "AgentVault",
+              },
+              {
+                kind: "account",
+                path: "vault.vault_id",
+                account: "AgentVault",
               },
             ],
           },
@@ -1062,20 +959,8 @@ export const IDL = {
       ],
       args: [
         {
-          name: "entries_to_add",
-          type: {
-            vec: {
-              defined: {
-                name: "OracleEntry",
-              },
-            },
-          },
-        },
-        {
-          name: "mints_to_remove",
-          type: {
-            vec: "pubkey",
-          },
+          name: "actual_positions",
+          type: "u8",
         },
       ],
     },
@@ -1182,6 +1067,12 @@ export const IDL = {
           },
         },
         {
+          name: "max_slippage_bps",
+          type: {
+            option: "u16",
+          },
+        },
+        {
           name: "timelock_duration",
           type: {
             option: "u64",
@@ -1201,7 +1092,8 @@ export const IDL = {
       name: "validate_and_authorize",
       docs: [
         "Core permission check. Called by the agent before a DeFi action.",
-        "Validates against policy constraints + oracle registry.",
+        "Validates against policy constraints, stablecoin-only enforcement,",
+        "and protocol slippage verification.",
         "Creates a SessionAuthority PDA, delegates tokens to agent.",
       ],
       discriminator: [22, 183, 48, 222, 218, 11, 197, 152],
@@ -1267,23 +1159,6 @@ export const IDL = {
           },
         },
         {
-          name: "oracle_registry",
-          docs: [
-            "Protocol-level oracle registry (shared across all vaults, zero-copy)",
-          ],
-          pda: {
-            seeds: [
-              {
-                kind: "const",
-                value: [
-                  111, 114, 97, 99, 108, 101, 95, 114, 101, 103, 105, 115, 116,
-                  114, 121,
-                ],
-              },
-            ],
-          },
-        },
-        {
           name: "session",
           docs: [
             "Ephemeral session PDA — `init` ensures no double-authorization.",
@@ -1318,7 +1193,9 @@ export const IDL = {
         },
         {
           name: "token_mint_account",
-          docs: ["The token mint being spent"],
+          docs: [
+            "The token mint being spent — constrained to match token_mint arg",
+          ],
         },
         {
           name: "protocol_treasury_token_account",
@@ -1337,12 +1214,29 @@ export const IDL = {
           optional: true,
         },
         {
+          name: "output_stablecoin_account",
+          docs: [
+            "Vault's stablecoin ATA to snapshot (for non-stablecoin input swaps).",
+            "Required when input token is NOT a stablecoin.",
+          ],
+          writable: true,
+          optional: true,
+        },
+        {
           name: "token_program",
           address: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
         },
         {
           name: "system_program",
           address: "11111111111111111111111111111111",
+        },
+        {
+          name: "instructions_sysvar",
+          docs: [
+            "Instructions sysvar for verifying DeFi instruction program_id",
+            "and protocol slippage enforcement.",
+          ],
+          address: "Sysvar1nstructions1111111111111111111111111",
         },
       ],
       args: [
@@ -1493,10 +1387,6 @@ export const IDL = {
       discriminator: [232, 220, 237, 164, 157, 9, 215, 194],
     },
     {
-      name: "OracleRegistry",
-      discriminator: [94, 153, 19, 250, 94, 0, 12, 172],
-    },
-    {
       name: "PendingPolicyUpdate",
       discriminator: [77, 255, 2, 51, 79, 237, 183, 239],
     },
@@ -1547,22 +1437,6 @@ export const IDL = {
       discriminator: [56, 130, 230, 154, 35, 92, 11, 118],
     },
     {
-      name: "OracleAuthorityProposed",
-      discriminator: [72, 88, 217, 127, 125, 208, 157, 34],
-    },
-    {
-      name: "OracleAuthorityTransferred",
-      discriminator: [120, 195, 241, 123, 203, 81, 155, 61],
-    },
-    {
-      name: "OracleRegistryInitialized",
-      discriminator: [88, 111, 7, 92, 74, 14, 114, 205],
-    },
-    {
-      name: "OracleRegistryUpdated",
-      discriminator: [25, 85, 137, 57, 175, 133, 14, 77],
-    },
-    {
       name: "PolicyChangeApplied",
       discriminator: [104, 89, 5, 100, 180, 202, 52, 73],
     },
@@ -1577,6 +1451,10 @@ export const IDL = {
     {
       name: "PolicyUpdated",
       discriminator: [225, 112, 112, 67, 95, 236, 245, 161],
+    },
+    {
+      name: "PositionsSynced",
+      discriminator: [83, 33, 144, 201, 168, 13, 0, 95],
     },
     {
       name: "SessionFinalized",
@@ -1614,7 +1492,7 @@ export const IDL = {
     {
       code: 6003,
       name: "TokenNotRegistered",
-      msg: "Token not registered in oracle registry",
+      msg: "Token is not a recognized stablecoin",
     },
     {
       code: 6004,
@@ -1648,198 +1526,178 @@ export const IDL = {
     },
     {
       code: 6010,
-      name: "SessionExpired",
-      msg: "Session has expired",
-    },
-    {
-      code: 6011,
       name: "SessionNotAuthorized",
       msg: "Session not authorized",
     },
     {
-      code: 6012,
+      code: 6011,
       name: "InvalidSession",
       msg: "Invalid session: does not belong to this vault",
     },
     {
-      code: 6013,
+      code: 6012,
       name: "OpenPositionsExist",
       msg: "Vault has open positions, cannot close",
     },
     {
-      code: 6014,
+      code: 6013,
       name: "TooManyAllowedProtocols",
       msg: "Policy configuration invalid: too many allowed protocols",
     },
     {
-      code: 6015,
+      code: 6014,
       name: "AgentAlreadyRegistered",
       msg: "Agent already registered for this vault",
     },
     {
-      code: 6016,
+      code: 6015,
       name: "NoAgentRegistered",
       msg: "No agent registered for this vault",
     },
     {
-      code: 6017,
+      code: 6016,
       name: "VaultNotFrozen",
       msg: "Vault is not frozen (expected frozen for reactivation)",
     },
     {
-      code: 6018,
+      code: 6017,
       name: "VaultAlreadyClosed",
       msg: "Vault is already closed",
     },
     {
-      code: 6019,
+      code: 6018,
       name: "InsufficientBalance",
       msg: "Insufficient vault balance for withdrawal",
     },
     {
-      code: 6020,
+      code: 6019,
       name: "DeveloperFeeTooHigh",
       msg: "Developer fee rate exceeds maximum (500 / 1,000,000 = 5 BPS)",
     },
     {
-      code: 6021,
+      code: 6020,
       name: "InvalidFeeDestination",
       msg: "Fee destination account invalid",
     },
     {
-      code: 6022,
+      code: 6021,
       name: "InvalidProtocolTreasury",
       msg: "Protocol treasury account does not match expected address",
     },
     {
-      code: 6023,
+      code: 6022,
       name: "InvalidAgentKey",
       msg: "Invalid agent: cannot be the zero address",
     },
     {
-      code: 6024,
+      code: 6023,
       name: "AgentIsOwner",
       msg: "Invalid agent: agent cannot be the vault owner",
     },
     {
-      code: 6025,
+      code: 6024,
       name: "Overflow",
       msg: "Arithmetic overflow",
     },
     {
-      code: 6026,
-      name: "DelegationFailed",
-      msg: "Token delegation approval failed",
-    },
-    {
-      code: 6027,
-      name: "RevocationFailed",
-      msg: "Token delegation revocation failed",
-    },
-    {
-      code: 6028,
-      name: "OracleFeedStale",
-      msg: "Oracle feed value is too stale",
-    },
-    {
-      code: 6029,
-      name: "OracleFeedInvalid",
-      msg: "Cannot parse oracle feed data",
-    },
-    {
-      code: 6030,
-      name: "TokenSpendBlocked",
-      msg: "Unpriced token cannot be spent (receive-only)",
-    },
-    {
-      code: 6031,
+      code: 6025,
       name: "InvalidTokenAccount",
       msg: "Token account does not belong to vault or has wrong mint",
     },
     {
-      code: 6032,
-      name: "OracleAccountMissing",
-      msg: "Oracle-priced token requires feed account in remaining_accounts",
-    },
-    {
-      code: 6033,
-      name: "OracleConfidenceTooWide",
-      msg: "Oracle spot confidence exceeds 20% safety valve (feed likely broken)",
-    },
-    {
-      code: 6034,
-      name: "OracleUnsupportedType",
-      msg: "Oracle account owner is not a recognized oracle program",
-    },
-    {
-      code: 6035,
-      name: "OracleNotVerified",
-      msg: "Pyth price update not fully verified by Wormhole",
-    },
-    {
-      code: 6036,
+      code: 6026,
       name: "TimelockNotExpired",
       msg: "Timelock period has not expired yet",
     },
     {
-      code: 6037,
+      code: 6027,
       name: "TimelockActive",
       msg: "Vault has timelock active — use queue_policy_update instead",
     },
     {
-      code: 6038,
+      code: 6028,
       name: "NoTimelockConfigured",
       msg: "No timelock configured on this vault",
     },
     {
-      code: 6039,
+      code: 6029,
       name: "DestinationNotAllowed",
       msg: "Destination not in allowed list",
     },
     {
-      code: 6040,
+      code: 6030,
       name: "TooManyDestinations",
       msg: "Too many destinations (max 10)",
     },
     {
-      code: 6041,
+      code: 6031,
       name: "InvalidProtocolMode",
       msg: "Invalid protocol mode (must be 0, 1, or 2)",
     },
     {
+      code: 6032,
+      name: "InvalidNonSpendingAmount",
+      msg: "Non-spending action must have amount = 0",
+    },
+    {
+      code: 6033,
+      name: "NoPositionsToClose",
+      msg: "No open positions to close or cancel",
+    },
+    {
+      code: 6034,
+      name: "CpiCallNotAllowed",
+      msg: "Instruction must be top-level (CPI calls not allowed)",
+    },
+    {
+      code: 6035,
+      name: "MissingFinalizeInstruction",
+      msg: "Transaction must include finalize_session after validate",
+    },
+    {
+      code: 6036,
+      name: "NonTrackedSwapMustReturnStablecoin",
+      msg: "Non-stablecoin swap must return stablecoin (balance did not increase)",
+    },
+    {
+      code: 6037,
+      name: "SlippageTooHigh",
+      msg: "Jupiter slippage exceeds policy max_slippage_bps or quoted_out is zero",
+    },
+    {
+      code: 6038,
+      name: "InvalidJupiterInstruction",
+      msg: "Cannot parse Jupiter swap instruction data",
+    },
+    {
+      code: 6039,
+      name: "InvalidFlashTradeInstruction",
+      msg: "Cannot parse Flash Trade instruction data",
+    },
+    {
+      code: 6040,
+      name: "FlashTradePriceZero",
+      msg: "Flash Trade priceWithSlippage is zero",
+    },
+    {
+      code: 6041,
+      name: "DustDepositDetected",
+      msg: "SPL Transfer to vault stablecoin ATA detected (dust deposit attack)",
+    },
+    {
       code: 6042,
-      name: "OracleRegistryFull",
-      msg: "Oracle registry is full (max 104 entries)",
+      name: "InvalidJupiterLendInstruction",
+      msg: "Cannot parse Jupiter Lend instruction data",
     },
     {
       code: 6043,
-      name: "UnauthorizedRegistryAdmin",
-      msg: "Unauthorized: not the oracle registry authority",
+      name: "SlippageBpsTooHigh",
+      msg: "Slippage BPS exceeds maximum (5000 = 50%)",
     },
     {
       code: 6044,
-      name: "OraclePriceDivergence",
-      msg: "Primary and fallback oracle prices diverge beyond threshold",
-    },
-    {
-      code: 6045,
-      name: "OracleBothFeedsFailed",
-      msg: "Both primary and fallback oracle feeds failed",
-    },
-    {
-      code: 6046,
-      name: "OracleConfidenceSpike",
-      msg: "Oracle confidence spike: spot_conf exceeds 5x ema_conf",
-    },
-    {
-      code: 6047,
-      name: "InvalidAuthorityKey",
-      msg: "Invalid authority key: cannot be the zero address",
-    },
-    {
-      code: 6048,
-      name: "NoPendingAuthority",
-      msg: "No pending authority transfer to accept",
+      name: "ProtocolMismatch",
+      msg: "DeFi instruction program does not match declared target_protocol",
     },
   ],
   types: [
@@ -1893,18 +1751,6 @@ export const IDL = {
             type: "bool",
           },
           {
-            name: "oracle_price",
-            type: {
-              option: "i128",
-            },
-          },
-          {
-            name: "oracle_source",
-            type: {
-              option: "u8",
-            },
-          },
-          {
             name: "timestamp",
             type: "i64",
           },
@@ -1940,6 +1786,36 @@ export const IDL = {
           },
           {
             name: "Transfer",
+          },
+          {
+            name: "AddCollateral",
+          },
+          {
+            name: "RemoveCollateral",
+          },
+          {
+            name: "PlaceTriggerOrder",
+          },
+          {
+            name: "EditTriggerOrder",
+          },
+          {
+            name: "CancelTriggerOrder",
+          },
+          {
+            name: "PlaceLimitOrder",
+          },
+          {
+            name: "EditLimitOrder",
+          },
+          {
+            name: "CancelLimitOrder",
+          },
+          {
+            name: "SwapAndOpenPosition",
+          },
+          {
+            name: "CloseAndSwapPosition",
           },
         ],
       },
@@ -2237,225 +2113,6 @@ export const IDL = {
       },
     },
     {
-      name: "OracleAuthorityProposed",
-      type: {
-        kind: "struct",
-        fields: [
-          {
-            name: "current_authority",
-            type: "pubkey",
-          },
-          {
-            name: "proposed_authority",
-            type: "pubkey",
-          },
-        ],
-      },
-    },
-    {
-      name: "OracleAuthorityTransferred",
-      type: {
-        kind: "struct",
-        fields: [
-          {
-            name: "previous_authority",
-            type: "pubkey",
-          },
-          {
-            name: "new_authority",
-            type: "pubkey",
-          },
-        ],
-      },
-    },
-    {
-      name: "OracleEntry",
-      docs: [
-        "Borsh-serializable entry used as instruction argument.",
-        "Converted to/from OracleEntryZC for on-chain storage.",
-      ],
-      type: {
-        kind: "struct",
-        fields: [
-          {
-            name: "mint",
-            docs: ["SPL token mint address"],
-            type: "pubkey",
-          },
-          {
-            name: "oracle_feed",
-            docs: [
-              "Pyth or Switchboard oracle feed account.",
-              "Ignored when is_stablecoin is true.",
-            ],
-            type: "pubkey",
-          },
-          {
-            name: "is_stablecoin",
-            docs: ["If true, token is 1:1 USD (no oracle read needed)"],
-            type: "bool",
-          },
-          {
-            name: "fallback_feed",
-            docs: [
-              "Optional fallback oracle feed. Pubkey::default() = no fallback.",
-            ],
-            type: "pubkey",
-          },
-        ],
-      },
-    },
-    {
-      name: "OracleEntryZC",
-      docs: [
-        "Zero-copy individual entry mapping a token mint to its oracle feed.",
-        "97 bytes per entry, no padding needed (32+32+1+32 = 97).",
-      ],
-      serialization: "bytemuck",
-      repr: {
-        kind: "c",
-      },
-      type: {
-        kind: "struct",
-        fields: [
-          {
-            name: "mint",
-            docs: ["SPL token mint address"],
-            type: "pubkey",
-          },
-          {
-            name: "oracle_feed",
-            docs: [
-              "Pyth or Switchboard oracle feed account.",
-              "Ignored when is_stablecoin is 1.",
-            ],
-            type: "pubkey",
-          },
-          {
-            name: "is_stablecoin",
-            docs: [
-              "1 = stablecoin (1:1 USD, no oracle read needed), 0 = oracle-priced",
-            ],
-            type: "u8",
-          },
-          {
-            name: "fallback_feed",
-            docs: [
-              "Optional fallback oracle feed. Pubkey::default() = no fallback.",
-              "Used when primary is stale/invalid. Cross-checked for divergence",
-              "when both are available.",
-            ],
-            type: "pubkey",
-          },
-        ],
-      },
-    },
-    {
-      name: "OracleRegistry",
-      docs: [
-        "Zero-copy protocol-level oracle registry — maps token mints to oracle",
-        "feeds. Maintained by protocol admin. Shared across ALL vaults.",
-        "Any vault can use any registered token without per-vault configuration.",
-        "",
-        'Seeds: `[b"oracle_registry"]`',
-        "",
-        "Layout: disc(8) + authority(32) + pending_authority(32) + count(2) +",
-        "bump(1) + padding(5) + entries(97*104=10,088) = 10,168 bytes",
-        "(under 10,240 CPI limit)",
-      ],
-      serialization: "bytemuck",
-      repr: {
-        kind: "c",
-      },
-      type: {
-        kind: "struct",
-        fields: [
-          {
-            name: "authority",
-            docs: [
-              "Authority who can add/remove entries (upgradeable to multisig/DAO",
-              "via 2-step transfer)",
-            ],
-            type: "pubkey",
-          },
-          {
-            name: "pending_authority",
-            docs: [
-              "Pending authority for 2-step transfer. Pubkey::default() = none.",
-            ],
-            type: "pubkey",
-          },
-          {
-            name: "count",
-            docs: ["Number of active entries in the `entries` array"],
-            type: "u16",
-          },
-          {
-            name: "bump",
-            docs: ["Bump seed for PDA"],
-            type: "u8",
-          },
-          {
-            name: "_padding",
-            docs: ["Padding for 8-byte alignment"],
-            type: {
-              array: ["u8", 5],
-            },
-          },
-          {
-            name: "entries",
-            docs: ["Fixed-size entry array (only entries[..count] are active)"],
-            type: {
-              array: [
-                {
-                  defined: {
-                    name: "OracleEntryZC",
-                  },
-                },
-                104,
-              ],
-            },
-          },
-        ],
-      },
-    },
-    {
-      name: "OracleRegistryInitialized",
-      type: {
-        kind: "struct",
-        fields: [
-          {
-            name: "authority",
-            type: "pubkey",
-          },
-          {
-            name: "entry_count",
-            type: "u16",
-          },
-        ],
-      },
-    },
-    {
-      name: "OracleRegistryUpdated",
-      type: {
-        kind: "struct",
-        fields: [
-          {
-            name: "added_count",
-            type: "u16",
-          },
-          {
-            name: "removed_count",
-            type: "u16",
-          },
-          {
-            name: "total_entries",
-            type: "u16",
-          },
-        ],
-      },
-    },
-    {
       name: "PendingPolicyUpdate",
       docs: [
         "Queued policy update that becomes executable after a timelock period.",
@@ -2528,6 +2185,12 @@ export const IDL = {
           },
           {
             name: "developer_fee_rate",
+            type: {
+              option: "u16",
+            },
+          },
+          {
+            name: "max_slippage_bps",
             type: {
               option: "u16",
             },
@@ -2670,6 +2333,15 @@ export const IDL = {
             type: "u16",
           },
           {
+            name: "max_slippage_bps",
+            docs: [
+              "Maximum slippage tolerance for Jupiter swaps in basis points.",
+              "0 = reject all swaps (vault owner must explicitly configure).",
+              "Enforced on-chain via instruction introspection of Jupiter data.",
+            ],
+            type: "u16",
+          },
+          {
             name: "timelock_duration",
             docs: [
               "Timelock duration in seconds for policy changes. 0 = no timelock.",
@@ -2726,6 +2398,34 @@ export const IDL = {
           {
             name: "developer_fee_rate",
             type: "u16",
+          },
+          {
+            name: "max_slippage_bps",
+            type: "u16",
+          },
+          {
+            name: "timestamp",
+            type: "i64",
+          },
+        ],
+      },
+    },
+    {
+      name: "PositionsSynced",
+      type: {
+        kind: "struct",
+        fields: [
+          {
+            name: "vault",
+            type: "pubkey",
+          },
+          {
+            name: "old_count",
+            type: "u8",
+          },
+          {
+            name: "new_count",
+            type: "u8",
           },
           {
             name: "timestamp",
@@ -2809,6 +2509,22 @@ export const IDL = {
             name: "developer_fee",
             docs: [
               "Developer fee collected during validate (for event logging in finalize)",
+            ],
+            type: "u64",
+          },
+          {
+            name: "output_mint",
+            docs: [
+              "Expected output stablecoin mint for non-stablecoin→stablecoin swaps.",
+              "Pubkey::default() when input is already a stablecoin (no snapshot needed).",
+            ],
+            type: "pubkey",
+          },
+          {
+            name: "stablecoin_balance_before",
+            docs: [
+              "Snapshot of vault's stablecoin ATA balance before swap.",
+              "0 when input is already a stablecoin.",
             ],
             type: "u64",
           },
@@ -2984,4 +2700,4 @@ export const IDL = {
       },
     },
   ],
-} as const;
+};

@@ -2,13 +2,22 @@
 //
 // update-test-counts.js — Single source of truth for test counts.
 //
-// Reads scripts/test-counts.json and updates:
-//   1. README.md badge + test suites table + total
-//   2. .github/workflows/ci.yml header comments + step names
-//   3. .github/workflows/release.yml step names
-//   4. CLAUDE.md test count references
+// Reads scripts/test-counts.json and updates EVERY file that references
+// test counts across the entire repo:
+//
+//   1. README.md          — badge, TS count comment, test suites table
+//   2. .github/workflows/ci.yml       — header comments, step names
+//   3. .github/workflows/release.yml  — step names
+//   4. .github/workflows/devnet-test.yml — header + echo line
+//   5. CLAUDE.md           — total line, packages listing, testing section
+//   6. Package READMEs     — per-suite count in code comments
 //
 // Usage: node scripts/update-test-counts.js
+//
+// To add a new test suite:
+//   1. Add entry to scripts/test-counts.json
+//   2. Add optional fields: ciStepName, claudePattern, packageReadme, packageReadmePattern
+//   3. Run this script — all files updated automatically
 
 const fs = require("fs");
 const path = require("path");
@@ -20,7 +29,7 @@ const data = JSON.parse(
 
 const total = data.suites.reduce((sum, s) => sum + s.count, 0);
 
-// Use onChain/devnet flags to categorize suites
+// Categorize suites
 const onChainSuites = data.suites.filter((s) => s.onChain);
 const devnetSuites = data.suites.filter((s) => s.devnet);
 const tsSuites = data.suites.filter((s) => !s.onChain && !s.devnet);
@@ -28,134 +37,257 @@ const onChainCount = onChainSuites.reduce((sum, s) => sum + s.count, 0);
 const devnetCount = devnetSuites.reduce((sum, s) => sum + s.count, 0);
 const tsCount = tsSuites.reduce((sum, s) => sum + s.count, 0);
 const tsSuiteCount = tsSuites.length;
+const ciCount = onChainCount + tsCount; // CI = on-chain + TS (no devnet)
 
 // Escape regex special characters
 function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// ── Validate required files ────────────────────────────────────
-const requiredFiles = [
-  path.join(ROOT, "README.md"),
-  path.join(ROOT, ".github/workflows/ci.yml"),
-  path.join(ROOT, ".github/workflows/release.yml"),
-];
-for (const f of requiredFiles) {
-  if (!fs.existsSync(f)) {
-    console.error(`ERROR: Required file not found: ${f}`);
-    process.exit(1);
+// Convert a claudePattern like "foo (%d tests)" into a regex + replacement
+// %d is the placeholder for the count number
+function patternToRegex(pattern) {
+  const escaped = escapeRegex(pattern).replace(/%d/, "\\d+");
+  return new RegExp(escaped, "g");
+}
+
+function patternToReplacement(pattern, count) {
+  return pattern.replace(/%d/, String(count));
+}
+
+// Track which files were updated
+const updated = [];
+
+function updateFile(filePath, label, updater) {
+  const fullPath = path.join(ROOT, filePath);
+  let before;
+  try {
+    before = fs.readFileSync(fullPath, "utf8");
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      console.warn(`  SKIP: ${filePath} (not found)`);
+      return;
+    }
+    throw err;
+  }
+  const after = updater(before);
+  if (after !== before) {
+    fs.writeFileSync(fullPath, after);
+    updated.push(filePath);
   }
 }
 
-// ── README.md ──────────────────────────────────────────────────
-const readmePath = path.join(ROOT, "README.md");
-let readme = fs.readFileSync(readmePath, "utf8");
+// ── 1. README.md ───────────────────────────────────────────────────
+updateFile("README.md", "root README", (content) => {
+  // Badge
+  content = content.replace(
+    /tests-\d+-brightgreen/,
+    `tests-${total}-brightgreen`,
+  );
 
-// Badge
-readme = readme.replace(/tests-\d+-brightgreen/, `tests-${total}-brightgreen`);
+  // Inline comment: "Run all TypeScript tests (N tests across M suites)"
+  content = content.replace(
+    /Run all TypeScript tests \(\d+ tests across \d+ suites\)/,
+    `Run all TypeScript tests (${tsCount} tests across ${tsSuiteCount} suites)`,
+  );
 
-// Inline comment: "Run all TypeScript tests (N tests across M suites)"
-readme = readme.replace(
-  /Run all TypeScript tests \(\d+ tests across \d+ suites\)/,
-  `Run all TypeScript tests (${tsCount} tests across ${tsSuiteCount} suites)`,
-);
+  // On-chain test count in development comment
+  content = content.replace(
+    /Run on-chain tests \(\d+ tests,/,
+    `Run on-chain tests (${onChainCount} tests,`,
+  );
 
-// Rebuild table between "### Test Suites" and "## Security"
-const tableHeader = `| Suite                                                | Tests   |
+  // Rebuild table between "### Test Suites" and "## Security"
+  const tableHeader = `| Suite                                                | Tests   |
 | ---------------------------------------------------- | ------- |`;
-const rows = data.suites
-  .map((s) => {
-    const name = s.name.padEnd(52);
-    const count = String(s.count).padStart(7);
-    return `| ${name} | ${count} |`;
-  })
-  .join("\n");
-const totalRow = `| **Total**                                            | **${total}** |`;
-const newTable = `${tableHeader}\n${rows}\n${totalRow}`;
+  const rows = data.suites
+    .map((s) => {
+      const name = s.name.padEnd(52);
+      const count = String(s.count).padStart(7);
+      return `| ${name} | ${count} |`;
+    })
+    .join("\n");
+  const totalRow = `| **Total**                                            | **${total}** |`;
+  const newTable = `${tableHeader}\n${rows}\n${totalRow}`;
 
-readme = readme.replace(
-  /\| Suite\s+\| Tests\s+\|[\s\S]*?\| \*\*Total\*\*\s+\| \*\*\d+\*\* \|/,
-  newTable,
-);
-
-fs.writeFileSync(readmePath, readme);
-
-// ── .github/workflows/ci.yml ───────────────────────────────────
-const ciPath = path.join(ROOT, ".github/workflows/ci.yml");
-let ci = fs.readFileSync(ciPath, "utf8");
-
-// Header: job count description
-ci = ci.replace(
-  /# (?:Nine|Eight|Seven|Six|\w+) jobs \([^)]*\):/,
-  `# Eight jobs (1 detection + 6 parallel + 1 gate):`,
-);
-
-// Header: TS test count + suite count
-ci = ci.replace(
-  /\d+ TS tests across \d+ suites/,
-  `${tsCount} TS tests across ${tsSuiteCount} suites`,
-);
-
-// Header: on-chain test count (simplified — no breakdown)
-ci = ci.replace(
-  /\d+ on-chain tests(?:\s*\([^)]*\))?/,
-  `${onChainCount} on-chain tests`,
-);
-
-// Header: total (with breakdown in parentheses)
-ci = ci.replace(
-  /Total: \d+ tests across \d+ suites \([^)]*\)/,
-  `Total: ${total} tests across ${data.suites.length} suites (${tsCount} TS + ${onChainCount} on-chain + ${devnetCount} devnet)`,
-);
-
-// Job 1 comment
-ci = ci.replace(
-  /TypeScript build, lint, and tests \(\d+ suites, \d+ tests\)/,
-  `TypeScript build, lint, and tests (${tsSuiteCount} suites, ${tsCount} tests)`,
-);
-
-// Step names: update test counts in step name lines
-for (const suite of tsSuites) {
-  if (!suite.ciStepName) continue;
-  // Case-insensitive match preserves original casing via $1 backreference
-  const re = new RegExp(
-    "(" + escapeRegex(suite.ciStepName) + ") \\(\\d+ tests\\)",
-    "gi",
+  content = content.replace(
+    /\| Suite\s+\| Tests\s+\|[\s\S]*?\| \*\*Total\*\*\s+\| \*\*\d+\*\* \|/,
+    newTable,
   );
-  ci = ci.replace(re, `$1 (${suite.count} tests)`);
+
+  return content;
+});
+
+// ── 2. .github/workflows/ci.yml ─────────────────────────────────────
+updateFile(".github/workflows/ci.yml", "CI workflow", (content) => {
+  // Header: job count description
+  content = content.replace(
+    /# (?:Nine|Eight|Seven|Six|\w+) jobs \([^)]*\):/,
+    `# Eight jobs (1 detection + 6 parallel + 1 gate):`,
+  );
+
+  // Header: TS test count + suite count
+  content = content.replace(
+    /\d+ TS tests across \d+ suites/,
+    `${tsCount} TS tests across ${tsSuiteCount} suites`,
+  );
+
+  // Header: on-chain test count
+  content = content.replace(
+    /\d+ on-chain tests(?:\s*\([^)]*\))?/,
+    `${onChainCount} on-chain tests`,
+  );
+
+  // Header: total (with breakdown in parentheses)
+  content = content.replace(
+    /Total: \d+ tests across \d+ suites \([^)]*\)/,
+    `Total: ${total} tests across ${data.suites.length} suites (${tsCount} TS + ${onChainCount} on-chain + ${devnetCount} devnet)`,
+  );
+
+  // Job 1 comment
+  content = content.replace(
+    /TypeScript build, lint, and tests \(\d+ suites, \d+ tests\)/,
+    `TypeScript build, lint, and tests (${tsSuiteCount} suites, ${tsCount} tests)`,
+  );
+
+  // Step names: update test counts in step name lines
+  for (const suite of tsSuites) {
+    if (!suite.ciStepName) continue;
+    const re = new RegExp(
+      "(" + escapeRegex(suite.ciStepName) + ") \\(\\d+ tests\\)",
+      "gi",
+    );
+    content = content.replace(re, `$1 (${suite.count} tests)`);
+  }
+
+  return content;
+});
+
+// ── 3. .github/workflows/release.yml ──────────────────────────────
+updateFile(".github/workflows/release.yml", "release workflow", (content) => {
+  for (const suite of tsSuites) {
+    if (!suite.ciStepName) continue;
+    const re = new RegExp(
+      "(" + escapeRegex(suite.ciStepName) + ") \\(\\d+ tests\\)",
+      "gi",
+    );
+    content = content.replace(re, `$1 (${suite.count} tests)`);
+  }
+  return content;
+});
+
+// ── 4. .github/workflows/devnet-test.yml ──────────────────────────
+updateFile(
+  ".github/workflows/devnet-test.yml",
+  "devnet workflow",
+  (content) => {
+    // Header comment: "N tests across 8 files"
+    content = content.replace(
+      /\d+ tests across 8 files/g,
+      `${devnetCount} tests across 8 files`,
+    );
+
+    // Echo line: "(N tests, 8 files)"
+    content = content.replace(
+      /\(\d+ tests, 8 files\)/g,
+      `(${devnetCount} tests, 8 files)`,
+    );
+
+    return content;
+  },
+);
+
+// ── 5. CLAUDE.md ──────────────────────────────────────────────────
+updateFile("CLAUDE.md", "CLAUDE.md", (content) => {
+  // Total line: "N tests passing across M suites (X CI + Y devnet)"
+  content = content.replace(
+    /\d+ tests passing across \d+ suites \(\d+ CI \+ \d+ devnet\)/,
+    `${total} tests passing across ${data.suites.length} suites (${ciCount} CI + ${devnetCount} devnet)`,
+  );
+
+  // Devnet total line: "Devnet total: N tests across 8 files"
+  content = content.replace(
+    /Devnet total: \d+ tests across \d+ files/,
+    `Devnet total: ${devnetCount} tests across 8 files`,
+  );
+
+  // Individual suite lines in the Testing section (claudePattern field)
+  for (const suite of data.suites) {
+    if (!suite.claudePattern) continue;
+    const re = patternToRegex(suite.claudePattern);
+    const replacement = patternToReplacement(suite.claudePattern, suite.count);
+    content = content.replace(re, replacement);
+  }
+
+  // Packages listing: "N tests)" at end of package description lines
+  // These follow the pattern: `path/` — description (N tests)
+  const packagePatterns = [
+    {
+      match: /`sdk\/core\/`[^)]*?(\d+) tests\)/,
+      suite: "Core policy engine (`@agent-shield/core`)",
+    },
+    {
+      match: /`sdk\/typescript\/`[^)]*?(\d+) tests\)/,
+      suite: "SDK tests (`@agent-shield/sdk`)",
+    },
+    {
+      match: /`sdk\/platform\/`[^)]*?(\d+) tests\)/,
+      suite: "Platform client tests (`@agent-shield/platform`)",
+    },
+    {
+      match: /`sdk\/custody\/crossmint\/`[^)]*?(\d+) tests\)/,
+      suite: "Crossmint custody adapter",
+    },
+    {
+      match: /`plugins\/solana-agent-kit\/`[^)]*?(\d+) tests\)/,
+      suite: "SAK plugin (`@agent-shield/plugin-solana-agent-kit`)",
+    },
+    {
+      match: /`plugins\/elizaos\/`[^)]*?(\d+) tests\)/,
+      suite: "ElizaOS plugin (`@agent-shield/plugin-elizaos`)",
+    },
+    {
+      match: /`packages\/mcp\/`[^)]*?(\d+) tests\)/,
+      suite: "MCP server (`@agent-shield/mcp`)",
+    },
+    {
+      match: /`apps\/actions-server\/`[^)]*?(\d+) tests\)/,
+      suite: "Actions server (`@agent-shield/actions-server`)",
+    },
+  ];
+
+  for (const { match, suite: suiteName } of packagePatterns) {
+    const suite = data.suites.find((s) => s.name === suiteName);
+    if (!suite) continue;
+    content = content.replace(match, (full, oldCount) =>
+      full.replace(`${oldCount} tests)`, `${suite.count} tests)`),
+    );
+  }
+
+  return content;
+});
+
+// ── 6. Package READMEs ────────────────────────────────────────────
+for (const suite of data.suites) {
+  if (!suite.packageReadme || !suite.packageReadmePattern) continue;
+
+  updateFile(suite.packageReadme, suite.name, (content) => {
+    const re = patternToRegex(suite.packageReadmePattern);
+    const replacement = patternToReplacement(
+      suite.packageReadmePattern,
+      suite.count,
+    );
+    content = content.replace(re, replacement);
+    return content;
+  });
 }
 
-fs.writeFileSync(ciPath, ci);
-
-// ── .github/workflows/release.yml ──────────────────────────────
-const releasePath = path.join(ROOT, ".github/workflows/release.yml");
-let release = fs.readFileSync(releasePath, "utf8");
-
-for (const suite of tsSuites) {
-  if (!suite.ciStepName) continue;
-  // Case-insensitive match preserves original casing via $1 backreference
-  const re = new RegExp(
-    "(" + escapeRegex(suite.ciStepName) + ") \\(\\d+ tests\\)",
-    "gi",
+// ── Summary ───────────────────────────────────────────────────────
+if (updated.length > 0) {
+  console.log(
+    `Updated test counts: ${total} total (${onChainCount} on-chain + ${devnetCount} devnet + ${tsCount} TS across ${tsSuiteCount} suites)`,
   );
-  release = release.replace(re, `$1 (${suite.count} tests)`);
+  console.log(`Files updated: ${updated.join(", ")}`);
+} else {
+  console.log(`All test counts already up to date (${total} total).`);
 }
-
-fs.writeFileSync(releasePath, release);
-
-// ── CLAUDE.md ──────────────────────────────────────────────────
-const claudePath = path.join(ROOT, "CLAUDE.md");
-try {
-  let claude = fs.readFileSync(claudePath, "utf8");
-  claude = claude.replace(
-    /\d+ tests passing across \d+ suites/,
-    `${total} tests passing across ${data.suites.length} suites`,
-  );
-  fs.writeFileSync(claudePath, claude);
-} catch {
-  // CLAUDE.md not present — skip
-}
-
-console.log(
-  `Updated test counts: ${total} total (${onChainCount} on-chain + ${devnetCount} devnet + ${tsCount} TS across ${tsSuiteCount} suites)`,
-);

@@ -28,21 +28,34 @@ export const PROTOCOL_MODE_ALL = 0;
 export const PROTOCOL_MODE_ALLOWLIST = 1;
 export const PROTOCOL_MODE_DENYLIST = 2;
 
-/** Oracle source types */
-export type OracleSource = "pyth" | "switchboard";
+// Devnet USDC: 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU
+export const USDC_MINT_DEVNET = new PublicKey(
+  "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+);
+// Mainnet USDC: EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+export const USDC_MINT_MAINNET = new PublicKey(
+  "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+);
+// Devnet USDT: EJwZgeZrdC8TXTQbQBoL6bfuAnFUQS5S4iC5A2ciQtCK
+export const USDT_MINT_DEVNET = new PublicKey(
+  "EJwZgeZrdC8TXTQbQBoL6bfuAnFUQS5S4iC5A2ciQtCK",
+);
+// Mainnet USDT: Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB
+export const USDT_MINT_MAINNET = new PublicKey(
+  "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+);
 
-/** Oracle registry entry — maps token mint to its oracle feed */
-export interface OracleEntry {
-  /** Token mint address */
-  mint: PublicKey;
-  /** Oracle feed account (Pyth PriceUpdateV2 or Switchboard PullFeed).
-   *  Pubkey.default = stablecoin (1:1 USD, no oracle read needed). */
-  oracleFeed: PublicKey;
-  /** Whether this token is a stablecoin (1:1 USD conversion) */
-  isStablecoin: boolean;
-  /** Optional fallback oracle feed. PublicKey.default = no fallback.
-   *  Used when primary is stale/invalid. Cross-checked for divergence. */
-  fallbackFeed: PublicKey;
+export const JUPITER_PROGRAM_ID = new PublicKey(
+  "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+);
+
+export function isStablecoinMint(mint: PublicKey): boolean {
+  return (
+    mint.equals(USDC_MINT_DEVNET) ||
+    mint.equals(USDC_MINT_MAINNET) ||
+    mint.equals(USDT_MINT_DEVNET) ||
+    mint.equals(USDT_MINT_MAINNET)
+  );
 }
 
 /** Epoch bucket in the zero-copy circular spend tracker */
@@ -76,6 +89,7 @@ export type PolicyConfigAccount = {
   canOpenPositions: boolean;
   maxConcurrentPositions: number;
   developerFeeRate: number;
+  maxSlippageBps: number;
   timelockDuration: BN;
   allowedDestinations: PublicKey[];
   bump: number;
@@ -98,14 +112,6 @@ export type PendingPolicyUpdateAccount = {
   bump: number;
 };
 
-export type OracleRegistryAccount = {
-  authority: PublicKey;
-  pendingAuthority: PublicKey;
-  count: number;
-  entries: OracleEntry[];
-  bump: number;
-};
-
 export type SpendTrackerAccount = {
   vault: PublicKey;
   buckets: EpochBucket[];
@@ -123,6 +129,8 @@ export type SessionAuthorityAccount = {
   expiresAtSlot: BN;
   delegated: boolean;
   delegationTokenAccount: PublicKey;
+  outputMint: PublicKey;
+  stablecoinBalanceBefore: BN;
   protocolFee: BN;
   developerFee: BN;
   bump: number;
@@ -142,7 +150,54 @@ export type ActionType =
   | { decreasePosition: Record<string, never> }
   | { deposit: Record<string, never> }
   | { withdraw: Record<string, never> }
-  | { transfer: Record<string, never> };
+  | { transfer: Record<string, never> }
+  | { addCollateral: Record<string, never> }
+  | { removeCollateral: Record<string, never> }
+  | { placeTriggerOrder: Record<string, never> }
+  | { editTriggerOrder: Record<string, never> }
+  | { cancelTriggerOrder: Record<string, never> }
+  | { placeLimitOrder: Record<string, never> }
+  | { editLimitOrder: Record<string, never> }
+  | { cancelLimitOrder: Record<string, never> }
+  | { swapAndOpenPosition: Record<string, never> }
+  | { closeAndSwapPosition: Record<string, never> };
+
+/** Position effect classification */
+export type PositionEffect = "increment" | "decrement" | "none";
+
+/** Returns true if the action type spends tokens from the vault */
+export function isSpendingAction(actionType: ActionType): boolean {
+  const key = Object.keys(actionType)[0];
+  return [
+    "swap",
+    "openPosition",
+    "closePosition",
+    "increasePosition",
+    "decreasePosition",
+    "deposit",
+    "transfer",
+    "addCollateral",
+    "placeLimitOrder",
+    "swapAndOpenPosition",
+    "closeAndSwapPosition",
+  ].includes(key);
+}
+
+/** Returns the position effect for an action type */
+export function getPositionEffect(actionType: ActionType): PositionEffect {
+  const key = Object.keys(actionType)[0];
+  if (
+    ["openPosition", "swapAndOpenPosition", "placeLimitOrder"].includes(key)
+  ) {
+    return "increment";
+  }
+  if (
+    ["closePosition", "closeAndSwapPosition", "cancelLimitOrder"].includes(key)
+  ) {
+    return "decrement";
+  }
+  return "none";
+}
 
 // SDK param types for instruction builders
 export interface InitializeVaultParams {
@@ -157,6 +212,7 @@ export interface InitializeVaultParams {
   maxConcurrentPositions: number;
   feeDestination: PublicKey;
   developerFeeRate?: number;
+  maxSlippageBps?: number;
   timelockDuration?: BN;
   allowedDestinations?: PublicKey[];
 }
@@ -170,6 +226,7 @@ export interface UpdatePolicyParams {
   canOpenPositions?: boolean | null;
   maxConcurrentPositions?: number | null;
   developerFeeRate?: number | null;
+  maxSlippageBps?: number | null;
   timelockDuration?: BN | null;
   allowedDestinations?: PublicKey[] | null;
 }
@@ -183,6 +240,7 @@ export interface QueuePolicyUpdateParams {
   canOpenPositions?: boolean | null;
   maxConcurrentPositions?: number | null;
   developerFeeRate?: number | null;
+  maxSlippageBps?: number | null;
   timelockDuration?: BN | null;
   allowedDestinations?: PublicKey[] | null;
 }
@@ -194,9 +252,6 @@ export interface AgentTransferParams {
   destinationTokenAccount: PublicKey;
   feeDestinationTokenAccount?: PublicKey | null;
   protocolTreasuryTokenAccount?: PublicKey | null;
-  oracleFeedAccount?: PublicKey;
-  /** Fallback oracle feed account (optional, for cross-validation) */
-  fallbackOracleFeedAccount?: PublicKey;
 }
 
 export interface AuthorizeParams {
@@ -205,6 +260,8 @@ export interface AuthorizeParams {
   amount: BN;
   targetProtocol: PublicKey;
   leverageBps?: number | null;
+  /** Output stablecoin token account (for post-swap balance verification) */
+  outputStablecoinAccount?: PublicKey;
 }
 
 export interface ComposeActionParams {
@@ -227,17 +284,6 @@ export interface ComposeActionParams {
   feeDestinationTokenAccount?: PublicKey | null;
   /** Optional: protocol treasury token account for protocol fee */
   protocolTreasuryTokenAccount?: PublicKey | null;
-  /** Oracle feed account for oracle-priced tokens (Pyth or Switchboard) */
-  oracleFeedAccount?: PublicKey;
-  /** Fallback oracle feed account (optional, for cross-validation) */
-  fallbackOracleFeedAccount?: PublicKey;
-}
-
-export interface InitializeOracleRegistryParams {
-  entries: OracleEntry[];
-}
-
-export interface UpdateOracleRegistryParams {
-  entriesToAdd: OracleEntry[];
-  mintsToRemove: PublicKey[];
+  /** Output stablecoin token account (for post-swap balance verification) */
+  outputStablecoinAccount?: PublicKey;
 }

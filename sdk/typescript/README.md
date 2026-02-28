@@ -68,7 +68,7 @@ AgentShield uses 6 PDA account types:
 | **SpendTracker** | `[b"tracker", vault]` | Zero-copy 144-epoch circular buffer for rolling 24h USD spend tracking |
 | **SessionAuthority** | `[b"session", vault, agent, token_mint]` | Ephemeral PDA for atomic transaction validation (expires after 20 slots) |
 | **PendingPolicyUpdate** | `[b"pending_policy", vault]` | Queued policy change with timelock, applied after delay |
-| **OracleRegistry** | `[b"oracle_registry"]` | Protocol-level PDA mapping token mints to oracle feeds (max 105 entries) |
+| **OracleRegistry** | `[b"oracle_registry"]` | Protocol-level PDA mapping token mints to oracle feeds (max 104 entries) |
 
 ## Instruction Composition Pattern
 
@@ -79,7 +79,7 @@ Transaction = [
   SetComputeUnitLimit(1_400_000),
   ValidateAndAuthorize,    // AgentShield: check policy, create session PDA
   ...DeFi instructions,    // Jupiter swap / Flash Trade open / etc.
-  FinalizeSession          // AgentShield: audit, fees, close session PDA
+  FinalizeSession          // AgentShield: audit, close session PDA
 ]
 ```
 
@@ -105,7 +105,7 @@ All instructions succeed or fail atomically. If the DeFi instruction fails, the 
 | Method | Description | Signer |
 |--------|-------------|--------|
 | `authorizeAction(vault, params)` | Validate agent action against policy, create session PDA | Agent |
-| `finalizeSession(vault, agent, success, ...)` | Close session, record audit, collect fees | Agent |
+| `finalizeSession(vault, agent, success, ...)` | Close session, record audit | Agent |
 
 ### Transaction Composition
 
@@ -222,12 +222,12 @@ Owner creates vault with policy → Agent operates within policy constraints
 │     • Check token/protocol whitelists                       │
 │     • Check spending cap (rolling 24h)                      │
 │     • Check leverage limits (if perp)                       │
+│     • Collect protocol + developer fees (upfront)           │
 │     • Create SessionAuthority PDA                           │
 │  3. DeFi Instruction (Jupiter swap, Flash Trade, etc.)      │
 │  4. FinalizeSession                                         │
 │     • Record in audit log                                   │
 │     • Update open positions counter                         │
-│     • Collect protocol + developer fees                     │
 │     • Close SessionAuthority PDA (reclaim rent)             │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -238,9 +238,9 @@ Owner creates vault with policy → Agent operates within policy constraints
 |----------|-----------|
 | One agent per vault | Multiple agents = multiple vaults. Simplifies permission model. |
 | Rolling 24h window | Not calendar-day. Prevents edge-case burst at midnight. |
-| Fees at finalization only | Not at authorization. Prevents fee charging on failed txs. |
+| Fees at authorization (upfront) | Non-bypassable. If DeFi fails, atomic revert returns fees. |
 | Immutable fee destination | Prevents owner from changing fee recipient after vault creation. |
-| Bounded vectors | Max 10 protocols, 10 destinations, 105 oracle entries. SpendTracker uses fixed 144-epoch circular buffer. |
+| Bounded vectors | Max 10 protocols, 10 destinations, 104 oracle entries. SpendTracker uses fixed 144-epoch circular buffer. |
 
 ### Policy Constraints
 

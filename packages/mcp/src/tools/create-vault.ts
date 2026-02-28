@@ -28,10 +28,15 @@ export const createVaultSchema = z.object({
     ),
   maxLeverageBps: z
     .number()
+    .int()
+    .min(0)
     .describe("Maximum leverage in basis points (e.g. 30000 = 3x)"),
   maxConcurrentPositions: z
     .number()
-    .describe("Maximum number of concurrent open positions"),
+    .int()
+    .min(0)
+    .max(255)
+    .describe("Maximum number of concurrent open positions (0-255)"),
   feeDestination: z
     .string()
     .describe(
@@ -39,9 +44,12 @@ export const createVaultSchema = z.object({
     ),
   developerFeeRate: z
     .number()
+    .int()
+    .min(0)
+    .max(500)
     .optional()
     .default(0)
-    .describe("Developer fee rate (max 500 = 5 BPS)"),
+    .describe("Developer fee rate (0-500, max 5 BPS)"),
   allowedDestinations: z
     .array(z.string())
     .optional()
@@ -54,6 +62,17 @@ export const createVaultSchema = z.object({
     .default(0)
     .describe(
       "Timelock duration in seconds. When > 0, policy updates require queue → wait → apply.",
+    ),
+  maxSlippageBps: z
+    .number()
+    .int()
+    .min(0)
+    .max(5000)
+    .optional()
+    .default(100)
+    .describe(
+      "Maximum slippage tolerance in basis points (0-5000, default 100 = 1%). " +
+        "Set to 0 to reject all swaps. Hard cap at 5000 (50%).",
     ),
 });
 
@@ -80,6 +99,7 @@ export async function createVault(
       allowedDestinations: input.allowedDestinations
         ? input.allowedDestinations.map(toPublicKey)
         : [],
+      maxSlippageBps: input.maxSlippageBps ?? 100,
     };
 
     const sig = await client.createVault(params);
@@ -106,7 +126,7 @@ export const createVaultTool = {
   description:
     "Create a new AgentShield vault with policy configuration. " +
     "Sets spending caps, protocol mode, leverage limits, and fee settings. " +
-    "Tokens are managed via the global OracleRegistry.",
+    "Stablecoin-only USD tracking with on-chain slippage enforcement.",
   schema: createVaultSchema,
   handler: createVault,
 };

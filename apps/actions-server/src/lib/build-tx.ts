@@ -42,6 +42,8 @@ export async function buildProvisionTransaction(
     buildInitializeVault,
     buildRegisterAgent,
     getVaultPDA,
+    CU_VAULT_CREATION,
+    getEstimator,
   } = await import("@agent-shield/sdk");
 
   const PROGRAM_ID = process.env.AGENTSHIELD_PROGRAM_ID
@@ -75,7 +77,7 @@ export async function buildProvisionTransaction(
 
   // Build instructions
   const computeIx = ComputeBudgetProgram.setComputeUnitLimit({
-    units: 400_000,
+    units: CU_VAULT_CREATION,
   });
   const initIx = await buildInitializeVault(
     program,
@@ -89,13 +91,26 @@ export async function buildProvisionTransaction(
     params.agentPubkey,
   ).instruction();
 
+  // Priority fee for reliable tx landing
+  let priorityFeeIx;
+  try {
+    const estimator = getEstimator(connection);
+    priorityFeeIx = await estimator.buildPriorityFeeIx("high");
+  } catch {
+    // Proceed without priority fee if estimation fails
+  }
+
   // Build VersionedTransaction
   const { blockhash } = await connection.getLatestBlockhash("confirmed");
+
+  const ixs = priorityFeeIx
+    ? [computeIx, priorityFeeIx, initIx, registerIx]
+    : [computeIx, initIx, registerIx];
 
   const messageV0 = new TransactionMessage({
     payerKey: params.owner,
     recentBlockhash: blockhash,
-    instructions: [computeIx, initIx, registerIx],
+    instructions: ixs,
   }).compileToV0Message();
 
   const transaction = new VTx(messageV0);

@@ -46,6 +46,7 @@ pub fn handler(
     can_open_positions: Option<bool>,
     max_concurrent_positions: Option<u8>,
     developer_fee_rate: Option<u16>,
+    max_slippage_bps: Option<u16>,
     timelock_duration: Option<u64>,
     allowed_destinations: Option<Vec<Pubkey>>,
 ) -> Result<()> {
@@ -82,6 +83,12 @@ pub fn handler(
             AgentShieldError::DeveloperFeeTooHigh
         );
     }
+    if let Some(ref slippage) = max_slippage_bps {
+        require!(
+            *slippage <= MAX_SLIPPAGE_BPS,
+            AgentShieldError::SlippageBpsTooHigh
+        );
+    }
     if let Some(ref destinations) = allowed_destinations {
         require!(
             destinations.len() <= MAX_ALLOWED_DESTINATIONS,
@@ -107,6 +114,7 @@ pub fn handler(
     pending.can_open_positions = can_open_positions;
     pending.max_concurrent_positions = max_concurrent_positions;
     pending.developer_fee_rate = developer_fee_rate;
+    pending.max_slippage_bps = max_slippage_bps;
     pending.timelock_duration = timelock_duration;
     pending.allowed_destinations = allowed_destinations;
     pending.bump = ctx.bumps.pending_policy;

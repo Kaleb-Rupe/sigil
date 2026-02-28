@@ -259,7 +259,7 @@ export class LiteSVMProvider implements Provider {
     };
     return {
       logs: rawResult.meta().logs(),
-      unitsConsumed: Number(rawResult.meta().computeUnitsConsumed),
+      unitsConsumed: Number(rawResult.meta().computeUnitsConsumed()),
       returnData,
     };
   }
@@ -321,6 +321,49 @@ export function airdropSol(
   lamports: number,
 ): void {
   svm.airdrop(to, BigInt(lamports));
+}
+
+// ─── Hardcoded stablecoin mints (must match on-chain devnet feature flag) ────
+
+/** Devnet USDC: 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU */
+export const DEVNET_USDC_MINT = new PublicKey(
+  "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+);
+
+/** Devnet USDT: EJwZgeZrdC8TXTQbQBoL6bfuAnFUQS5S4iC5A2ciQtCK */
+export const DEVNET_USDT_MINT = new PublicKey(
+  "EJwZgeZrdC8TXTQbQBoL6bfuAnFUQS5S4iC5A2ciQtCK",
+);
+
+/**
+ * Create an SPL Token mint at a specific address by writing account data directly.
+ * Used for hardcoded stablecoin mints where we don't have the private key.
+ */
+export function createMintAtAddress(
+  svm: LiteSVM,
+  mintAddress: PublicKey,
+  mintAuthority: PublicKey,
+  decimals: number,
+): void {
+  const mintData = Buffer.alloc(MINT_SIZE);
+  // MintLayout: mintAuthorityOption(4) + mintAuthority(32) + supply(8) +
+  //   decimals(1) + isInitialized(1) + freezeAuthorityOption(4) + freezeAuthority(32)
+  mintData.writeUInt32LE(1, 0); // COption::Some for mint authority
+  mintAuthority.toBuffer().copy(mintData, 4);
+  mintData.writeBigUInt64LE(0n, 36); // supply = 0
+  mintData.writeUInt8(decimals, 44);
+  mintData.writeUInt8(1, 45); // isInitialized = true
+  mintData.writeUInt32LE(0, 46); // COption::None (no freeze authority)
+
+  const rentExempt = Number(
+    svm.minimumBalanceForRentExemption(BigInt(MINT_SIZE)),
+  );
+  svm.setAccount(mintAddress, {
+    lamports: rentExempt,
+    data: mintData,
+    owner: TOKEN_PROGRAM_ID,
+    executable: false,
+  });
 }
 
 // ─── SPL Token helpers (raw instructions, no @solana/spl-token convenience) ──
@@ -516,12 +559,18 @@ export function advanceTime(svm: LiteSVM, seconds: number): void {
 
 // ─── Composed TX helper for LiteSVM ─────────────────────────────────────────
 
+export interface VersionedTxResult {
+  signature: string;
+  computeUnitsConsumed: number;
+  logs: string[];
+}
+
 export function sendVersionedTx(
   svm: LiteSVM,
   instructions: TransactionInstruction[],
   payer: Keypair,
   signers: Keypair[] = [],
-): string {
+): VersionedTxResult {
   const messageV0 = new TransactionMessage({
     payerKey: payer.publicKey,
     recentBlockhash: svm.latestBlockhash(),
@@ -539,7 +588,69 @@ export function sendVersionedTx(
     );
   }
 
-  return bs58.encode(tx.signatures[0]);
+  return {
+    signature: bs58.encode(tx.signatures[0]),
+    computeUnitsConsumed: Number(res.computeUnitsConsumed()),
+    logs: res.logs(),
+  };
+}
+
+// ─── CU Measurement Utilities ───────────────────────────────────────────────
+
+const cuMeasurements: Map<string, number[]> = new Map();
+
+/**
+ * Record CU consumption for a named operation (call after sendVersionedTx).
+ * Accumulates measurements across multiple calls for the same label.
+ */
+export function recordCU(label: string, result: VersionedTxResult): void {
+  const existing = cuMeasurements.get(label) ?? [];
+  existing.push(result.computeUnitsConsumed);
+  cuMeasurements.set(label, existing);
+}
+
+/**
+ * Print a summary table of all recorded CU measurements.
+ * Call at the end of a test suite (e.g., in an `after()` hook).
+ */
+export function printCUSummary(): void {
+  if (cuMeasurements.size === 0) return;
+
+  console.log(
+    "\n┌─────────────────────────────────────────────────────────────┐",
+  );
+  console.log(
+    "│                    CU Consumption Report                    │",
+  );
+  console.log(
+    "├──────────────────────────────────┬────────┬────────┬────────┤",
+  );
+  console.log(
+    "│ Operation                        │    Min │    Max │    Avg │",
+  );
+  console.log(
+    "├──────────────────────────────────┼────────┼────────┼────────┤",
+  );
+
+  for (const [label, values] of cuMeasurements.entries()) {
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const avg = Math.round(values.reduce((a, b) => a + b, 0) / values.length);
+    const padLabel = label.padEnd(32).slice(0, 32);
+    const padMin = String(min).padStart(6);
+    const padMax = String(max).padStart(6);
+    const padAvg = String(avg).padStart(6);
+    console.log(`│ ${padLabel} │ ${padMin} │ ${padMax} │ ${padAvg} │`);
+  }
+
+  console.log(
+    "└──────────────────────────────────┴────────┴────────┴────────┘\n",
+  );
+}
+
+/** Clear all recorded CU measurements. */
+export function resetCUMeasurements(): void {
+  cuMeasurements.clear();
 }
 
 // Re-export types

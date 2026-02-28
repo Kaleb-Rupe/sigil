@@ -39,7 +39,7 @@ describe("shield_register_agent", () => {
 
   it("returns error when agent already registered", async () => {
     const client = createMockClient({
-      shouldThrow: Object.assign(new Error("test"), { code: 6015 }),
+      shouldThrow: Object.assign(new Error("test"), { code: 6014 }),
     });
     const result = await registerAgent(client as any, {
       vault: TEST_VAULT_PDA.toBase58(),

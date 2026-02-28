@@ -5,7 +5,6 @@ use anchor_lang::prelude::*;
 pub mod errors;
 pub mod events;
 pub mod instructions;
-pub mod oracle;
 pub mod state;
 
 #[cfg(feature = "certora")]
@@ -20,40 +19,6 @@ declare_id!("4ZeVCqnjUgUtFrHHPG7jELUxvJeoVGHhGNgPrhBPwrHL");
 pub mod agent_shield {
     use super::*;
 
-    /// Initialize the protocol-level oracle registry.
-    /// Only called once. The authority becomes the registry admin.
-    pub fn initialize_oracle_registry(
-        ctx: Context<InitializeOracleRegistry>,
-        entries: Vec<state::OracleEntry>,
-    ) -> Result<()> {
-        instructions::initialize_oracle_registry::handler(ctx, entries)
-    }
-
-    /// Propose a new authority for the oracle registry (step 1 of 2).
-    /// Only the current authority can call this.
-    pub fn propose_oracle_authority(
-        ctx: Context<ProposeOracleAuthority>,
-        new_authority: Pubkey,
-    ) -> Result<()> {
-        instructions::propose_oracle_authority::handler(ctx, new_authority)
-    }
-
-    /// Accept an oracle registry authority transfer (step 2 of 2).
-    /// Only the proposed new authority can call this.
-    pub fn accept_oracle_authority(ctx: Context<AcceptOracleAuthority>) -> Result<()> {
-        instructions::accept_oracle_authority::handler(ctx)
-    }
-
-    /// Add or remove entries from the oracle registry.
-    /// Only the registry authority can call this.
-    pub fn update_oracle_registry(
-        ctx: Context<UpdateOracleRegistry>,
-        entries_to_add: Vec<state::OracleEntry>,
-        mints_to_remove: Vec<Pubkey>,
-    ) -> Result<()> {
-        instructions::update_oracle_registry::handler(ctx, entries_to_add, mints_to_remove)
-    }
-
     /// Initialize a new agent vault with policy configuration.
     /// Only the owner can call this. Creates vault PDA, policy PDA,
     /// and zero-copy spend tracker PDA.
@@ -67,6 +32,7 @@ pub mod agent_shield {
         max_leverage_bps: u16,
         max_concurrent_positions: u8,
         developer_fee_rate: u16,
+        max_slippage_bps: u16,
         timelock_duration: u64,
         allowed_destinations: Vec<Pubkey>,
     ) -> Result<()> {
@@ -80,6 +46,7 @@ pub mod agent_shield {
             max_leverage_bps,
             max_concurrent_positions,
             developer_fee_rate,
+            max_slippage_bps,
             timelock_duration,
             allowed_destinations,
         )
@@ -109,6 +76,7 @@ pub mod agent_shield {
         can_open_positions: Option<bool>,
         max_concurrent_positions: Option<u8>,
         developer_fee_rate: Option<u16>,
+        max_slippage_bps: Option<u16>,
         timelock_duration: Option<u64>,
         allowed_destinations: Option<Vec<Pubkey>>,
     ) -> Result<()> {
@@ -122,13 +90,15 @@ pub mod agent_shield {
             can_open_positions,
             max_concurrent_positions,
             developer_fee_rate,
+            max_slippage_bps,
             timelock_duration,
             allowed_destinations,
         )
     }
 
     /// Core permission check. Called by the agent before a DeFi action.
-    /// Validates against policy constraints + oracle registry.
+    /// Validates against policy constraints, stablecoin-only enforcement,
+    /// and protocol slippage verification.
     /// Creates a SessionAuthority PDA, delegates tokens to agent.
     pub fn validate_and_authorize(
         ctx: Context<ValidateAndAuthorize>,
@@ -189,6 +159,7 @@ pub mod agent_shield {
         can_open_positions: Option<bool>,
         max_concurrent_positions: Option<u8>,
         developer_fee_rate: Option<u16>,
+        max_slippage_bps: Option<u16>,
         timelock_duration: Option<u64>,
         allowed_destinations: Option<Vec<Pubkey>>,
     ) -> Result<()> {
@@ -202,6 +173,7 @@ pub mod agent_shield {
             can_open_positions,
             max_concurrent_positions,
             developer_fee_rate,
+            max_slippage_bps,
             timelock_duration,
             allowed_destinations,
         )
@@ -218,8 +190,13 @@ pub mod agent_shield {
     }
 
     /// Transfer tokens from the vault to an allowed destination.
-    /// Only the agent can call this.
+    /// Only the agent can call this. Stablecoin-only.
     pub fn agent_transfer(ctx: Context<AgentTransfer>, amount: u64) -> Result<()> {
         instructions::agent_transfer::handler(ctx, amount)
+    }
+
+    /// Sync the vault's open position counter with the actual state.
+    pub fn sync_positions(ctx: Context<SyncPositions>, actual_positions: u8) -> Result<()> {
+        instructions::sync_positions::handler(ctx, actual_positions)
     }
 }

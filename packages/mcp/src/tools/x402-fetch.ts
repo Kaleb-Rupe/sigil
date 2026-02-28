@@ -37,6 +37,70 @@ function getConfigKey(config: McpConfig): string {
   return `${config.rpcUrl}|${config.walletPath ?? ""}|${config.agentKeypairPath ?? ""}|${typeof cfgAny.keypair === "string" ? cfgAny.keypair : ""}`;
 }
 
+/** H3: SSRF protection — block localhost, private IPs (IPv4 + IPv6), non-HTTPS */
+function validateUrl(url: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error("Invalid URL format");
+  }
+  if (parsed.protocol !== "https:") {
+    throw new Error("Only HTTPS URLs are allowed");
+  }
+  const hostname = parsed.hostname.toLowerCase();
+  if (
+    ["localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"].includes(hostname)
+  ) {
+    throw new Error("Requests to localhost/loopback addresses are not allowed");
+  }
+  // IPv4 private range check
+  const parts = hostname.split(".");
+  if (parts.length === 4 && parts.every((p) => /^\d+$/.test(p))) {
+    const [a, b] = [parseInt(parts[0], 10), parseInt(parts[1], 10)];
+    if (
+      a === 10 ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      a === 0
+    ) {
+      throw new Error("Requests to private IP addresses are not allowed");
+    }
+  }
+  // IPv6 private range check (strip brackets for raw IPv6 hostnames)
+  const raw = hostname.replace(/^\[|\]$/g, "");
+  if (raw.includes(":")) {
+    // Reject IPv4-mapped IPv6 (::ffff:10.x.x.x, ::ffff:192.168.x.x, etc.)
+    const mapped = raw.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
+    if (mapped) {
+      const mp = mapped[1].split(".").map(Number);
+      if (
+        mp[0] === 10 ||
+        mp[0] === 127 ||
+        (mp[0] === 172 && mp[1] >= 16 && mp[1] <= 31) ||
+        (mp[0] === 192 && mp[1] === 168) ||
+        mp[0] === 0
+      ) {
+        throw new Error("Requests to private IP addresses are not allowed");
+      }
+    }
+    // Reject unique local (fc00::/7 → fc or fd prefix)
+    if (/^f[cd]/i.test(raw)) {
+      throw new Error("Requests to private IP addresses are not allowed");
+    }
+    // Reject link-local (fe80::/10)
+    if (/^fe[89ab]/i.test(raw)) {
+      throw new Error("Requests to private IP addresses are not allowed");
+    }
+    // Reject loopback (::1 variants not caught above)
+    if (/^(0*:)*:?0*1$/.test(raw)) {
+      throw new Error(
+        "Requests to localhost/loopback addresses are not allowed",
+      );
+    }
+  }
+}
+
 export async function x402Fetch(
   _client: AgentShieldClient,
   config: McpConfig,
@@ -44,6 +108,7 @@ export async function x402Fetch(
   custodyWallet?: CustodyWalletLike | null,
 ): Promise<string> {
   try {
+    validateUrl(input.url);
     const { shieldedFetch } = await import("@agent-shield/sdk");
     // V2: shield() is internal to the wrapper. We access it from the compiled
     // dist output since the MCP server runs in the same monorepo.

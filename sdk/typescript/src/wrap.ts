@@ -16,9 +16,11 @@ import {
   buildFinalizeSession,
 } from "./instructions";
 import { rewriteVaultAuthority } from "./rewriter";
-
-/** Default compute budget for wrapped transactions (1.4M CU) */
-const DEFAULT_COMPUTE_UNITS = 1_400_000;
+import {
+  estimateComposedCU,
+  type PriorityFeeConfig,
+  getEstimator,
+} from "./priority-fees";
 
 export interface WrapTransactionParams {
   /** Vault PDA */
@@ -43,16 +45,16 @@ export interface WrapTransactionParams {
   leverageBps?: number | null;
   /** Address lookup tables for compact transaction encoding */
   addressLookupTables?: AddressLookupTableAccount[];
-  /** Compute unit budget override */
+  /** Compute unit budget override (auto-detected if omitted) */
   computeUnits?: number;
   /** Protocol treasury token account (optional) */
   protocolTreasuryTokenAccount?: PublicKey | null;
   /** Fee destination token account (optional) */
   feeDestinationTokenAccount?: PublicKey | null;
-  /** Oracle feed account for oracle-priced tokens (Pyth or Switchboard) */
-  oracleFeedAccount?: PublicKey;
-  /** Fallback oracle feed account (optional, for cross-validation) */
-  fallbackOracleFeedAccount?: PublicKey;
+  /** Output stablecoin account for non-stablecoin swaps (vault's stablecoin ATA) */
+  outputStablecoinAccount?: PublicKey;
+  /** Priority fee configuration (auto-configured if omitted) */
+  priorityFeeConfig?: PriorityFeeConfig;
 }
 
 /**
@@ -61,15 +63,17 @@ export interface WrapTransactionParams {
  * This is the protocol-agnostic entry point. It:
  * 1. Resolves the vault's token account
  * 2. Rewrites authority in DeFi instructions (vault PDA → agent)
- * 3. Builds: [ComputeBudget, ValidateAndAuthorize, ...defi, FinalizeSession]
+ * 3. Builds: [ComputeBudget, PriorityFee, ValidateAndAuthorize, ...defi, FinalizeSession]
  * 4. Returns an unsigned VersionedTransaction
+ *
+ * CU budget is automatically sized. Priority fees are automatically estimated.
  */
 export async function wrapTransaction(
   program: Program<AgentShield>,
   connection: Connection,
   params: WrapTransactionParams,
 ): Promise<VersionedTransaction> {
-  const instructions = await wrapInstructions(program, params);
+  const instructions = await wrapInstructions(program, connection, params);
 
   const { blockhash } = await connection.getLatestBlockhash();
   const messageV0 = new TransactionMessage({
@@ -88,9 +92,11 @@ export async function wrapTransaction(
  */
 export async function wrapInstructions(
   program: Program<AgentShield>,
+  connection: Connection | null,
   params: WrapTransactionParams,
 ): Promise<TransactionInstruction[]> {
-  const computeUnits = params.computeUnits ?? DEFAULT_COMPUTE_UNITS;
+  const computeUnits =
+    params.computeUnits ?? estimateComposedCU(params.defiInstructions);
 
   // Derive vault token account
   const vaultTokenAccount = getAssociatedTokenAddressSync(
@@ -123,11 +129,11 @@ export async function wrapInstructions(
       amount: params.amount,
       targetProtocol: params.targetProtocol,
       leverageBps: params.leverageBps,
+      outputStablecoinAccount: params.outputStablecoinAccount,
     },
-    params.oracleFeedAccount,
-    params.fallbackOracleFeedAccount,
     params.protocolTreasuryTokenAccount,
     params.feeDestinationTokenAccount,
+    params.outputStablecoinAccount,
   ).instruction();
 
   // Finalize session (revokes delegation, closes session PDA)
@@ -139,7 +145,23 @@ export async function wrapInstructions(
     params.tokenMint,
     true,
     vaultTokenAccount,
+    params.outputStablecoinAccount,
   ).instruction();
 
-  return [computeIx, validateIx, ...rewrittenDefi, finalizeIx];
+  const instructions: TransactionInstruction[] = [computeIx];
+
+  // Inject priority fee if connection is available
+  if (connection) {
+    try {
+      const estimator = getEstimator(connection, params.priorityFeeConfig);
+      const priorityFeeIx = await estimator.buildPriorityFeeIx();
+      instructions.push(priorityFeeIx);
+    } catch {
+      // Priority fee estimation failed — proceed without it rather than blocking
+    }
+  }
+
+  instructions.push(validateIx, ...rewrittenDefi, finalizeIx);
+
+  return instructions;
 }

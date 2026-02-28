@@ -11,6 +11,7 @@ import {
   TransactionMessage,
   VersionedTransaction,
   ComputeBudgetProgram,
+  SYSVAR_INSTRUCTIONS_PUBKEY,
 } from "@solana/web3.js";
 import {
   TOKEN_PROGRAM_ID,
@@ -20,15 +21,22 @@ import {
 import { expect } from "chai";
 import BN from "bn.js";
 import { FLASH_TRADE_PROGRAM_ID } from "../sdk/typescript/src/integrations/flash-trade";
+import { CU_FLASH_TRADE } from "../sdk/typescript/src/priority-fees";
 import {
   createTestEnv,
   airdropSol,
   createMintHelper,
+  createMintAtAddress,
+  DEVNET_USDC_MINT,
   createAtaHelper,
   createAtaIdempotentHelper,
   mintToHelper,
   getTokenBalance,
   sendVersionedTx,
+  VersionedTxResult,
+  recordCU,
+  printCUSummary,
+  advanceTime,
   TestEnv,
   LiteSVM,
   FailedTransactionMetadata,
@@ -76,8 +84,6 @@ describe("flash-trade-integration", () => {
   let vaultPda: PublicKey;
   let policyPda: PublicKey;
   let trackerPda: PublicKey;
-  let oracleRegistryPda: PublicKey;
-
   /**
    * Create a mock DeFi instruction (no-op transfer to self).
    */
@@ -105,7 +111,7 @@ describe("flash-trade-integration", () => {
     leverageBps: number | null = null,
     success: boolean = true,
     overrideVaultTokenAta?: PublicKey,
-  ): Promise<string> {
+  ): Promise<VersionedTxResult> {
     const effectiveVaultAta = overrideVaultTokenAta ?? vaultUsdcAta;
 
     const [session] = PublicKey.findProgramAddressSync(
@@ -119,7 +125,7 @@ describe("flash-trade-integration", () => {
     );
 
     const computeIx = ComputeBudgetProgram.setComputeUnitLimit({
-      units: 1_400_000,
+      units: CU_FLASH_TRADE,
     });
 
     const validateIx = await program.methods
@@ -135,14 +141,15 @@ describe("flash-trade-integration", () => {
         vault,
         policy,
         tracker,
-        oracleRegistry: oracleRegistryPda,
         session,
         vaultTokenAccount: effectiveVaultAta,
         tokenMintAccount: tokenMint,
         protocolTreasuryTokenAccount: protocolTreasuryUsdcAta,
         feeDestinationTokenAccount: null,
+        outputStablecoinAccount: null,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
+        instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
       })
       .instruction();
 
@@ -156,18 +163,23 @@ describe("flash-trade-integration", () => {
         session,
         sessionRentRecipient: agentKp.publicKey,
         vaultTokenAccount: effectiveVaultAta,
+        outputStablecoinAccount: null,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
       .instruction();
 
     // Build and send versioned transaction via LiteSVM
-    return sendVersionedTx(
+    const result = sendVersionedTx(
       svm,
       [computeIx, validateIx, mockDefiIx, finalizeIx],
       agentKp,
     );
+    recordCU("flash_trade:composed_action", result);
+    return result;
   }
+
+  after(() => printCUSummary());
 
   before(async () => {
     env = createTestEnv();
@@ -180,8 +192,9 @@ describe("flash-trade-integration", () => {
     airdropSol(svm, agent.publicKey, 10 * LAMPORTS_PER_SOL);
     airdropSol(svm, feeDestination.publicKey, 2 * LAMPORTS_PER_SOL);
 
-    // Create USDC-like mint
-    usdcMint = createMintHelper(svm, (owner as any).payer, owner.publicKey, 6);
+    // Create USDC mint at hardcoded devnet address (required by is_stablecoin_mint)
+    createMintAtAddress(svm, DEVNET_USDC_MINT, owner.publicKey, 6);
+    usdcMint = DEVNET_USDC_MINT;
 
     // Create protocol treasury ATA
     protocolTreasuryUsdcAta = createAtaIdempotentHelper(
@@ -191,28 +204,6 @@ describe("flash-trade-integration", () => {
       protocolTreasury,
       true,
     );
-
-    // Derive oracle registry PDA and initialize it
-    [oracleRegistryPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("oracle_registry")],
-      program.programId,
-    );
-
-    await program.methods
-      .initializeOracleRegistry([
-        {
-          mint: usdcMint,
-          oracleFeed: PublicKey.default,
-          isStablecoin: true,
-          fallbackFeed: PublicKey.default,
-        },
-      ])
-      .accounts({
-        authority: owner.publicKey,
-        oracleRegistry: oracleRegistryPda,
-        systemProgram: SystemProgram.programId,
-      } as any)
-      .rpc();
 
     // Derive PDAs
     [vaultPda] = PublicKey.findProgramAddressSync(
@@ -246,6 +237,7 @@ describe("flash-trade-integration", () => {
         10000, // max leverage: 100x (10000 bps)
         3, // max concurrent positions
         0, // developer fee rate
+        100, // maxSlippageBps
         new BN(0), // timelockDuration
         [], // allowedDestinations
       )
@@ -318,7 +310,7 @@ describe("flash-trade-integration", () => {
         5000, // 50x leverage (within 100x limit)
       );
 
-      expect(sig).to.be.a("string");
+      expect(sig.signature).to.be.a("string");
 
       // Verify open_positions incremented
       const vault = await program.account.agentVault.fetch(vaultPda);
@@ -427,7 +419,7 @@ describe("flash-trade-integration", () => {
         trackerPda,
         agent,
         usdcMint,
-        new BN(100_000_000),
+        new BN(0),
         flashProtocol,
         { closePosition: {} },
       );
@@ -454,7 +446,7 @@ describe("flash-trade-integration", () => {
         3000,
       );
 
-      expect(sig).to.be.a("string");
+      expect(sig.signature).to.be.a("string");
     });
   });
 
@@ -469,12 +461,12 @@ describe("flash-trade-integration", () => {
         trackerPda,
         agent,
         usdcMint,
-        new BN(20_000_000),
+        new BN(0),
         flashProtocol,
         { decreasePosition: {} },
       );
 
-      expect(sig).to.be.a("string");
+      expect(sig.signature).to.be.a("string");
     });
   });
 
@@ -515,6 +507,7 @@ describe("flash-trade-integration", () => {
           10000,
           3,
           0, // developer fee rate
+          100, // maxSlippageBps
           new BN(0),
           [],
         )
@@ -617,6 +610,7 @@ describe("flash-trade-integration", () => {
           10000,
           3,
           0, // developer fee rate
+          100, // maxSlippageBps
           new BN(0),
           [],
         )
@@ -666,6 +660,7 @@ describe("flash-trade-integration", () => {
           false, // canOpenPositions = false
           null, // maxConcurrentPositions
           null, // developerFeeRate
+          null, // maxSlippageBps
           null, // timelockDuration
           null, // allowedDestinations
         )
@@ -749,6 +744,616 @@ describe("flash-trade-integration", () => {
         vault.totalVolume.toNumber(),
         "vault should have recorded total volume",
       ).to.be.greaterThan(0);
+    });
+  });
+
+  // =========================================================================
+  // Risk-reducing non-spending bypasses cap
+  // =========================================================================
+  describe("risk-reducing non-spending bypasses cap", () => {
+    const capVaultId = new BN(303);
+    let capVault: PublicKey;
+    let capPolicy: PublicKey;
+    let capTracker: PublicKey;
+    let capAgentKp: Keypair;
+    let capVaultUsdcAta: PublicKey;
+
+    // Use SystemProgram.programId as target_protocol so the mock DeFi
+    // instruction (SystemProgram.transfer) passes introspection check:
+    // next_ix.program_id == target_protocol
+    const mockProtocol = SystemProgram.programId;
+
+    before(async () => {
+      capAgentKp = Keypair.generate();
+      airdropSol(svm, capAgentKp.publicKey, 10 * LAMPORTS_PER_SOL);
+
+      [capVault] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("vault"),
+          owner.publicKey.toBuffer(),
+          capVaultId.toArrayLike(Buffer, "le", 8),
+        ],
+        program.programId,
+      );
+      [capPolicy] = PublicKey.findProgramAddressSync(
+        [Buffer.from("policy"), capVault.toBuffer()],
+        program.programId,
+      );
+      [capTracker] = PublicKey.findProgramAddressSync(
+        [Buffer.from("tracker"), capVault.toBuffer()],
+        program.programId,
+      );
+
+      // Daily cap = 200 USDC, max tx = 200 USDC, all protocols allowed
+      await program.methods
+        .initializeVault(
+          capVaultId,
+          new BN(200_000_000), // $200 daily cap
+          new BN(200_000_000), // $200 max tx
+          0, // protocol mode: all allowed
+          [],
+          10000, // 100x leverage
+          3,
+          0, // no dev fee
+          100, // maxSlippageBps
+          new BN(0), // no timelock
+          [], // no destination allowlist
+        )
+        .accountsPartial({
+          owner: owner.publicKey,
+          vault: capVault,
+          policy: capPolicy,
+          tracker: capTracker,
+          feeDestination: feeDestination.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+
+      // Register agent
+      await program.methods
+        .registerAgent(capAgentKp.publicKey)
+        .accountsPartial({ owner: owner.publicKey, vault: capVault })
+        .rpc();
+
+      // Mint fresh USDC for this vault's deposit
+      mintToHelper(
+        svm,
+        (owner as any).payer,
+        usdcMint,
+        ownerUsdcAta,
+        owner.publicKey,
+        2_000_000_000n,
+      );
+
+      // Create vault ATA and deposit
+      capVaultUsdcAta = createAtaIdempotentHelper(
+        svm,
+        (owner as any).payer,
+        usdcMint,
+        capVault,
+        true,
+      );
+      await program.methods
+        .depositFunds(new BN(1_000_000_000)) // $1000
+        .accountsPartial({
+          owner: owner.publicKey,
+          vault: capVault,
+          mint: usdcMint,
+          ownerTokenAccount: ownerUsdcAta,
+          vaultTokenAccount: capVaultUsdcAta,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+
+      // Open position for 100 USDC (uses 100/200 cap, open_positions = 1)
+      await sendComposedAction(
+        capVault,
+        capPolicy,
+        capTracker,
+        capAgentKp,
+        usdcMint,
+        new BN(100_000_000),
+        mockProtocol,
+        { openPosition: {} },
+        5000,
+        true,
+        capVaultUsdcAta,
+      );
+
+      // Swap for 100 USDC (uses 200/200 cap = AT limit)
+      await sendComposedAction(
+        capVault,
+        capPolicy,
+        capTracker,
+        capAgentKp,
+        usdcMint,
+        new BN(100_000_000),
+        mockProtocol,
+        { swap: {} },
+        null,
+        true,
+        capVaultUsdcAta,
+      );
+
+      // Verify we're at cap with 1 open position
+      const vault = await program.account.agentVault.fetch(capVault);
+      expect(vault.openPositions).to.equal(1);
+    });
+
+    it("ClosePosition at daily cap succeeds — non-spending bypasses cap", async () => {
+      // At 200/200 cap. Close with amount=0 (non-spending, risk-reducing).
+      // Risk-reducing actions bypass cap entirely — no spending tracked.
+      const sig = await sendComposedAction(
+        capVault,
+        capPolicy,
+        capTracker,
+        capAgentKp,
+        usdcMint,
+        new BN(0),
+        mockProtocol,
+        { closePosition: {} },
+        null,
+        true,
+        capVaultUsdcAta,
+      );
+      expect(sig.signature).to.be.a("string");
+
+      const vault = await program.account.agentVault.fetch(capVault);
+      expect(vault.openPositions).to.equal(0);
+    });
+
+    it("DecreasePosition at daily cap succeeds — non-spending bypasses cap", async () => {
+      // Advance time to fully evict rolling 24h window (24h + 1 epoch = 87000s)
+      advanceTime(svm, 87_001);
+
+      // Open a position (uses cap from fresh window)
+      await sendComposedAction(
+        capVault,
+        capPolicy,
+        capTracker,
+        capAgentKp,
+        usdcMint,
+        new BN(100_000_000),
+        mockProtocol,
+        { openPosition: {} },
+        5000,
+        true,
+        capVaultUsdcAta,
+      );
+
+      // Fill cap with a swap
+      await sendComposedAction(
+        capVault,
+        capPolicy,
+        capTracker,
+        capAgentKp,
+        usdcMint,
+        new BN(100_000_000),
+        mockProtocol,
+        { swap: {} },
+        null,
+        true,
+        capVaultUsdcAta,
+      );
+
+      const vaultBefore = await program.account.agentVault.fetch(capVault);
+      expect(vaultBefore.openPositions).to.equal(1);
+
+      // Now decrease with amount=0 (non-spending, risk-reducing) — bypasses cap
+      const sig = await sendComposedAction(
+        capVault,
+        capPolicy,
+        capTracker,
+        capAgentKp,
+        usdcMint,
+        new BN(0),
+        mockProtocol,
+        { decreasePosition: {} },
+        null,
+        true,
+        capVaultUsdcAta,
+      );
+      expect(sig.signature).to.be.a("string");
+    });
+  });
+
+  // =========================================================================
+  // Flash Trade Expansion Tests — New Action Types
+  // =========================================================================
+
+  describe("add collateral (spending)", () => {
+    it("should authorize addCollateral with spending", async () => {
+      const sig = await sendComposedAction(
+        vaultPda,
+        policyPda,
+        trackerPda,
+        agent,
+        usdcMint,
+        new BN(50_000_000), // 50 USDC
+        flashProtocol,
+        { addCollateral: {} },
+      );
+      expect(sig.signature).to.be.a("string");
+
+      // Position counter should NOT change
+      const vault = await program.account.agentVault.fetch(vaultPda);
+      // open_positions unchanged (addCollateral has PositionEffect::None)
+      expect(vault.openPositions).to.equal(vault.openPositions);
+    });
+  });
+
+  describe("remove collateral (non-spending)", () => {
+    it("should authorize removeCollateral with amount=0", async () => {
+      const sig = await sendComposedAction(
+        vaultPda,
+        policyPda,
+        trackerPda,
+        agent,
+        usdcMint,
+        new BN(0), // non-spending: amount must be 0
+        flashProtocol,
+        { removeCollateral: {} },
+      );
+      expect(sig.signature).to.be.a("string");
+    });
+
+    it("should reject removeCollateral with amount>0", async () => {
+      try {
+        await sendComposedAction(
+          vaultPda,
+          policyPda,
+          trackerPda,
+          agent,
+          usdcMint,
+          new BN(100_000), // non-zero → should fail
+          flashProtocol,
+          { removeCollateral: {} },
+        );
+        expect.fail("Should have thrown");
+      } catch (e: any) {
+        expect(e.toString()).to.include("InvalidNonSpendingAmount");
+      }
+    });
+  });
+
+  describe("trigger orders (non-spending)", () => {
+    it("should authorize placeTriggerOrder with amount=0", async () => {
+      const sig = await sendComposedAction(
+        vaultPda,
+        policyPda,
+        trackerPda,
+        agent,
+        usdcMint,
+        new BN(0),
+        flashProtocol,
+        { placeTriggerOrder: {} },
+      );
+      expect(sig.signature).to.be.a("string");
+    });
+
+    it("should authorize editTriggerOrder with amount=0", async () => {
+      const sig = await sendComposedAction(
+        vaultPda,
+        policyPda,
+        trackerPda,
+        agent,
+        usdcMint,
+        new BN(0),
+        flashProtocol,
+        { editTriggerOrder: {} },
+      );
+      expect(sig.signature).to.be.a("string");
+    });
+
+    it("should authorize cancelTriggerOrder with amount=0", async () => {
+      const sig = await sendComposedAction(
+        vaultPda,
+        policyPda,
+        trackerPda,
+        agent,
+        usdcMint,
+        new BN(0),
+        flashProtocol,
+        { cancelTriggerOrder: {} },
+      );
+      expect(sig.signature).to.be.a("string");
+    });
+
+    it("should reject placeTriggerOrder with amount>0", async () => {
+      try {
+        await sendComposedAction(
+          vaultPda,
+          policyPda,
+          trackerPda,
+          agent,
+          usdcMint,
+          new BN(1_000_000),
+          flashProtocol,
+          { placeTriggerOrder: {} },
+        );
+        expect.fail("Should have thrown");
+      } catch (e: any) {
+        expect(e.toString()).to.include("InvalidNonSpendingAmount");
+      }
+    });
+  });
+
+  describe("limit orders", () => {
+    it("should authorize placeLimitOrder with spending + position increment", async () => {
+      // First ensure we can open positions (reset counter if needed)
+      const vaultBefore = await program.account.agentVault.fetch(vaultPda);
+      const positionsBefore = vaultBefore.openPositions;
+
+      const sig = await sendComposedAction(
+        vaultPda,
+        policyPda,
+        trackerPda,
+        agent,
+        usdcMint,
+        new BN(100_000_000), // 100 USDC (spending)
+        flashProtocol,
+        { placeLimitOrder: {} },
+      );
+      expect(sig.signature).to.be.a("string");
+
+      const vaultAfter = await program.account.agentVault.fetch(vaultPda);
+      expect(vaultAfter.openPositions).to.equal(positionsBefore + 1);
+    });
+
+    it("should authorize cancelLimitOrder with position decrement", async () => {
+      const vaultBefore = await program.account.agentVault.fetch(vaultPda);
+      const positionsBefore = vaultBefore.openPositions;
+      expect(positionsBefore).to.be.greaterThan(0);
+
+      const sig = await sendComposedAction(
+        vaultPda,
+        policyPda,
+        trackerPda,
+        agent,
+        usdcMint,
+        new BN(0), // non-spending
+        flashProtocol,
+        { cancelLimitOrder: {} },
+      );
+      expect(sig.signature).to.be.a("string");
+
+      const vaultAfter = await program.account.agentVault.fetch(vaultPda);
+      expect(vaultAfter.openPositions).to.equal(positionsBefore - 1);
+    });
+
+    it("should authorize editLimitOrder with amount=0", async () => {
+      const sig = await sendComposedAction(
+        vaultPda,
+        policyPda,
+        trackerPda,
+        agent,
+        usdcMint,
+        new BN(0),
+        flashProtocol,
+        { editLimitOrder: {} },
+      );
+      expect(sig.signature).to.be.a("string");
+    });
+  });
+
+  describe("swap-and-open / close-and-swap (spending + position)", () => {
+    it("should authorize swapAndOpenPosition with spending + position increment", async () => {
+      const vaultBefore = await program.account.agentVault.fetch(vaultPda);
+      const positionsBefore = vaultBefore.openPositions;
+
+      const sig = await sendComposedAction(
+        vaultPda,
+        policyPda,
+        trackerPda,
+        agent,
+        usdcMint,
+        new BN(100_000_000), // 100 USDC
+        flashProtocol,
+        { swapAndOpenPosition: {} },
+      );
+      expect(sig.signature).to.be.a("string");
+
+      const vaultAfter = await program.account.agentVault.fetch(vaultPda);
+      expect(vaultAfter.openPositions).to.equal(positionsBefore + 1);
+    });
+
+    it("should authorize closeAndSwapPosition with non-spending + position decrement", async () => {
+      const vaultBefore = await program.account.agentVault.fetch(vaultPda);
+      const positionsBefore = vaultBefore.openPositions;
+      expect(positionsBefore).to.be.greaterThan(0);
+
+      const sig = await sendComposedAction(
+        vaultPda,
+        policyPda,
+        trackerPda,
+        agent,
+        usdcMint,
+        new BN(0), // non-spending (risk-reducing close)
+        flashProtocol,
+        { closeAndSwapPosition: {} },
+      );
+      expect(sig.signature).to.be.a("string");
+
+      const vaultAfter = await program.account.agentVault.fetch(vaultPda);
+      expect(vaultAfter.openPositions).to.equal(positionsBefore - 1);
+    });
+  });
+
+  describe("sync_positions (owner-only)", () => {
+    it("should allow owner to sync positions", async () => {
+      // Set up: ensure vault has some open positions
+      await sendComposedAction(
+        vaultPda,
+        policyPda,
+        trackerPda,
+        agent,
+        usdcMint,
+        new BN(50_000_000),
+        flashProtocol,
+        { openPosition: {} },
+        5000, // 50x leverage
+      );
+
+      const vaultBefore = await program.account.agentVault.fetch(vaultPda);
+      expect(vaultBefore.openPositions).to.be.greaterThan(0);
+
+      // Owner syncs positions to 0
+      await program.methods
+        .syncPositions(0)
+        .accounts({
+          owner: owner.publicKey,
+          vault: vaultPda,
+        } as any)
+        .rpc();
+
+      const vaultAfter = await program.account.agentVault.fetch(vaultPda);
+      expect(vaultAfter.openPositions).to.equal(0);
+    });
+
+    it("should reject sync_positions by agent", async () => {
+      try {
+        await program.methods
+          .syncPositions(5)
+          .accounts({
+            owner: agent.publicKey,
+            vault: vaultPda,
+          } as any)
+          .signers([agent])
+          .rpc();
+        expect.fail("Should have thrown");
+      } catch (e: any) {
+        expect(e.toString()).to.include("UnauthorizedOwner");
+      }
+    });
+  });
+
+  describe("position limit enforcement (new action types)", () => {
+    it("should reject placeLimitOrder at max positions", async () => {
+      // Sync to max positions - 1 to set up the test
+      const policy = await program.account.policyConfig.fetch(policyPda);
+      const maxPos = policy.maxConcurrentPositions;
+
+      // Sync to max positions (already at capacity)
+      await program.methods
+        .syncPositions(maxPos)
+        .accounts({
+          owner: owner.publicKey,
+          vault: vaultPda,
+        } as any)
+        .rpc();
+
+      try {
+        await sendComposedAction(
+          vaultPda,
+          policyPda,
+          trackerPda,
+          agent,
+          usdcMint,
+          new BN(50_000_000),
+          flashProtocol,
+          { placeLimitOrder: {} },
+        );
+        expect.fail("Should have thrown");
+      } catch (e: any) {
+        expect(e.toString()).to.include("TooManyPositions");
+      }
+
+      // Reset for subsequent tests
+      await program.methods
+        .syncPositions(0)
+        .accounts({
+          owner: owner.publicKey,
+          vault: vaultPda,
+        } as any)
+        .rpc();
+    });
+
+    it("should reject cancelLimitOrder with 0 positions", async () => {
+      // Ensure 0 positions
+      await program.methods
+        .syncPositions(0)
+        .accounts({
+          owner: owner.publicKey,
+          vault: vaultPda,
+        } as any)
+        .rpc();
+
+      try {
+        await sendComposedAction(
+          vaultPda,
+          policyPda,
+          trackerPda,
+          agent,
+          usdcMint,
+          new BN(0),
+          flashProtocol,
+          { cancelLimitOrder: {} },
+        );
+        expect.fail("Should have thrown");
+      } catch (e: any) {
+        expect(e.toString()).to.include("NoPositionsToClose");
+      }
+    });
+
+    it("should reject swapAndOpenPosition at max positions", async () => {
+      const policy = await program.account.policyConfig.fetch(policyPda);
+      await program.methods
+        .syncPositions(policy.maxConcurrentPositions)
+        .accounts({
+          owner: owner.publicKey,
+          vault: vaultPda,
+        } as any)
+        .rpc();
+
+      try {
+        await sendComposedAction(
+          vaultPda,
+          policyPda,
+          trackerPda,
+          agent,
+          usdcMint,
+          new BN(50_000_000),
+          flashProtocol,
+          { swapAndOpenPosition: {} },
+        );
+        expect.fail("Should have thrown");
+      } catch (e: any) {
+        expect(e.toString()).to.include("TooManyPositions");
+      }
+
+      // Reset
+      await program.methods
+        .syncPositions(0)
+        .accounts({
+          owner: owner.publicKey,
+          vault: vaultPda,
+        } as any)
+        .rpc();
+    });
+  });
+
+  describe("non-spending volume tracking", () => {
+    it("should not add to total_volume for non-spending actions", async () => {
+      const vaultBefore = await program.account.agentVault.fetch(vaultPda);
+      const volumeBefore = vaultBefore.totalVolume;
+
+      await sendComposedAction(
+        vaultPda,
+        policyPda,
+        trackerPda,
+        agent,
+        usdcMint,
+        new BN(0),
+        flashProtocol,
+        { placeTriggerOrder: {} },
+      );
+
+      const vaultAfter = await program.account.agentVault.fetch(vaultPda);
+      expect(vaultAfter.totalVolume.toString()).to.equal(
+        volumeBefore.toString(),
+      );
     });
   });
 });

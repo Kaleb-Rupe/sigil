@@ -71,6 +71,9 @@ pub fn handler(ctx: Context<ApplyPendingPolicy>) -> Result<()> {
     if let Some(fee_rate) = pending.developer_fee_rate {
         policy.developer_fee_rate = fee_rate;
     }
+    if let Some(slippage) = pending.max_slippage_bps {
+        policy.max_slippage_bps = slippage;
+    }
     if let Some(tl) = pending.timelock_duration {
         policy.timelock_duration = tl;
     }

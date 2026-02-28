@@ -44,6 +44,11 @@ pub struct PolicyConfig {
     /// transaction. Max MAX_DEVELOPER_FEE_RATE (500 = 5 BPS).
     pub developer_fee_rate: u16,
 
+    /// Maximum slippage tolerance for Jupiter swaps in basis points.
+    /// 0 = reject all swaps (vault owner must explicitly configure).
+    /// Enforced on-chain via instruction introspection of Jupiter data.
+    pub max_slippage_bps: u16,
+
     /// Timelock duration in seconds for policy changes. 0 = no timelock.
     pub timelock_duration: u64,
 
@@ -60,7 +65,7 @@ impl PolicyConfig {
     /// max_tx_usd (8) + protocol_mode (1) +
     /// protocols vec (4 + 32 * MAX) +
     /// max_leverage (2) + can_open (1) + max_positions (1) +
-    /// developer_fee_rate (2) + timelock_duration (8) +
+    /// developer_fee_rate (2) + max_slippage_bps (2) + timelock_duration (8) +
     /// allowed_destinations vec (4 + 32 * MAX) + bump (1)
     pub const SIZE: usize = 8
         + 32
@@ -72,6 +77,7 @@ impl PolicyConfig {
         + 1
         + 1
         + 2
+        + 2 // max_slippage_bps
         + 8
         + (4 + 32 * MAX_ALLOWED_DESTINATIONS)
         + 1;
