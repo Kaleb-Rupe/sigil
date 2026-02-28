@@ -32,9 +32,10 @@ const MAX_ROUTE_STEPS: u32 = 10;
 const V1_SUFFIX_SIZE: usize = 19;
 
 /// Borsh field sizes for each Swap variant (excluding 1-byte discriminator).
-///   >= 0 : fixed byte count
-///   -1   : variable length, parseable (RemainingAccountsInfo)
-///   -2   : rejected (unparseable variable-length fields)
+///
+/// - `>= 0` : fixed byte count
+/// - `-1`   : variable length, parseable (RemainingAccountsInfo)
+/// - `-2`   : rejected (unparseable variable-length fields)
 #[rustfmt::skip]
 const SWAP_VARIANT_SIZES: [i8; SWAP_VARIANT_COUNT] = [
     0,   //   0: Saber

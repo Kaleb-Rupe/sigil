@@ -30,17 +30,18 @@ export function createMockConfig(): {
   cleanup: () => void;
 } {
   const kp = Keypair.generate();
-  const tmpPath = path.join(
-    os.tmpdir(),
-    `agentshield-test-kp-${Date.now()}-${Math.random().toString(36).slice(2)}.json`,
-  );
-  fs.writeFileSync(tmpPath, JSON.stringify(Array.from(kp.secretKey)));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "agentshield-test-"));
+  const tmpPath = path.join(tmpDir, "keypair.json");
+  fs.writeFileSync(tmpPath, JSON.stringify(Array.from(kp.secretKey)), {
+    mode: 0o600,
+  });
   return {
     walletPath: tmpPath,
     rpcUrl: "https://mock.rpc",
     cleanup: () => {
       try {
         fs.unlinkSync(tmpPath);
+        fs.rmdirSync(tmpDir);
       } catch {}
     },
   };

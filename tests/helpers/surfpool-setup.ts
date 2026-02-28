@@ -134,10 +134,7 @@ export async function waitForReady(
  *   3. Run `solana program deploy` which triggers a proper BPF reload
  */
 async function deployLocalProgram(connection: Connection): Promise<void> {
-  const soPath = path.resolve(
-    __dirname,
-    "../../target/deploy/agent_shield.so",
-  );
+  const soPath = path.resolve(__dirname, "../../target/deploy/agent_shield.so");
   if (!fs.existsSync(soPath)) {
     throw new Error(
       `Program .so not found at ${soPath}. Run 'anchor build --no-idl' first.`,
@@ -184,8 +181,7 @@ async function deployLocalProgram(connection: Connection): Promise<void> {
   ]);
 
   // 4. Deploy via solana CLI (properly updates SVM program cache)
-  const rpcUrl =
-    (connection as any)._rpcEndpoint || SURFPOOL_RPC_URL;
+  const rpcUrl = (connection as any)._rpcEndpoint || SURFPOOL_RPC_URL;
   execSync(
     `solana program deploy "${soPath}" ` +
       `--program-id ${PROGRAM_ID.toString()} ` +

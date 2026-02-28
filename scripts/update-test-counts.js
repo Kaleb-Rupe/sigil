@@ -60,11 +60,16 @@ const updated = [];
 
 function updateFile(filePath, label, updater) {
   const fullPath = path.join(ROOT, filePath);
-  if (!fs.existsSync(fullPath)) {
-    console.warn(`  SKIP: ${filePath} (not found)`);
-    return;
+  let before;
+  try {
+    before = fs.readFileSync(fullPath, "utf8");
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      console.warn(`  SKIP: ${filePath} (not found)`);
+      return;
+    }
+    throw err;
   }
-  const before = fs.readFileSync(fullPath, "utf8");
   const after = updater(before);
   if (after !== before) {
     fs.writeFileSync(fullPath, after);
