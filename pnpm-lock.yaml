@@ -24,8 +24,8 @@ importers:
         specifier: ^1.98.4
         version: 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)
       flash-sdk:
-        specifier: ^15.1.4
-        version: 15.1.4(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)(utf-8-validate@5.0.10)
+        specifier: ^15.4.6
+        version: 15.4.6(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)(utf-8-validate@5.0.10)
     devDependencies:
       '@changesets/changelog-github':
         specifier: ^0.6.0
@@ -110,8 +110,8 @@ importers:
   packages/mcp:
     dependencies:
       '@modelcontextprotocol/sdk':
-        specifier: ^1.27.0
-        version: 1.27.0(@cfworker/json-schema@4.1.1)(zod@4.3.6)
+        specifier: ^1.27.1
+        version: 1.27.1(@cfworker/json-schema@4.1.1)(zod@4.3.6)
     devDependencies:
       '@coral-xyz/anchor':
         specifier: ^0.32.1
@@ -354,8 +354,8 @@ importers:
         specifier: ^1.98.4
         version: 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)
       '@x402/core':
-        specifier: ^2.4.0
-        version: 2.4.0
+        specifier: ^2.5.0
+        version: 2.5.0
       cbor-x:
         specifier: ^1.6.0
         version: 1.6.0
@@ -386,8 +386,8 @@ importers:
         specifier: ^2.1.4
         version: 2.1.4(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)(utf-8-validate@5.0.10)
       flash-sdk:
-        specifier: ^15.1.4
-        version: 15.1.4(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)(utf-8-validate@5.0.10)
+        specifier: ^15.4.6
+        version: 15.4.6(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)(utf-8-validate@5.0.10)
 
 packages:
 
@@ -846,8 +846,8 @@ packages:
   '@metaplex-foundation/cusper@0.0.2':
     resolution: {integrity: sha512-S9RulC2fFCFOQraz61bij+5YCHhSO9llJegK8c8Y6731fSi6snUSQJdCUqYS8AIgR0TKbQvdvgSyIIdbDFZbBA==}
 
-  '@modelcontextprotocol/sdk@1.27.0':
-    resolution: {integrity: sha512-qOdO524oPMkUsOJTrsH9vz/HN3B5pKyW+9zIW51A9kDMVe7ON70drz1ouoyoyOcfzc+oxhkQ6jWmbyKnlWmYqA==}
+  '@modelcontextprotocol/sdk@1.27.1':
+    resolution: {integrity: sha512-sr6GbP+4edBwFndLbM60gf07z0FQ79gaExpnsjMGePXqFcSSb7t6iscpjk9DhFhwd+mTEQrzNafGP8/iGGFYaA==}
     engines: {node: '>=18'}
     peerDependencies:
       '@cfworker/json-schema': ^4.1.1
@@ -1533,8 +1533,8 @@ packages:
   '@vercel/static-config@3.1.2':
     resolution: {integrity: sha512-2d+TXr6K30w86a+WbMbGm2W91O0UzO5VeemZYBBUJbCjk/5FLLGIi8aV6RS2+WmaRvtcqNTn2pUA7nCOK3bGcQ==}
 
-  '@x402/core@2.4.0':
-    resolution: {integrity: sha512-g4K5dAVjevQftxCcpFlUDjO2AHE43FkO43VxwLCQ8ET3ki4aj2fzCcgvnXEj2eloJoocFS/Evt4pSTnP/4cFJw==}
+  '@x402/core@2.5.0':
+    resolution: {integrity: sha512-nUr8HW8WhkU1DvrpUfsRvALy5NF8UWKoFezZOtX61mohxp2lWZpJ2GnvscxDM8nmBAbtIollmksd5z5pj8InXw==}
 
   abbrev@3.0.1:
     resolution: {integrity: sha512-AO2ac6pjRB3SJmGJo+v5/aK6Omggp6fsLrs6wN9bd35ulu4cCwaAU9+7ZhXjeqHVkaHThLuzH0nZr0YpCDhygg==}
@@ -1709,6 +1709,9 @@ packages:
 
   axios@1.13.5:
     resolution: {integrity: sha512-cz4ur7Vb0xS4/KUN0tPWe44eqxrIu31me+fbang3ijiNscE129POzipJJA6zniq2C/Z6sJCjMimjS8Lc/GAs8Q==}
+
+  axios@1.13.6:
+    resolution: {integrity: sha512-ChTCHMouEe2kn713WHbQGcuYrr6fXTBiu460OTwWrWob16g1bXn4vtz07Ope7ewMozJAnEquLk5lWQWtBig9DQ==}
 
   balanced-match@1.0.2:
     resolution: {integrity: sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==}
@@ -2307,8 +2310,8 @@ packages:
     resolution: {integrity: sha512-78/PXT1wlLLDgTzDs7sjq9hzz0vXD+zn+7wypEe4fXQxCmdmqfGsEPQxmiCSQI3ajFV91bVSsvNtrJRiW6nGng==}
     engines: {node: '>=10'}
 
-  flash-sdk@15.1.4:
-    resolution: {integrity: sha512-/8YQb4czf1B+5rE+bipn0O4xRt96YO7WJvsELbCbGkAxpwcSxadnnQWiEP+RDZWAX8UbTt69E9TPsXA8kbW48g==}
+  flash-sdk@15.4.6:
+    resolution: {integrity: sha512-T57nM/3Lr68JJSaE2TP69v0XK99r439X4+fH2YLbxeE2aMfNq225RwTfdOjHgNZSRgBTneXgpRFCMCA/qJNWoQ==}
 
   flat@5.0.2:
     resolution: {integrity: sha512-b6suED+5/3rTpUBdG1gupIl8MPFCAMA0QXwmljLhvCUKcUvdE4gWky9zpuGCcXHOsz4J9wPGNWq6OKpmIzz3hQ==}
@@ -4539,7 +4542,7 @@ snapshots:
 
   '@metaplex-foundation/cusper@0.0.2': {}
 
-  '@modelcontextprotocol/sdk@1.27.0(@cfworker/json-schema@4.1.1)(zod@3.25.76)':
+  '@modelcontextprotocol/sdk@1.27.1(@cfworker/json-schema@4.1.1)(zod@3.25.76)':
     dependencies:
       '@hono/node-server': 1.19.10(hono@4.12.5)
       ajv: 8.18.0
@@ -4564,7 +4567,7 @@ snapshots:
       - supports-color
     optional: true
 
-  '@modelcontextprotocol/sdk@1.27.0(@cfworker/json-schema@4.1.1)(zod@4.3.6)':
+  '@modelcontextprotocol/sdk@1.27.1(@cfworker/json-schema@4.1.1)(zod@4.3.6)':
     dependencies:
       '@hono/node-server': 1.19.10(hono@4.12.5)
       ajv: 8.18.0
@@ -4673,7 +4676,7 @@ snapshots:
       debug: 4.4.3(supports-color@8.1.1)
       openai: 5.23.2(ws@8.19.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@3.25.76)
     optionalDependencies:
-      '@modelcontextprotocol/sdk': 1.27.0(@cfworker/json-schema@4.1.1)(zod@3.25.76)
+      '@modelcontextprotocol/sdk': 1.27.1(@cfworker/json-schema@4.1.1)(zod@3.25.76)
       zod: 3.25.76
     transitivePeerDependencies:
       - '@cfworker/json-schema'
@@ -4794,8 +4797,8 @@ snapshots:
     dependencies:
       '@pythnetwork/price-service-sdk': 1.9.0
       '@types/ws': 8.18.1
-      axios: 1.13.5
-      axios-retry: 4.5.0(axios@1.13.5)
+      axios: 1.13.6
+      axios-retry: 4.5.0(axios@1.13.6)
       isomorphic-ws: 4.0.1(ws@8.19.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       ts-log: 2.2.7
       ws: 8.19.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
@@ -5490,7 +5493,7 @@ snapshots:
       json-schema-to-ts: 1.6.4
       ts-morph: 12.0.0
 
-  '@x402/core@2.4.0':
+  '@x402/core@2.5.0':
     dependencies:
       zod: 3.25.76
 
@@ -5635,12 +5638,20 @@ snapshots:
     dependencies:
       possible-typed-array-names: 1.1.0
 
-  axios-retry@4.5.0(axios@1.13.5):
+  axios-retry@4.5.0(axios@1.13.6):
     dependencies:
-      axios: 1.13.5
+      axios: 1.13.6
       is-retry-allowed: 2.2.0
 
   axios@1.13.5:
+    dependencies:
+      follow-redirects: 1.15.11
+      form-data: 4.0.5
+      proxy-from-env: 1.1.0
+    transitivePeerDependencies:
+      - debug
+
+  axios@1.13.6:
     dependencies:
       follow-redirects: 1.15.11
       form-data: 4.0.5
@@ -6319,7 +6330,7 @@ snapshots:
       locate-path: 6.0.0
       path-exists: 4.0.0
 
-  flash-sdk@15.1.4(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)(utf-8-validate@5.0.10):
+  flash-sdk@15.4.6(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)(utf-8-validate@5.0.10):
     dependencies:
       '@coral-xyz/anchor': 0.32.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)
       '@pythnetwork/price-service-client': 1.11.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
