@@ -5,7 +5,7 @@ use anchor_spl::token::{self, Revoke, Token, TokenAccount};
 use anchor_lang::accounts::account_loader::AccountLoader;
 
 use crate::errors::PhalnxError;
-use crate::events::{DelegationRevoked, SessionFinalized};
+use crate::events::{AgentSpendLimitChecked, DelegationRevoked, SessionFinalized};
 use crate::state::{PositionEffect, *};
 
 #[derive(Accounts)]
@@ -54,6 +54,14 @@ pub struct FinalizeSession<'info> {
         bump,
     )]
     pub tracker: AccountLoader<'info, SpendTracker>,
+
+    /// Zero-copy AgentSpendOverlay shard 0 — per-agent rolling spend enforcement
+    #[account(
+        mut,
+        seeds = [b"agent_spend", vault.key().as_ref(), &[0u8]],
+        bump,
+    )]
+    pub agent_spend_overlay: AccountLoader<'info, AgentSpendOverlay>,
 
     /// Vault's PDA token account for the session's token
     #[account(mut)]
@@ -208,6 +216,34 @@ pub fn handler(ctx: Context<FinalizeSession>, success: bool) -> Result<()> {
             new_total <= policy.daily_spending_cap_usd,
             PhalnxError::DailyCapExceeded
         );
+
+        // --- Per-agent cap check via contribution overlay ---
+        let agent_entry = vault
+            .get_agent(&session_agent)
+            .ok_or(error!(PhalnxError::UnauthorizedAgent))?;
+        let mut overlay = ctx.accounts.agent_spend_overlay.load_mut()?;
+        if let Some(agent_slot) = overlay.find_agent_slot(&session_agent) {
+            if agent_entry.spending_limit_usd > 0 {
+                let agent_rolling = overlay.get_agent_rolling_24h_usd(&clock, agent_slot);
+                let new_agent = agent_rolling
+                    .checked_add(stablecoin_delta)
+                    .ok_or(PhalnxError::Overflow)?;
+                require!(
+                    new_agent <= agent_entry.spending_limit_usd,
+                    PhalnxError::AgentSpendLimitExceeded
+                );
+                emit!(AgentSpendLimitChecked {
+                    vault: vault.key(),
+                    agent: session_agent,
+                    agent_rolling_spend: agent_rolling,
+                    spending_limit_usd: agent_entry.spending_limit_usd,
+                    amount: stablecoin_delta,
+                    timestamp: clock.unix_timestamp,
+                });
+            }
+            overlay.record_agent_contribution(&clock, agent_slot, stablecoin_delta)?;
+        }
+        drop(overlay);
 
         // Record spend in tracker
         tracker.record_spend(&clock, stablecoin_delta)?;
