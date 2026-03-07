@@ -149,6 +149,8 @@ export type PolicyConfigAccount = {
   allowedDestinations: PublicKey[];
   hasConstraints: boolean;
   hasProtocolCaps: boolean;
+  protocolCaps: BN[];
+  sessionExpirySlots: BN;
   bump: number;
 };
 
@@ -204,20 +206,28 @@ export type DataConstraint = {
   value: number[];
 };
 
+export type AccountConstraint = {
+  index: number;
+  expected: PublicKey;
+};
+
 export type ConstraintEntry = {
   programId: PublicKey;
   dataConstraints: DataConstraint[];
+  accountConstraints: AccountConstraint[];
 };
 
 export type InstructionConstraintsAccount = {
   vault: PublicKey;
   entries: ConstraintEntry[];
+  strictMode: boolean;
   bump: number;
 };
 
 export type PendingConstraintsUpdateAccount = {
   vault: PublicKey;
   entries: ConstraintEntry[];
+  strictMode: boolean;
   queuedAt: BN;
   executesAt: BN;
   bump: number;
@@ -327,6 +337,7 @@ export interface InitializeVaultParams {
   maxSlippageBps?: number;
   timelockDuration?: BN;
   allowedDestinations?: PublicKey[];
+  protocolCaps?: BN[];
 }
 
 export interface UpdatePolicyParams {
@@ -341,6 +352,9 @@ export interface UpdatePolicyParams {
   maxSlippageBps?: number | null;
   timelockDuration?: BN | null;
   allowedDestinations?: PublicKey[] | null;
+  sessionExpirySlots?: BN | null;
+  hasProtocolCaps?: boolean | null;
+  protocolCaps?: BN[] | null;
 }
 
 export interface QueuePolicyUpdateParams {
@@ -355,6 +369,9 @@ export interface QueuePolicyUpdateParams {
   maxSlippageBps?: number | null;
   timelockDuration?: BN | null;
   allowedDestinations?: PublicKey[] | null;
+  sessionExpirySlots?: BN | null;
+  hasProtocolCaps?: boolean | null;
+  protocolCaps?: BN[] | null;
 }
 
 export interface AgentTransferParams {
@@ -437,12 +454,15 @@ export interface RefundEscrowParams {
 // Constraint param types
 export interface CreateConstraintsParams {
   entries: ConstraintEntry[];
+  strictMode?: boolean;
 }
 
 export interface UpdateConstraintsParams {
   entries: ConstraintEntry[];
+  strictMode?: boolean;
 }
 
 export interface QueueConstraintsUpdateParams {
   entries: ConstraintEntry[];
+  strictMode?: boolean;
 }
