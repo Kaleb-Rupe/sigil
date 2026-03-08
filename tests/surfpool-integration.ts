@@ -225,6 +225,7 @@ describe("surfpool-integration", function () {
           outputStablecoinAccount: null,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
+          agentSpendOverlay: overlayPda,
           instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
         .instruction();
@@ -241,6 +242,7 @@ describe("surfpool-integration", function () {
           vaultTokenAccount: vaultUsdcAta,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
+          agentSpendOverlay: overlayPda,
           instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
           outputStablecoinAccount: null,
         })
@@ -387,6 +389,7 @@ describe("surfpool-integration", function () {
           outputStablecoinAccount: null,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
+          agentSpendOverlay: overlayPda,
           instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
         .instruction();
@@ -403,6 +406,7 @@ describe("surfpool-integration", function () {
           vaultTokenAccount: vaultUsdcAta,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
+          agentSpendOverlay: overlayPda,
           instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
           outputStablecoinAccount: null,
         })
@@ -448,6 +452,7 @@ describe("surfpool-integration", function () {
           outputStablecoinAccount: null,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
+          agentSpendOverlay: overlayPda,
           instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
         .instruction();
@@ -492,6 +497,7 @@ describe("surfpool-integration", function () {
           outputStablecoinAccount: null,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
+          agentSpendOverlay: overlayPda,
           instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
         .instruction();
@@ -508,6 +514,7 @@ describe("surfpool-integration", function () {
           vaultTokenAccount: vaultUsdcAta,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
+          agentSpendOverlay: overlayPda,
           instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
           outputStablecoinAccount: null,
         })
@@ -646,6 +653,7 @@ describe("surfpool-integration", function () {
           outputStablecoinAccount: null,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
+          agentSpendOverlay: overlayPda,
           instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
         .instruction();
@@ -662,6 +670,7 @@ describe("surfpool-integration", function () {
           vaultTokenAccount: vaultUsdcAta,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
+          agentSpendOverlay: overlayPda,
           instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
           outputStablecoinAccount: null,
         })
@@ -707,6 +716,7 @@ describe("surfpool-integration", function () {
           outputStablecoinAccount: null,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
+          agentSpendOverlay: overlayPda,
           instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
         .instruction();
@@ -723,6 +733,7 @@ describe("surfpool-integration", function () {
           vaultTokenAccount: vaultUsdcAta,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
+          agentSpendOverlay: overlayPda,
           instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
           outputStablecoinAccount: null,
         })
@@ -771,6 +782,7 @@ describe("surfpool-integration", function () {
           outputStablecoinAccount: null,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
+          agentSpendOverlay: overlayPda,
           instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
         .instruction();
@@ -787,6 +799,7 @@ describe("surfpool-integration", function () {
           vaultTokenAccount: vaultUsdcAta,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
+          agentSpendOverlay: overlayPda,
           instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
           outputStablecoinAccount: null,
         })
@@ -948,6 +961,7 @@ describe("surfpool-integration", function () {
           outputStablecoinAccount: null,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
+          agentSpendOverlay: overlayPda,
           instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
         .instruction();
@@ -964,6 +978,7 @@ describe("surfpool-integration", function () {
           vaultTokenAccount: vaultUsdcAta,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
+          agentSpendOverlay: overlayPda,
           instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
           outputStablecoinAccount: null,
         })
@@ -1104,6 +1119,7 @@ describe("surfpool-integration", function () {
           outputStablecoinAccount: null,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
+          agentSpendOverlay: overlayPda,
           instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
         .instruction();
@@ -1120,6 +1136,7 @@ describe("surfpool-integration", function () {
           vaultTokenAccount: vaultUsdcAta,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
+          agentSpendOverlay: overlayPda,
           instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
           outputStablecoinAccount: null,
         })
@@ -1155,7 +1172,11 @@ describe("surfpool-integration", function () {
         program.programId,
       );
       const [profileOverlay] = PublicKey.findProgramAddressSync(
-        [Buffer.from("agent_spend"), profilePdas.vaultPda.toBuffer(), Buffer.from([0])],
+        [
+          Buffer.from("agent_spend"),
+          profilePdas.vaultPda.toBuffer(),
+          Buffer.from([0]),
+        ],
         program.programId,
       );
 
@@ -1231,7 +1252,11 @@ describe("surfpool-integration", function () {
         program.programId,
       );
       const [persistOverlay] = PublicKey.findProgramAddressSync(
-        [Buffer.from("agent_spend"), pdas.vaultPda.toBuffer(), Buffer.from([0])],
+        [
+          Buffer.from("agent_spend"),
+          pdas.vaultPda.toBuffer(),
+          Buffer.from([0]),
+        ],
         program.programId,
       );
 
@@ -1282,7 +1307,11 @@ describe("surfpool-integration", function () {
         program.programId,
       );
       const [resetOverlay] = PublicKey.findProgramAddressSync(
-        [Buffer.from("agent_spend"), pdas.vaultPda.toBuffer(), Buffer.from([0])],
+        [
+          Buffer.from("agent_spend"),
+          pdas.vaultPda.toBuffer(),
+          Buffer.from([0]),
+        ],
         program.programId,
       );
 
@@ -1348,7 +1377,11 @@ describe("surfpool-integration", function () {
         program.programId,
       );
       const [postResetOverlay] = PublicKey.findProgramAddressSync(
-        [Buffer.from("agent_spend"), pdas.vaultPda.toBuffer(), Buffer.from([0])],
+        [
+          Buffer.from("agent_spend"),
+          pdas.vaultPda.toBuffer(),
+          Buffer.from([0]),
+        ],
         program.programId,
       );
 
