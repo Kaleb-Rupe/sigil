@@ -29,6 +29,68 @@ import {
 import { expect } from "chai";
 import BN from "bn.js";
 
+// ─── Test-controlled stablecoin mint keypairs ────────────────────────────────
+// These pubkeys MUST match the Rust USDC_MINT and USDT_MINT devnet constants
+// in programs/phalnx/src/state/mod.rs (and DEVNET_USDC_MINT/DEVNET_USDT_MINT
+// in tests/helpers/litesvm-setup.ts).
+// Private keys committed here are devnet-only — no security concern.
+
+export const TEST_USDC_KEYPAIR = Keypair.fromSecretKey(
+  Uint8Array.from([
+    57, 116, 31, 62, 124, 154, 174, 111, 125, 197, 28, 25, 241, 46, 251, 101,
+    210, 11, 144, 136, 92, 122, 67, 161, 65, 158, 188, 225, 35, 67, 41, 38,
+    183, 123, 243, 77, 18, 80, 250, 164, 199, 89, 146, 151, 150, 233, 12, 20,
+    206, 135, 29, 138, 218, 153, 91, 77, 84, 71, 174, 53, 139, 167, 156, 54,
+  ]),
+);
+export const TEST_USDT_KEYPAIR = Keypair.fromSecretKey(
+  Uint8Array.from([
+    111, 156, 75, 11, 105, 82, 205, 23, 4, 64, 179, 121, 143, 109, 157, 132,
+    163, 140, 12, 12, 111, 231, 86, 83, 175, 222, 157, 57, 187, 33, 86, 122,
+    45, 62, 128, 117, 22, 254, 177, 202, 78, 70, 249, 101, 252, 36, 244, 42,
+    82, 77, 95, 72, 170, 154, 33, 171, 68, 12, 82, 27, 106, 105, 202, 15,
+  ]),
+);
+export const TEST_USDC_MINT = TEST_USDC_KEYPAIR.publicKey;
+export const TEST_USDT_MINT = TEST_USDT_KEYPAIR.publicKey;
+
+/**
+ * Ensure a stablecoin mint exists at the deterministic address.
+ * Idempotent — skips creation if mint already exists from a previous run.
+ */
+export async function ensureStablecoinMint(
+  connection: Connection,
+  payer: Keypair,
+  mintKeypair: Keypair,
+  mintAuthority: PublicKey,
+  decimals: number = 6,
+): Promise<PublicKey> {
+  const info = await connection.getAccountInfo(mintKeypair.publicKey);
+  if (!info) {
+    await createMint(
+      connection,
+      payer,
+      mintAuthority,
+      null,
+      decimals,
+      mintKeypair,
+    );
+  }
+  return mintKeypair.publicKey;
+}
+
+/**
+ * Create a non-stablecoin test token (random address, won't pass is_stablecoin_mint).
+ */
+export async function createNonStablecoinMint(
+  connection: Connection,
+  payer: Keypair,
+  mintAuthority: PublicKey,
+  decimals: number = 6,
+): Promise<PublicKey> {
+  return createMint(connection, payer, mintAuthority, null, decimals);
+}
+
 // ─── RPC Rate Limiter (prevents 429s from Helius devnet 10 RPS limit) ───────
 
 const RPC_MAX_RPS = 5; // Conservative: 5 RPS against 10 RPS limit

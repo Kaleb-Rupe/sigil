@@ -1,5 +1,5 @@
 /**
- * Devnet Security Tests — 11 tests (V2)
+ * Devnet Security Tests — 14 tests (V3)
  *
  * Adversarial access control tests against the live deployed program.
  * Confirms the same constraints that LiteSVM tests verify actually hold
@@ -18,7 +18,6 @@ import {
 import {
   TOKEN_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
-  createMint,
   getOrCreateAssociatedTokenAccount,
   mintTo,
 } from "@solana/spl-token";
@@ -32,6 +31,9 @@ import {
   authorize,
   fundKeypair,
   expectError,
+  ensureStablecoinMint,
+  createNonStablecoinMint,
+  TEST_USDC_KEYPAIR,
   FullVaultResult,
 } from "./helpers/devnet-setup";
 
@@ -53,14 +55,8 @@ describe("devnet-security", () => {
     await fundKeypair(provider, agent.publicKey);
     await fundKeypair(provider, attacker.publicKey);
 
-    mint = await createMint(connection, payer, owner.publicKey, null, 6);
-    unregisteredMint = await createMint(
-      connection,
-      payer,
-      owner.publicKey,
-      null,
-      6,
-    );
+    mint = await ensureStablecoinMint(connection, payer, TEST_USDC_KEYPAIR, owner.publicKey, 6);
+    unregisteredMint = await createNonStablecoinMint(connection, payer, owner.publicKey, 6);
 
     vaultId = nextVaultId(4);
 
@@ -122,6 +118,7 @@ describe("devnet-security", () => {
         .accounts({
           owner: attacker.publicKey,
           vault: vault.vaultPda,
+          agentSpendOverlay: vault.overlayPda,
         } as any)
         .signers([attacker])
         .rpc();
@@ -479,7 +476,7 @@ describe("devnet-security", () => {
     // the error will be UnauthorizedAgent (agent removed) rather than VaultNotActive.
     await program.methods
       .revokeAgent(freshAgent.publicKey)
-      .accounts({ owner: owner.publicKey, vault: freshVault.vaultPda } as any)
+      .accounts({ owner: owner.publicKey, vault: freshVault.vaultPda, agentSpendOverlay: freshVault.overlayPda } as any)
       .rpc();
 
     const sessionPda = deriveSessionPda(
@@ -539,7 +536,7 @@ describe("devnet-security", () => {
     // Freeze — revoking the only agent freezes the vault
     await program.methods
       .revokeAgent(freshAgent.publicKey)
-      .accounts({ owner: owner.publicKey, vault: freshVault.vaultPda } as any)
+      .accounts({ owner: owner.publicKey, vault: freshVault.vaultPda, agentSpendOverlay: freshVault.overlayPda } as any)
       .rpc();
 
     // Deposit should succeed even when frozen
@@ -581,5 +578,198 @@ describe("devnet-security", () => {
       .rpc();
 
     console.log("    Frozen vault: deposit + withdraw succeeded");
+  });
+
+  // ── Routing-aware security tests ──────────────────────────────────────
+
+  it("12. non-stablecoin mint rejected in validate_and_authorize", async () => {
+    const freshVaultId = nextVaultId(4);
+    const freshAgent = Keypair.generate();
+    await fundKeypair(provider, freshAgent.publicKey);
+
+    const freshVault = await createFullVault({
+      program,
+      connection,
+      owner,
+      agent: freshAgent,
+      feeDestination: feeDestination.publicKey,
+      mint,
+      vaultId: freshVaultId,
+      dailyCap: new BN(500_000_000),
+      maxTx: new BN(200_000_000),
+      allowedProtocols: [jupiterProgramId],
+      depositAmount: new BN(500_000_000),
+    });
+
+    // Deposit unregistered (non-stablecoin) mint into vault
+    const unregVaultAta = anchor.utils.token.associatedAddress({
+      mint: unregisteredMint,
+      owner: freshVault.vaultPda,
+    });
+    const ownerUnregAta = await getOrCreateAssociatedTokenAccount(
+      connection,
+      payer,
+      unregisteredMint,
+      owner.publicKey,
+    );
+    await mintTo(
+      connection,
+      payer,
+      unregisteredMint,
+      ownerUnregAta.address,
+      owner.publicKey,
+      500_000_000,
+    );
+    await program.methods
+      .depositFunds(new BN(500_000_000))
+      .accounts({
+        owner: owner.publicKey,
+        vault: freshVault.vaultPda,
+        mint: unregisteredMint,
+        ownerTokenAccount: ownerUnregAta.address,
+        vaultTokenAccount: unregVaultAta,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      } as any)
+      .rpc();
+
+    // Try authorize with unregistered mint and no stablecoin output
+    const sessionPda = deriveSessionPda(
+      freshVault.vaultPda,
+      freshAgent.publicKey,
+      unregisteredMint,
+      program.programId,
+    );
+    try {
+      await authorize({
+        connection,
+        program,
+        agent: freshAgent,
+        vaultPda: freshVault.vaultPda,
+        policyPda: freshVault.policyPda,
+        trackerPda: freshVault.trackerPda,
+        sessionPda,
+        vaultTokenAta: unregVaultAta,
+        mint: unregisteredMint,
+        amount: new BN(10_000_000),
+        protocol: jupiterProgramId,
+      });
+      expect.fail("Should have thrown");
+    } catch (err: any) {
+      expectError(err, "TokenNotRegistered", "InvalidTokenAccount", "6014");
+    }
+    console.log(
+      "    Non-stablecoin mint rejected in validate_and_authorize",
+    );
+  });
+
+  it("13. frozen vault rejects agent_transfer with stablecoin", async () => {
+    const freshVaultId = nextVaultId(4);
+    const freshAgent = Keypair.generate();
+    await fundKeypair(provider, freshAgent.publicKey);
+
+    const freshVault = await createFullVault({
+      program,
+      connection,
+      owner,
+      agent: freshAgent,
+      feeDestination: feeDestination.publicKey,
+      mint,
+      vaultId: freshVaultId,
+      dailyCap: new BN(500_000_000),
+      maxTx: new BN(200_000_000),
+      allowedProtocols: [jupiterProgramId],
+      depositAmount: new BN(500_000_000),
+    });
+
+    // Freeze vault by revoking the only agent
+    await program.methods
+      .revokeAgent(freshAgent.publicKey)
+      .accounts({ owner: owner.publicKey, vault: freshVault.vaultPda, agentSpendOverlay: freshVault.overlayPda } as any)
+      .rpc();
+
+    // Try agent_transfer with stablecoin on frozen vault
+    const dest = Keypair.generate();
+    const destAta = await getOrCreateAssociatedTokenAccount(
+      connection,
+      payer,
+      mint,
+      dest.publicKey,
+    );
+
+    try {
+      await program.methods
+        .agentTransfer(new BN(10_000_000))
+        .accounts({
+          agent: freshAgent.publicKey,
+          vault: freshVault.vaultPda,
+          policy: freshVault.policyPda,
+          tracker: freshVault.trackerPda,
+          agentSpendOverlay: freshVault.overlayPda,
+          vaultTokenAccount: freshVault.vaultTokenAta,
+          tokenMintAccount: mint,
+          destinationTokenAccount: destAta.address,
+          feeDestinationTokenAccount: null,
+          protocolTreasuryTokenAccount: freshVault.protocolTreasuryAta,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        } as any)
+        .signers([freshAgent])
+        .rpc();
+      expect.fail("Should have thrown");
+    } catch (err: any) {
+      expectError(err, "VaultNotActive", "UnauthorizedAgent", "not active");
+    }
+    console.log(
+      "    Frozen vault rejects agent_transfer with stablecoin",
+    );
+  });
+
+  it("14. max_transaction_size_usd enforced on stablecoin", async () => {
+    const freshVaultId = nextVaultId(4);
+    const freshAgent = Keypair.generate();
+    await fundKeypair(provider, freshAgent.publicKey);
+
+    const freshVault = await createFullVault({
+      program,
+      connection,
+      owner,
+      agent: freshAgent,
+      feeDestination: feeDestination.publicKey,
+      mint,
+      vaultId: freshVaultId,
+      dailyCap: new BN(500_000_000),
+      maxTx: new BN(50_000_000), // 50 USD max per tx
+      allowedProtocols: [jupiterProgramId],
+      depositAmount: new BN(1_000_000_000),
+    });
+
+    const sessionPda = deriveSessionPda(
+      freshVault.vaultPda,
+      freshAgent.publicKey,
+      mint,
+      program.programId,
+    );
+    try {
+      await authorize({
+        connection,
+        program,
+        agent: freshAgent,
+        vaultPda: freshVault.vaultPda,
+        policyPda: freshVault.policyPda,
+        trackerPda: freshVault.trackerPda,
+        sessionPda,
+        vaultTokenAta: freshVault.vaultTokenAta,
+        mint,
+        amount: new BN(51_000_000), // 51 > maxTx=50
+        protocol: jupiterProgramId,
+      });
+      expect.fail("Should have thrown");
+    } catch (err: any) {
+      expectError(err, "TransactionTooLarge", "maximum");
+    }
+    console.log(
+      "    max_transaction_size_usd enforced on stablecoin",
+    );
   });
 });

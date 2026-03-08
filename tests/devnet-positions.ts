@@ -7,7 +7,7 @@
  * V3: Composed TX model (validate + finalize in same tx).
  *     closePosition is non-spending: amount=0, no fees.
  *     openPosition is spending: fees collected, cap checked.
- *     Stablecoin-only architecture (devnet-testing feature).
+ *     Stablecoin-only architecture (custom test mints).
  */
 import * as anchor from "@coral-xyz/anchor";
 import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
@@ -21,7 +21,8 @@ import {
   createFullVault,
   authorizeAndFinalize,
   fundKeypair,
-  createTestMint,
+  ensureStablecoinMint,
+  TEST_USDC_KEYPAIR,
   expectError,
   FullVaultResult,
 } from "./helpers/devnet-setup";
@@ -38,7 +39,7 @@ describe("devnet-positions", () => {
 
   before(async () => {
     await fundKeypair(provider, agent.publicKey);
-    mint = await createTestMint(connection, payer, owner.publicKey, 6);
+    mint = await ensureStablecoinMint(connection, payer, TEST_USDC_KEYPAIR, owner.publicKey, 6);
   });
 
   /** Create a position-enabled vault */
