@@ -1,3 +1,4 @@
+pub mod agent_spend_overlay;
 pub mod constraints;
 pub mod escrow;
 pub mod pending_constraints;
@@ -7,6 +8,7 @@ pub mod session;
 pub mod tracker;
 pub mod vault;
 
+pub use agent_spend_overlay::*;
 pub use constraints::*;
 pub use escrow::*;
 pub use pending_constraints::*;
@@ -57,6 +59,9 @@ compile_error!("Build requires --features mainnet OR --features devnet");
 
 #[cfg(all(feature = "mainnet", feature = "devnet"))]
 compile_error!("Cannot enable both mainnet and devnet simultaneously");
+
+#[cfg(all(feature = "mainnet", feature = "devnet-testing"))]
+compile_error!("devnet-testing is a devnet-only feature and cannot be combined with mainnet");
 
 #[cfg(feature = "devnet")]
 /// Protocol treasury address (devnet)
@@ -116,6 +121,18 @@ mod treasury_tests {
             "PROTOCOL_TREASURY must be set to a real address before mainnet deployment"
         );
     }
+
+    /// S-5: Documents the compile_error! guard for devnet-testing + mainnet.
+    /// The actual guard at lines 63-64 is verified by CI:
+    ///   cargo build --no-default-features --features "devnet-testing,mainnet"
+    /// which fails with compile_error. This test verifies related constants are sane.
+    #[test]
+    fn devnet_testing_mainnet_guard_constants_sane() {
+        use super::*;
+        assert_ne!(SESSION_EXPIRY_SLOTS, 0, "session expiry must be non-zero");
+        assert!(MAX_AGENTS_PER_VAULT > 0, "must allow at least one agent");
+        assert!(FULL_PERMISSIONS > 0, "permissions bitmask must be non-zero");
+    }
 }
 
 /// Check if a mint address is a recognized stablecoin (USDC or USDT).
@@ -166,6 +183,13 @@ pub const JUPITER_EARN_PROGRAM: Pubkey = Pubkey::new_from_array([
 pub const JUPITER_BORROW_PROGRAM: Pubkey = Pubkey::new_from_array([
     10, 254, 31, 147, 34, 167, 161, 209, 195, 102, 29, 103, 23, 145, 202, 155, 48, 211, 32, 47, 30,
     31, 214, 135, 58, 119, 204, 220, 113, 143, 17, 51,
+]);
+
+/// Token-2022 program ID
+/// Base58: TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb
+pub const TOKEN_2022_PROGRAM_ID: Pubkey = Pubkey::new_from_array([
+    6, 221, 246, 225, 238, 117, 143, 222, 24, 66, 93, 188, 228, 108, 205, 218, 182, 26, 252, 77,
+    131, 185, 13, 39, 254, 189, 249, 40, 216, 161, 139, 252,
 ]);
 
 /// USD amounts use 6 decimal places (matching USDC/USDT precision).

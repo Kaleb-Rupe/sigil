@@ -27,7 +27,7 @@
   "dependencies": {
     "@phalnx/core": "workspace:*",
     "@solana/spl-token": "^0.4.0",
-    "@x402/core": "^2.5.0",
+    "@x402/core": "^2.4.0",
     "cbor-x": "^1.6.0"
   },
   "peerDependencies": {
@@ -35,12 +35,12 @@
     "@solana/web3.js": "^1.95.0"
   },
   "optionalDependencies": {
-    "flash-sdk": "^15.4.6",
+    "flash-sdk": "^15.1.4",
     "@sqds/multisig": "^2.1.4"
   },
   "devDependencies": {
     "@types/bn.js": "^5.1.5",
-    "@types/chai": "^5.2.3",
+    "@types/chai": "^4.3.11",
     "@types/mocha": "^10.0.6",
     "chai": "^6.2.2",
     "mocha": "^11.7.5",

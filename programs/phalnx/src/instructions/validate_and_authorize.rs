@@ -6,10 +6,10 @@ use anchor_lang::solana_program::sysvar::instructions::{
 use anchor_spl::token::{self, Approve, Mint, Token, TokenAccount, Transfer};
 
 use crate::errors::PhalnxError;
-use crate::events::{ActionAuthorized, FeesCollected};
+use crate::events::{ActionAuthorized, AgentSpendLimitChecked, FeesCollected};
 use crate::state::*;
 
-use super::integrations::{flash_trade, generic_constraints, jupiter, jupiter_lend};
+use super::integrations::{generic_constraints, jupiter};
 use super::utils::stablecoin_to_usd;
 
 use crate::state::PositionEffect;
@@ -41,6 +41,14 @@ pub struct ValidateAndAuthorize<'info> {
         bump,
     )]
     pub tracker: AccountLoader<'info, SpendTracker>,
+
+    /// Zero-copy AgentSpendOverlay shard 0 — per-agent rolling spend enforcement
+    #[account(
+        mut,
+        seeds = [b"agent_spend", vault.key().as_ref(), &[0u8]],
+        bump,
+    )]
+    pub agent_spend_overlay: AccountLoader<'info, AgentSpendOverlay>,
 
     /// Ephemeral session PDA — `init` ensures no double-authorization.
     /// Seeds include token_mint for per-token concurrent sessions.
@@ -200,6 +208,35 @@ pub fn handler(
                 PhalnxError::DailyCapExceeded
             );
 
+            // --- Per-agent cap check via contribution overlay ---
+            let agent_key = ctx.accounts.agent.key();
+            let agent_entry = vault
+                .get_agent(&agent_key)
+                .ok_or(error!(PhalnxError::UnauthorizedAgent))?;
+            let mut overlay = ctx.accounts.agent_spend_overlay.load_mut()?;
+            if let Some(agent_slot) = overlay.find_agent_slot(&agent_key) {
+                if agent_entry.spending_limit_usd > 0 {
+                    let agent_rolling = overlay.get_agent_rolling_24h_usd(&clock, agent_slot);
+                    let new_agent_spend = agent_rolling
+                        .checked_add(usd_amt)
+                        .ok_or(PhalnxError::Overflow)?;
+                    require!(
+                        new_agent_spend <= agent_entry.spending_limit_usd,
+                        PhalnxError::AgentSpendLimitExceeded
+                    );
+                    emit!(AgentSpendLimitChecked {
+                        vault: vault.key(),
+                        agent: agent_key,
+                        agent_rolling_spend: agent_rolling,
+                        spending_limit_usd: agent_entry.spending_limit_usd,
+                        amount: usd_amt,
+                        timestamp: clock.unix_timestamp,
+                    });
+                }
+                overlay.record_agent_contribution(&clock, agent_slot, usd_amt)?;
+            }
+            drop(overlay);
+
             // Record spend
             tracker.record_spend(&clock, usd_amt)?;
             drop(tracker);
@@ -337,13 +374,6 @@ pub fn handler(
                     // Slippage verification on DeFi instructions
                     if ix.program_id == JUPITER_PROGRAM {
                         jupiter::verify_jupiter_slippage(&ix.data, policy.max_slippage_bps)?;
-                    } else if ix.program_id == FLASH_TRADE_PROGRAM {
-                        flash_trade::verify_flash_trade_instruction(&ix.data)?;
-                    } else if ix.program_id == JUPITER_LEND_PROGRAM
-                        || ix.program_id == JUPITER_EARN_PROGRAM
-                        || ix.program_id == JUPITER_BORROW_PROGRAM
-                    {
-                        jupiter_lend::verify_jupiter_lend_instruction(&ix.data)?;
                     }
 
                     scan_idx = scan_idx.saturating_add(1);

@@ -76,6 +76,7 @@ describe("jupiter-lend-integration", () => {
   let vaultPda: PublicKey;
   let policyPda: PublicKey;
   let trackerPda: PublicKey;
+  let overlayPda: PublicKey;
   let vaultUsdcAta: PublicKey;
 
   /**
@@ -104,8 +105,10 @@ describe("jupiter-lend-integration", () => {
     actionType: any,
     success: boolean = true,
     overrideVaultTokenAta?: PublicKey,
+    overrideOverlay?: PublicKey,
   ): Promise<VersionedTxResult> {
     const effectiveVaultAta = overrideVaultTokenAta ?? vaultUsdcAta;
+    const effectiveOverlay = overrideOverlay ?? overlayPda;
 
     const [session] = PublicKey.findProgramAddressSync(
       [
@@ -136,6 +139,7 @@ describe("jupiter-lend-integration", () => {
         vault,
         policy,
         tracker,
+        agentSpendOverlay: effectiveOverlay,
         session,
         vaultTokenAccount: effectiveVaultAta,
         tokenMintAccount: tokenMint,
@@ -161,6 +165,7 @@ describe("jupiter-lend-integration", () => {
         sessionRentRecipient: agentKp.publicKey,
         policy,
         tracker,
+        agentSpendOverlay: effectiveOverlay,
         vaultTokenAccount: effectiveVaultAta,
         outputStablecoinAccount: null,
         tokenProgram: TOKEN_PROGRAM_ID,
@@ -212,6 +217,10 @@ describe("jupiter-lend-integration", () => {
       [Buffer.from("tracker"), vaultPda.toBuffer()],
       program.programId,
     );
+    [overlayPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("agent_spend"), vaultPda.toBuffer(), Buffer.from([0])],
+      program.programId,
+    );
 
     // Create protocol treasury ATA
     protocolTreasuryUsdcAta = createAtaIdempotentHelper(
@@ -242,6 +251,7 @@ describe("jupiter-lend-integration", () => {
         vault: vaultPda,
         policy: policyPda,
         tracker: trackerPda,
+        agentSpendOverlay: overlayPda,
         feeDestination: feeDestination.publicKey,
         systemProgram: SystemProgram.programId,
       })
@@ -249,10 +259,11 @@ describe("jupiter-lend-integration", () => {
 
     // Register agent
     await program.methods
-      .registerAgent(agent.publicKey, FULL_PERMISSIONS)
+      .registerAgent(agent.publicKey, FULL_PERMISSIONS, new BN(0))
       .accountsPartial({
         owner: owner.publicKey,
         vault: vaultPda,
+        agentSpendOverlay: overlayPda,
       })
       .rpc();
 
@@ -425,6 +436,7 @@ describe("jupiter-lend-integration", () => {
     let frozenVault: PublicKey;
     let frozenPolicy: PublicKey;
     let frozenTracker: PublicKey;
+    let frozenOverlay: PublicKey;
 
     before(async () => {
       [frozenVault] = PublicKey.findProgramAddressSync(
@@ -441,6 +453,11 @@ describe("jupiter-lend-integration", () => {
       );
       [frozenTracker] = PublicKey.findProgramAddressSync(
         [Buffer.from("tracker"), frozenVault.toBuffer()],
+        program.programId,
+      );
+
+      [frozenOverlay] = PublicKey.findProgramAddressSync(
+        [Buffer.from("agent_spend"), frozenVault.toBuffer(), Buffer.from([0])],
         program.programId,
       );
 
@@ -463,14 +480,19 @@ describe("jupiter-lend-integration", () => {
           vault: frozenVault,
           policy: frozenPolicy,
           tracker: frozenTracker,
+          agentSpendOverlay: frozenOverlay,
           feeDestination: feeDestination.publicKey,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
 
       await program.methods
-        .registerAgent(agent.publicKey, FULL_PERMISSIONS)
-        .accountsPartial({ owner: owner.publicKey, vault: frozenVault })
+        .registerAgent(agent.publicKey, FULL_PERMISSIONS, new BN(0))
+        .accountsPartial({
+          owner: owner.publicKey,
+          vault: frozenVault,
+          agentSpendOverlay: frozenOverlay,
+        })
         .rpc();
 
       // Freeze via revoke
@@ -501,6 +523,7 @@ describe("jupiter-lend-integration", () => {
           { deposit: {} },
           true,
           frozenVaultAta,
+          frozenOverlay,
         );
         expect.fail("Should have thrown");
       } catch (err: any) {
@@ -523,6 +546,7 @@ describe("jupiter-lend-integration", () => {
     let rollingVault: PublicKey;
     let rollingPolicy: PublicKey;
     let rollingTracker: PublicKey;
+    let rollingOverlay: PublicKey;
     let rollingVaultUsdcAta: PublicKey;
 
     before(async () => {
@@ -540,6 +564,11 @@ describe("jupiter-lend-integration", () => {
       );
       [rollingTracker] = PublicKey.findProgramAddressSync(
         [Buffer.from("tracker"), rollingVault.toBuffer()],
+        program.programId,
+      );
+
+      [rollingOverlay] = PublicKey.findProgramAddressSync(
+        [Buffer.from("agent_spend"), rollingVault.toBuffer(), Buffer.from([0])],
         program.programId,
       );
 
@@ -563,14 +592,19 @@ describe("jupiter-lend-integration", () => {
           vault: rollingVault,
           policy: rollingPolicy,
           tracker: rollingTracker,
+          agentSpendOverlay: rollingOverlay,
           feeDestination: feeDestination.publicKey,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
 
       await program.methods
-        .registerAgent(agent.publicKey, FULL_PERMISSIONS)
-        .accountsPartial({ owner: owner.publicKey, vault: rollingVault })
+        .registerAgent(agent.publicKey, FULL_PERMISSIONS, new BN(0))
+        .accountsPartial({
+          owner: owner.publicKey,
+          vault: rollingVault,
+          agentSpendOverlay: rollingOverlay,
+        })
         .rpc();
 
       rollingVaultUsdcAta = getAssociatedTokenAddressSync(
@@ -606,6 +640,7 @@ describe("jupiter-lend-integration", () => {
         { deposit: {} },
         true,
         rollingVaultUsdcAta,
+        rollingOverlay,
       );
 
       let vault = await program.account.agentVault.fetch(rollingVault);
@@ -623,6 +658,7 @@ describe("jupiter-lend-integration", () => {
         { deposit: {} },
         true,
         rollingVaultUsdcAta,
+        rollingOverlay,
       );
 
       vault = await program.account.agentVault.fetch(rollingVault);
@@ -641,6 +677,7 @@ describe("jupiter-lend-integration", () => {
           { deposit: {} },
           true,
           rollingVaultUsdcAta,
+          rollingOverlay,
         );
         expect.fail("Should have thrown");
       } catch (err: any) {

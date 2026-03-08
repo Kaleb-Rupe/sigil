@@ -6,7 +6,7 @@ export interface ErrorInfo {
 }
 
 /**
- * Maps all 63 Phalnx Anchor error codes (6000–6062) to
+ * Maps all 71 Phalnx Anchor error codes (6000–6070) to
  * human-readable messages with actionable suggestions for AI tools.
  */
 const ERROR_MAP: Record<number, ErrorInfo> = {
@@ -452,6 +452,65 @@ const ERROR_MAP: Record<number, ErrorInfo> = {
     message: "Pending constraints update has expired and is stale",
     suggestion:
       "The pending constraints update is past its expiration window. Cancel it and queue a fresh update.",
+  },
+  6063: {
+    code: 6063,
+    name: "AgentSpendLimitExceeded",
+    message:
+      "Agent's rolling 24h spend exceeds their individual spending limit",
+    suggestion:
+      "This agent has reached their per-agent spending cap. Wait for the rolling window to expire or ask the vault owner to increase the agent's spending_limit_usd via update_agent_permissions.",
+  },
+  6064: {
+    code: 6064,
+    name: "OverlaySlotExhausted",
+    message:
+      "Per-agent overlay is full; cannot register agent with spending limit",
+    suggestion:
+      "The agent spend overlay has no free slots. Remove an agent with a per-agent spending limit before registering a new one.",
+  },
+  6065: {
+    code: 6065,
+    name: "AgentSlotNotFound",
+    message: "Agent has per-agent spending limit but no overlay tracking slot",
+    suggestion:
+      "The agent's spending overlay slot is missing. This is an internal inconsistency — re-register the agent or contact support.",
+  },
+  6066: {
+    code: 6066,
+    name: "UnauthorizedTokenApproval",
+    message: "Unauthorized SPL Token Approve between validate and finalize",
+    suggestion:
+      "SPL Token Approve instructions are not allowed between validate_and_authorize and finalize_session. Remove the Approve instruction from the transaction.",
+  },
+  6067: {
+    code: 6067,
+    name: "InvalidSessionExpiry",
+    message: "Session expiry slots out of range (10-450)",
+    suggestion:
+      "Set sessionExpirySlots to a value between 10 and 450 (inclusive). Default is 20 slots.",
+  },
+  6068: {
+    code: 6068,
+    name: "UnconstrainedProgramBlocked",
+    message: "Program has no constraint entry and strict mode is enabled",
+    suggestion:
+      "The transaction includes an instruction for a program that has no matching constraint entry. Add a constraint entry for this program or disable strict mode.",
+  },
+  6069: {
+    code: 6069,
+    name: "ProtocolCapExceeded",
+    message: "Per-protocol daily spending cap would be exceeded",
+    suggestion:
+      "This protocol has reached its individual spending cap. Wait for the rolling window to expire or increase the protocol's cap via shield_update_policy.",
+  },
+  6070: {
+    code: 6070,
+    name: "ProtocolCapsMismatch",
+    message:
+      "protocol_caps length must match protocols length when has_protocol_caps is true",
+    suggestion:
+      "When has_protocol_caps is true, the protocol_caps array must have the same length as the protocols array. Ensure both arrays match.",
   },
 };
 

@@ -82,6 +82,13 @@ export type Phalnx = {
           };
         },
         {
+          name: "agentSpendOverlay";
+          docs: [
+            "Zero-copy AgentSpendOverlay shard 0 — per-agent rolling spend enforcement",
+          ];
+          writable: true;
+        },
+        {
           name: "vaultTokenAccount";
           docs: ["Vault's PDA-owned token account (source)"];
           writable: true;
@@ -631,6 +638,11 @@ export type Phalnx = {
               },
             ];
           };
+        },
+        {
+          name: "agentSpendOverlay";
+          docs: ["Zero-copy AgentSpendOverlay — close returns rent to owner"];
+          writable: true;
         },
         {
           name: "systemProgram";
@@ -1333,6 +1345,13 @@ export type Phalnx = {
           };
         },
         {
+          name: "agentSpendOverlay";
+          docs: [
+            "Zero-copy AgentSpendOverlay shard 0 — per-agent rolling spend enforcement",
+          ];
+          writable: true;
+        },
+        {
           name: "vaultTokenAccount";
           docs: ["Vault's PDA token account for the session's token"];
           writable: true;
@@ -1415,7 +1434,7 @@ export type Phalnx = {
         },
         {
           name: "tracker";
-          docs: ["Zero-copy SpendTracker — 2,352 bytes fixed size"];
+          docs: ["Zero-copy SpendTracker"];
           writable: true;
           pda: {
             seeds: [
@@ -1429,6 +1448,13 @@ export type Phalnx = {
               },
             ];
           };
+        },
+        {
+          name: "agentSpendOverlay";
+          docs: [
+            "Agent spend overlay shard 0 — per-agent contribution tracking",
+          ];
+          writable: true;
         },
         {
           name: "feeDestination";
@@ -2013,6 +2039,13 @@ export type Phalnx = {
             ];
           };
         },
+        {
+          name: "agentSpendOverlay";
+          docs: [
+            "Agent spend overlay (shard 0) — for claiming a per-agent tracking slot.",
+          ];
+          writable: true;
+        },
       ];
       args: [
         {
@@ -2021,6 +2054,10 @@ export type Phalnx = {
         },
         {
           name: "permissions";
+          type: "u64";
+        },
+        {
+          name: "spendingLimitUsd";
           type: "u64";
         },
       ];
@@ -2302,7 +2339,7 @@ export type Phalnx = {
     {
       name: "updateAgentPermissions";
       docs: [
-        "Update an agent's permission bitmask.",
+        "Update an agent's permission bitmask and spending limit.",
         "Only the owner can call this. Blocked when timelock is active.",
       ];
       discriminator: [56, 163, 109, 133, 69, 188, 163, 184];
@@ -2357,6 +2394,10 @@ export type Phalnx = {
         },
         {
           name: "newPermissions";
+          type: "u64";
+        },
+        {
+          name: "spendingLimitUsd";
           type: "u64";
         },
       ];
@@ -2582,7 +2623,6 @@ export type Phalnx = {
         },
         {
           name: "vault";
-          writable: true;
           pda: {
             seeds: [
               {
@@ -2634,6 +2674,13 @@ export type Phalnx = {
               },
             ];
           };
+        },
+        {
+          name: "agentSpendOverlay";
+          docs: [
+            "Zero-copy AgentSpendOverlay shard 0 — per-agent rolling spend enforcement",
+          ];
+          writable: true;
         },
         {
           name: "session";
@@ -2976,6 +3023,10 @@ export type Phalnx = {
   ];
   accounts: [
     {
+      name: "agentSpendOverlay";
+      discriminator: [126, 248, 13, 218, 101, 148, 135, 44];
+    },
+    {
       name: "agentVault";
       discriminator: [232, 220, 237, 164, 157, 9, 215, 194];
     },
@@ -3024,6 +3075,10 @@ export type Phalnx = {
     {
       name: "agentRevoked";
       discriminator: [12, 251, 249, 166, 122, 83, 162, 116];
+    },
+    {
+      name: "agentSpendLimitChecked";
+      discriminator: [107, 128, 60, 144, 163, 83, 45, 215];
     },
     {
       name: "agentTransferExecuted";
@@ -3434,8 +3489,32 @@ export type Phalnx = {
       name: "constraintsUpdateExpired";
       msg: "Pending constraints update has expired and is stale";
     },
+    {
+      code: 6063;
+      name: "agentSpendLimitExceeded";
+      msg: "Agent rolling 24h spend exceeds per-agent spending limit";
+    },
   ];
   types: [
+    {
+      name: "accountConstraint";
+      docs: [
+        "Account-index constraint: requires a specific pubkey at a specific account index.",
+      ];
+      type: {
+        kind: "struct";
+        fields: [
+          {
+            name: "index";
+            type: "u8";
+          },
+          {
+            name: "expected";
+            type: "pubkey";
+          },
+        ];
+      };
+    },
     {
       name: "actionAuthorized";
       type: {
@@ -3565,6 +3644,42 @@ export type Phalnx = {
       };
     },
     {
+      name: "agentContributionEntry";
+      docs: [
+        "Per-agent contribution entry within a shard.",
+        "Tracks each agent's individual spend contributions using the same",
+        "144-bucket epoch scheme as the global SpendTracker.",
+        "32 (agent) + 8 * 144 (contributions) = 1,184 bytes",
+      ];
+      serialization: "bytemuck";
+      repr: {
+        kind: "c";
+      };
+      type: {
+        kind: "struct";
+        fields: [
+          {
+            name: "agent";
+            docs: [
+              "Agent pubkey stored as raw bytes (zero_copy requires fixed-size)",
+            ];
+            type: {
+              array: ["u8", 32];
+            };
+          },
+          {
+            name: "contributions";
+            docs: [
+              "Per-epoch USD contributions from this agent (same indexing as SpendTracker buckets)",
+            ];
+            type: {
+              array: ["u64", 144];
+            };
+          },
+        ];
+      };
+    },
+    {
       name: "agentEntry";
       type: {
         kind: "struct";
@@ -3575,6 +3690,10 @@ export type Phalnx = {
           },
           {
             name: "permissions";
+            type: "u64";
+          },
+          {
+            name: "spendingLimitUsd";
             type: "u64";
           },
         ];
@@ -3622,6 +3741,10 @@ export type Phalnx = {
             type: "u64";
           },
           {
+            name: "spendingLimitUsd";
+            type: "u64";
+          },
+          {
             name: "timestamp";
             type: "i64";
           },
@@ -3648,6 +3771,106 @@ export type Phalnx = {
           {
             name: "timestamp";
             type: "i64";
+          },
+        ];
+      };
+    },
+    {
+      name: "agentSpendLimitChecked";
+      type: {
+        kind: "struct";
+        fields: [
+          {
+            name: "vault";
+            type: "pubkey";
+          },
+          {
+            name: "agent";
+            type: "pubkey";
+          },
+          {
+            name: "agentRollingSpend";
+            type: "u64";
+          },
+          {
+            name: "spendingLimitUsd";
+            type: "u64";
+          },
+          {
+            name: "amount";
+            type: "u64";
+          },
+          {
+            name: "timestamp";
+            type: "i64";
+          },
+        ];
+      };
+    },
+    {
+      name: "agentSpendOverlay";
+      docs: [
+        "Per-vault overlay PDA tracking per-agent spend contributions.",
+        "",
+        'Seeds: `[b"agent_spend", vault.key().as_ref(), &[shard_index]]`',
+        "",
+        "One shard supports up to 7 agents. The shard index (0-based) is stored",
+        "in AgentVault.treasury_shard. Currently only shard 0 is used.",
+        "",
+        "Size calculation:",
+        "8 (discriminator) + 32 (vault) + 8 * 144 (sync_epochs) +",
+        "1,184 * 7 (entries) + 1 (bump) + 7 (padding) = 9,488 bytes",
+      ];
+      serialization: "bytemuck";
+      repr: {
+        kind: "c";
+      };
+      type: {
+        kind: "struct";
+        fields: [
+          {
+            name: "vault";
+            docs: ["Associated vault pubkey"];
+            type: "pubkey";
+          },
+          {
+            name: "syncEpochs";
+            docs: [
+              "Per-epoch sync timestamps — used to detect stale epochs across all entries.",
+              "When an epoch is stale (older than the current epoch), all agent contributions",
+              "for that epoch index are zeroed during the next access.",
+            ];
+            type: {
+              array: ["i64", 144];
+            };
+          },
+          {
+            name: "entries";
+            docs: [
+              "Agent contribution entries (up to ENTRIES_PER_SHARD agents per shard)",
+            ];
+            type: {
+              array: [
+                {
+                  defined: {
+                    name: "agentContributionEntry";
+                  };
+                },
+                7,
+              ];
+            };
+          },
+          {
+            name: "bump";
+            docs: ["Bump seed for PDA"];
+            type: "u8";
+          },
+          {
+            name: "padding";
+            docs: ["Padding for 8-byte alignment"];
+            type: {
+              array: ["u8", 7];
+            };
           },
         ];
       };
@@ -3757,6 +3980,14 @@ export type Phalnx = {
             ];
             type: "u64";
           },
+          {
+            name: "treasuryShard";
+            docs: [
+              "Treasury shard index assigned at vault creation.",
+              "Reserved for future horizontal scaling of overlay PDAs.",
+            ];
+            type: "u8";
+          },
         ];
       };
     },
@@ -3775,6 +4006,16 @@ export type Phalnx = {
               vec: {
                 defined: {
                   name: "dataConstraint";
+                };
+              };
+            };
+          },
+          {
+            name: "accountConstraints";
+            type: {
+              vec: {
+                defined: {
+                  name: "accountConstraint";
                 };
               };
             };
@@ -3798,6 +4039,15 @@ export type Phalnx = {
           },
           {
             name: "lte";
+          },
+          {
+            name: "gteSigned";
+          },
+          {
+            name: "lteSigned";
+          },
+          {
+            name: "bitmask";
           },
         ];
       };
@@ -4205,6 +4455,10 @@ export type Phalnx = {
             };
           },
           {
+            name: "strictMode";
+            type: "bool";
+          },
+          {
             name: "bump";
             type: "u8";
           },
@@ -4567,6 +4821,13 @@ export type Phalnx = {
             type: "bool";
           },
           {
+            name: "hasProtocolCaps";
+            docs: [
+              "Whether per-protocol spend caps are configured (reserved, not enforced yet).",
+            ];
+            type: "bool";
+          },
+          {
             name: "bump";
             docs: ["Bump seed for PDA"];
             type: "u8";
@@ -4638,6 +4899,40 @@ export type Phalnx = {
           {
             name: "timestamp";
             type: "i64";
+          },
+        ];
+      };
+    },
+    {
+      name: "protocolSpendCounter";
+      docs: [
+        "Reserved per-protocol spend counter for future per-protocol caps.",
+        "Zeroed at init — no enforcement logic yet.",
+        "48 bytes per entry (32 + 8 + 8).",
+      ];
+      serialization: "bytemuck";
+      repr: {
+        kind: "c";
+      };
+      type: {
+        kind: "struct";
+        fields: [
+          {
+            name: "protocol";
+            docs: ["Protocol program ID"];
+            type: {
+              array: ["u8", 32];
+            };
+          },
+          {
+            name: "windowStart";
+            docs: ["Window start timestamp (for future rolling window)"];
+            type: "i64";
+          },
+          {
+            name: "windowSpend";
+            docs: ["Accumulated spend in window (for future cap enforcement)"];
+            type: "u64";
           },
         ];
       };
@@ -4805,6 +5100,22 @@ export type Phalnx = {
                   };
                 },
                 144,
+              ];
+            };
+          },
+          {
+            name: "protocolCounters";
+            docs: [
+              "Reserved per-protocol spend counters (zeroed, no enforcement yet)",
+            ];
+            type: {
+              array: [
+                {
+                  defined: {
+                    name: "protocolSpendCounter";
+                  };
+                },
+                10,
               ];
             };
           },

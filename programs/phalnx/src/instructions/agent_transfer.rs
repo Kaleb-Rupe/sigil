@@ -3,7 +3,7 @@ use anchor_lang::solana_program::instruction::get_stack_height;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 
 use crate::errors::PhalnxError;
-use crate::events::{AgentTransferExecuted, FeesCollected};
+use crate::events::{AgentSpendLimitChecked, AgentTransferExecuted, FeesCollected};
 use crate::state::*;
 
 use super::utils::stablecoin_to_usd;
@@ -35,6 +35,14 @@ pub struct AgentTransfer<'info> {
         bump,
     )]
     pub tracker: AccountLoader<'info, SpendTracker>,
+
+    /// Zero-copy AgentSpendOverlay shard 0 — per-agent rolling spend enforcement
+    #[account(
+        mut,
+        seeds = [b"agent_spend", vault.key().as_ref(), &[0u8]],
+        bump,
+    )]
+    pub agent_spend_overlay: AccountLoader<'info, AgentSpendOverlay>,
 
     /// Vault's PDA-owned token account (source)
     #[account(
@@ -133,6 +141,35 @@ pub fn handler(ctx: Context<AgentTransfer>, amount: u64) -> Result<()> {
         new_total_usd <= policy.daily_spending_cap_usd,
         PhalnxError::DailyCapExceeded
     );
+
+    // --- Per-agent cap check via contribution overlay ---
+    let agent_key = ctx.accounts.agent.key();
+    let agent_entry = vault
+        .get_agent(&agent_key)
+        .ok_or(error!(PhalnxError::UnauthorizedAgent))?;
+    let mut overlay = ctx.accounts.agent_spend_overlay.load_mut()?;
+    if let Some(agent_slot) = overlay.find_agent_slot(&agent_key) {
+        if agent_entry.spending_limit_usd > 0 {
+            let agent_rolling = overlay.get_agent_rolling_24h_usd(&clock, agent_slot);
+            let new_agent_spend = agent_rolling
+                .checked_add(usd_amount)
+                .ok_or(PhalnxError::Overflow)?;
+            require!(
+                new_agent_spend <= agent_entry.spending_limit_usd,
+                PhalnxError::AgentSpendLimitExceeded
+            );
+            emit!(AgentSpendLimitChecked {
+                vault: vault.key(),
+                agent: agent_key,
+                agent_rolling_spend: agent_rolling,
+                spending_limit_usd: agent_entry.spending_limit_usd,
+                amount: usd_amount,
+                timestamp: clock.unix_timestamp,
+            });
+        }
+        overlay.record_agent_contribution(&clock, agent_slot, usd_amount)?;
+    }
+    drop(overlay);
 
     // Record spend
     tracker.record_spend(&clock, usd_amount)?;

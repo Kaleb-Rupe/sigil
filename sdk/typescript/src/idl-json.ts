@@ -570,6 +570,13 @@ export const IDL = {
           },
         },
         {
+          name: "agent_spend_overlay",
+          docs: [
+            "Zero-copy AgentSpendOverlay \u2014 close returns rent to owner",
+          ],
+          writable: true,
+        },
+        {
           name: "system_program",
           address: "11111111111111111111111111111111",
         },
@@ -1178,7 +1185,7 @@ export const IDL = {
         },
         {
           name: "tracker",
-          docs: ["Zero-copy SpendTracker \u2014 2,352 bytes fixed size"],
+          docs: ["Zero-copy SpendTracker"],
           writable: true,
           pda: {
             seeds: [
@@ -1192,6 +1199,13 @@ export const IDL = {
               },
             ],
           },
+        },
+        {
+          name: "agent_spend_overlay",
+          docs: [
+            "Agent spend overlay shard 0 \u2014 per-agent contribution tracking",
+          ],
+          writable: true,
         },
         {
           name: "fee_destination",
@@ -1689,6 +1703,13 @@ export const IDL = {
             ],
           },
         },
+        {
+          name: "agent_spend_overlay",
+          docs: [
+            "Agent spend overlay (shard 0) \u2014 for claiming a per-agent tracking slot.",
+          ],
+          writable: true,
+        },
       ],
       args: [
         {
@@ -1697,6 +1718,10 @@ export const IDL = {
         },
         {
           name: "permissions",
+          type: "u64",
+        },
+        {
+          name: "spending_limit_usd",
           type: "u64",
         },
       ],
@@ -1920,7 +1945,7 @@ export const IDL = {
     {
       name: "update_agent_permissions",
       docs: [
-        "Update an agent's permission bitmask.",
+        "Update an agent's permission bitmask and spending limit.",
         "Only the owner can call this. Blocked when timelock is active.",
       ],
       discriminator: [56, 163, 109, 133, 69, 188, 163, 184],
@@ -1975,6 +2000,10 @@ export const IDL = {
         },
         {
           name: "new_permissions",
+          type: "u64",
+        },
+        {
+          name: "spending_limit_usd",
           type: "u64",
         },
       ],
@@ -2477,6 +2506,10 @@ export const IDL = {
   ],
   accounts: [
     {
+      name: "AgentSpendOverlay",
+      discriminator: [126, 248, 13, 218, 101, 148, 135, 44],
+    },
+    {
       name: "AgentVault",
       discriminator: [232, 220, 237, 164, 157, 9, 215, 194],
     },
@@ -2525,6 +2558,10 @@ export const IDL = {
     {
       name: "AgentRevoked",
       discriminator: [12, 251, 249, 166, 122, 83, 162, 116],
+    },
+    {
+      name: "AgentSpendLimitChecked",
+      discriminator: [107, 128, 60, 144, 163, 83, 45, 215],
     },
     {
       name: "AgentTransferExecuted",
@@ -2935,6 +2972,11 @@ export const IDL = {
       name: "ConstraintsUpdateExpired",
       msg: "Pending constraints update has expired and is stale",
     },
+    {
+      code: 6063,
+      name: "AgentSpendLimitExceeded",
+      msg: "Agent rolling 24h spend exceeds per-agent spending limit",
+    },
   ],
   types: [
     {
@@ -3066,6 +3108,42 @@ export const IDL = {
       },
     },
     {
+      name: "AgentContributionEntry",
+      docs: [
+        "Per-agent contribution entry within a shard.",
+        "Tracks each agent's individual spend contributions using the same",
+        "144-bucket epoch scheme as the global SpendTracker.",
+        "32 (agent) + 8 * 144 (contributions) = 1,184 bytes",
+      ],
+      serialization: "bytemuck",
+      repr: {
+        kind: "c",
+      },
+      type: {
+        kind: "struct",
+        fields: [
+          {
+            name: "agent",
+            docs: [
+              "Agent pubkey stored as raw bytes (zero_copy requires fixed-size)",
+            ],
+            type: {
+              array: ["u8", 32],
+            },
+          },
+          {
+            name: "contributions",
+            docs: [
+              "Per-epoch USD contributions from this agent (same indexing as SpendTracker buckets)",
+            ],
+            type: {
+              array: ["u64", 144],
+            },
+          },
+        ],
+      },
+    },
+    {
       name: "AgentEntry",
       type: {
         kind: "struct",
@@ -3076,6 +3154,10 @@ export const IDL = {
           },
           {
             name: "permissions",
+            type: "u64",
+          },
+          {
+            name: "spending_limit_usd",
             type: "u64",
           },
         ],
@@ -3123,6 +3205,10 @@ export const IDL = {
             type: "u64",
           },
           {
+            name: "spending_limit_usd",
+            type: "u64",
+          },
+          {
             name: "timestamp",
             type: "i64",
           },
@@ -3149,6 +3235,106 @@ export const IDL = {
           {
             name: "timestamp",
             type: "i64",
+          },
+        ],
+      },
+    },
+    {
+      name: "AgentSpendLimitChecked",
+      type: {
+        kind: "struct",
+        fields: [
+          {
+            name: "vault",
+            type: "pubkey",
+          },
+          {
+            name: "agent",
+            type: "pubkey",
+          },
+          {
+            name: "agent_rolling_spend",
+            type: "u64",
+          },
+          {
+            name: "spending_limit_usd",
+            type: "u64",
+          },
+          {
+            name: "amount",
+            type: "u64",
+          },
+          {
+            name: "timestamp",
+            type: "i64",
+          },
+        ],
+      },
+    },
+    {
+      name: "AgentSpendOverlay",
+      docs: [
+        "Per-vault overlay PDA tracking per-agent spend contributions.",
+        "",
+        'Seeds: `[b"agent_spend", vault.key().as_ref(), &[shard_index]]`',
+        "",
+        "One shard supports up to 7 agents. The shard index (0-based) is stored",
+        "in AgentVault.treasury_shard. Currently only shard 0 is used.",
+        "",
+        "Size calculation:",
+        "8 (discriminator) + 32 (vault) + 8 * 144 (sync_epochs) +",
+        "1,184 * 7 (entries) + 1 (bump) + 7 (padding) = 9,488 bytes",
+      ],
+      serialization: "bytemuck",
+      repr: {
+        kind: "c",
+      },
+      type: {
+        kind: "struct",
+        fields: [
+          {
+            name: "vault",
+            docs: ["Associated vault pubkey"],
+            type: "pubkey",
+          },
+          {
+            name: "sync_epochs",
+            docs: [
+              "Per-epoch sync timestamps \u2014 used to detect stale epochs across all entries.",
+              "When an epoch is stale (older than the current epoch), all agent contributions",
+              "for that epoch index are zeroed during the next access.",
+            ],
+            type: {
+              array: ["i64", 144],
+            },
+          },
+          {
+            name: "entries",
+            docs: [
+              "Agent contribution entries (up to ENTRIES_PER_SHARD agents per shard)",
+            ],
+            type: {
+              array: [
+                {
+                  defined: {
+                    name: "AgentContributionEntry",
+                  },
+                },
+                7,
+              ],
+            },
+          },
+          {
+            name: "bump",
+            docs: ["Bump seed for PDA"],
+            type: "u8",
+          },
+          {
+            name: "_padding",
+            docs: ["Padding for 8-byte alignment"],
+            type: {
+              array: ["u8", 7],
+            },
           },
         ],
       },
@@ -3258,6 +3444,14 @@ export const IDL = {
             ],
             type: "u64",
           },
+          {
+            name: "treasury_shard",
+            docs: [
+              "Treasury shard index assigned at vault creation.",
+              "Reserved for future horizontal scaling of overlay PDAs.",
+            ],
+            type: "u8",
+          },
         ],
       },
     },
@@ -3299,6 +3493,15 @@ export const IDL = {
           },
           {
             name: "Lte",
+          },
+          {
+            name: "GteSigned",
+          },
+          {
+            name: "LteSigned",
+          },
+          {
+            name: "Bitmask",
           },
         ],
       },
@@ -4068,6 +4271,13 @@ export const IDL = {
             type: "bool",
           },
           {
+            name: "has_protocol_caps",
+            docs: [
+              "Whether per-protocol spend caps are configured (reserved, not enforced yet).",
+            ],
+            type: "bool",
+          },
+          {
             name: "bump",
             docs: ["Bump seed for PDA"],
             type: "u8",
@@ -4139,6 +4349,40 @@ export const IDL = {
           {
             name: "timestamp",
             type: "i64",
+          },
+        ],
+      },
+    },
+    {
+      name: "ProtocolSpendCounter",
+      docs: [
+        "Reserved per-protocol spend counter for future per-protocol caps.",
+        "Zeroed at init \u2014 no enforcement logic yet.",
+        "48 bytes per entry (32 + 8 + 8).",
+      ],
+      serialization: "bytemuck",
+      repr: {
+        kind: "c",
+      },
+      type: {
+        kind: "struct",
+        fields: [
+          {
+            name: "protocol",
+            docs: ["Protocol program ID"],
+            type: {
+              array: ["u8", 32],
+            },
+          },
+          {
+            name: "window_start",
+            docs: ["Window start timestamp (for future rolling window)"],
+            type: "i64",
+          },
+          {
+            name: "window_spend",
+            docs: ["Accumulated spend in window (for future cap enforcement)"],
+            type: "u64",
           },
         ],
       },
@@ -4310,6 +4554,22 @@ export const IDL = {
             },
           },
           {
+            name: "protocol_counters",
+            docs: [
+              "Reserved per-protocol spend counters (zeroed, no enforcement yet)",
+            ],
+            type: {
+              array: [
+                {
+                  defined: {
+                    name: "ProtocolSpendCounter",
+                  },
+                },
+                10,
+              ],
+            },
+          },
+          {
             name: "bump",
             docs: ["Bump seed for PDA"],
             type: "u8",
@@ -4415,4 +4675,4 @@ export const IDL = {
       },
     },
   ],
-};
+} as const;
