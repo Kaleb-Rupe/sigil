@@ -79,11 +79,12 @@ pub const PROTOCOL_TREASURY: Pubkey = Pubkey::new_from_array([0u8; 32]);
 
 // --- Stablecoin mint constants ---
 
-/// USDC mint (devnet: 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU)
+/// USDC mint (devnet: DMFEQFCRsvGrYzoL2gfwTEd9J8eVBQEjg7HjbJHd6oGH)
+/// Test-controlled keypair — we own the mint authority for devnet testing.
 #[cfg(feature = "devnet")]
 pub const USDC_MINT: Pubkey = Pubkey::new_from_array([
-    59, 68, 44, 179, 145, 33, 87, 241, 58, 147, 61, 1, 52, 40, 45, 3, 43, 95, 254, 205, 1, 162,
-    219, 241, 183, 121, 6, 8, 223, 0, 46, 167,
+    183, 123, 243, 77, 18, 80, 250, 164, 199, 89, 146, 151, 150, 233, 12, 20, 206, 135, 29, 138,
+    218, 153, 91, 77, 84, 71, 174, 53, 139, 167, 156, 54,
 ]);
 
 /// USDC mint (mainnet: EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v)
@@ -93,11 +94,12 @@ pub const USDC_MINT: Pubkey = Pubkey::new_from_array([
     194, 210, 246, 224, 228, 124, 166, 2, 3, 69, 47, 93, 97,
 ]);
 
-/// USDT mint (devnet: EJwZgeZrdC8TXTQbQBoL6bfuAnFUQS5S4iC5A2ciQtCK)
+/// USDT mint (devnet: 43cd9ma7P968BssTtAKNs5qu6zgsErupwxwdjkiuMHze)
+/// Test-controlled keypair — we own the mint authority for devnet testing.
 #[cfg(feature = "devnet")]
 pub const USDT_MINT: Pubkey = Pubkey::new_from_array([
-    197, 192, 127, 187, 120, 104, 92, 176, 205, 113, 5, 32, 101, 17, 150, 104, 203, 143, 154, 228,
-    250, 183, 167, 185, 219, 40, 96, 134, 25, 221, 153, 132,
+    45, 62, 128, 117, 22, 254, 177, 202, 78, 70, 249, 101, 252, 36, 244, 42, 82, 77, 95, 72,
+    170, 154, 33, 171, 68, 12, 82, 27, 106, 105, 202, 15,
 ]);
 
 /// USDT mint (mainnet: Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB)

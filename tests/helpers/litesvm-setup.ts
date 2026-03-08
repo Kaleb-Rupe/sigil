@@ -325,14 +325,14 @@ export function airdropSol(
 
 // ─── Hardcoded stablecoin mints (must match on-chain devnet feature flag) ────
 
-/** Devnet USDC: 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU */
+/** Devnet USDC: DMFEQFCRsvGrYzoL2gfwTEd9J8eVBQEjg7HjbJHd6oGH (test-controlled keypair) */
 export const DEVNET_USDC_MINT = new PublicKey(
-  "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+  "DMFEQFCRsvGrYzoL2gfwTEd9J8eVBQEjg7HjbJHd6oGH",
 );
 
-/** Devnet USDT: EJwZgeZrdC8TXTQbQBoL6bfuAnFUQS5S4iC5A2ciQtCK */
+/** Devnet USDT: 43cd9ma7P968BssTtAKNs5qu6zgsErupwxwdjkiuMHze (test-controlled keypair) */
 export const DEVNET_USDT_MINT = new PublicKey(
-  "EJwZgeZrdC8TXTQbQBoL6bfuAnFUQS5S4iC5A2ciQtCK",
+  "43cd9ma7P968BssTtAKNs5qu6zgsErupwxwdjkiuMHze",
 );
 
 /**
