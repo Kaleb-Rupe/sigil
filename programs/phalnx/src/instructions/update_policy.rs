@@ -109,7 +109,7 @@ pub fn handler(
     if let Some(expiry) = session_expiry_slots {
         if expiry > 0 {
             require!(
-                expiry >= 10 && expiry <= 450,
+                (10..=450).contains(&expiry),
                 PhalnxError::InvalidSessionExpiry
             );
         }
