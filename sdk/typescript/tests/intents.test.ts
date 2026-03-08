@@ -412,9 +412,10 @@ describe("intents", () => {
         "createEscrow",
       ];
       for (const type of spendingTypes) {
-        expect(
-          ACTION_TYPE_MAP[type as IntentActionType].isSpending,
-        ).to.equal(true, `${type} should be spending`);
+        expect(ACTION_TYPE_MAP[type as IntentActionType].isSpending).to.equal(
+          true,
+          `${type} should be spending`,
+        );
       }
     });
 
@@ -434,9 +435,10 @@ describe("intents", () => {
         "refundEscrow",
       ];
       for (const type of nonSpendingTypes) {
-        expect(
-          ACTION_TYPE_MAP[type as IntentActionType].isSpending,
-        ).to.equal(false, `${type} should be non-spending`);
+        expect(ACTION_TYPE_MAP[type as IntentActionType].isSpending).to.equal(
+          false,
+          `${type} should be non-spending`,
+        );
       }
     });
   });

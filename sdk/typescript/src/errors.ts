@@ -45,8 +45,7 @@ const SDK_ERROR_MAP: Record<number, ErrorEntry> = {
   6001: {
     name: "UnauthorizedAgent",
     message: "Unauthorized: signer is not a registered agent",
-    suggestion:
-      "Verify the agent keypair matches one registered on the vault.",
+    suggestion: "Verify the agent keypair matches one registered on the vault.",
   },
   6004: {
     name: "ProtocolNotAllowed",
@@ -72,8 +71,7 @@ const SDK_ERROR_MAP: Record<number, ErrorEntry> = {
   6008: {
     name: "TooManyPositions",
     message: "Maximum concurrent open positions reached",
-    suggestion:
-      "Close an existing position before opening a new one.",
+    suggestion: "Close an existing position before opening a new one.",
   },
   6009: {
     name: "PositionOpeningDisallowed",
@@ -88,14 +86,12 @@ const SDK_ERROR_MAP: Record<number, ErrorEntry> = {
   6037: {
     name: "SlippageTooHigh",
     message: "Slippage exceeds policy max_slippage_bps",
-    suggestion:
-      "Reduce slippage tolerance or increase maxSlippageBps.",
+    suggestion: "Reduce slippage tolerance or increase maxSlippageBps.",
   },
   6047: {
     name: "InsufficientPermissions",
     message: "Agent lacks permission for this action type",
-    suggestion:
-      "Update the agent's permission bitmask to include this action.",
+    suggestion: "Update the agent's permission bitmask to include this action.",
   },
   6063: {
     name: "AgentSpendLimitExceeded",
@@ -109,9 +105,7 @@ const SDK_ERROR_MAP: Record<number, ErrorEntry> = {
  * Parse an on-chain error into a structured PhalnxSDKError.
  * Returns null if the error is not a recognized Anchor program error.
  */
-export function parseOnChainError(
-  error: unknown,
-): PhalnxSDKError | null {
+export function parseOnChainError(error: unknown): PhalnxSDKError | null {
   const code = extractErrorCode(error);
   if (code === null) return null;
 
@@ -169,9 +163,7 @@ function extractErrorCode(error: unknown): number | null {
 
   // Try parsing from error message (SendTransactionError logs)
   if (e.message && typeof e.message === "string") {
-    const match = e.message.match(
-      /custom program error: 0x([0-9a-fA-F]+)/,
-    );
+    const match = e.message.match(/custom program error: 0x([0-9a-fA-F]+)/);
     if (match) {
       const code = parseInt(match[1], 16);
       if (code >= 6000) return code;

@@ -1561,9 +1561,7 @@ export class PhalnxClient {
     const permPassed = hasPermission(agentPermissions, intent.type);
 
     // Check spending cap (for spending actions only)
-    let capDetails:
-      | PrecheckResult["details"]["spendingCap"]
-      | undefined;
+    let capDetails: PrecheckResult["details"]["spendingCap"] | undefined;
     if (mapping.isSpending) {
       const now = Math.floor(Date.now() / 1000);
       const windowStart = now - NUM_EPOCHS * EPOCH_DURATION;
@@ -1576,8 +1574,7 @@ export class PhalnxClient {
       }
       // Convert from micro-USD to USD
       const spent24hUsd = spent24h / 1_000_000;
-      const capUsd =
-        policyAccount.dailySpendingCapUsd.toNumber() / 1_000_000;
+      const capUsd = policyAccount.dailySpendingCapUsd.toNumber() / 1_000_000;
       const remaining = Math.max(0, capUsd - spent24hUsd);
 
       capDetails = {
@@ -1590,22 +1587,17 @@ export class PhalnxClient {
       if (capUsd > 0) {
         const usagePct = (spent24hUsd / capUsd) * 100;
         if (usagePct > 70) {
-          riskFlags.push(
-            `${Math.round(usagePct)}% of daily cap consumed`,
-          );
+          riskFlags.push(`${Math.round(usagePct)}% of daily cap consumed`);
         }
       }
     }
 
     // Check protocol (simplified — actual protocol depends on routing)
     const protocolPassed =
-      policyAccount.protocolMode === 0 ||
-      policyAccount.protocols.length > 0;
+      policyAccount.protocolMode === 0 || policyAccount.protocols.length > 0;
 
     // Check slippage (if applicable)
-    let slippageDetails:
-      | PrecheckResult["details"]["slippage"]
-      | undefined;
+    let slippageDetails: PrecheckResult["details"]["slippage"] | undefined;
     if (
       "slippageBps" in intent.params &&
       intent.params.slippageBps !== undefined
@@ -1719,9 +1711,7 @@ export class PhalnxClient {
 
     const toSide = (
       s: "long" | "short",
-    ):
-      | { long: Record<string, never> }
-      | { short: Record<string, never> } =>
+    ): { long: Record<string, never> } | { short: Record<string, never> } =>
       s === "long" ? { long: {} } : { short: {} };
 
     switch (intent.type) {
@@ -1751,21 +1741,15 @@ export class PhalnxClient {
 
       case "transfer": {
         const p = intent.params;
-        const mint =
-          resolveToken(p.mint)?.mint ?? new PublicKey(p.mint);
+        const mint = resolveToken(p.mint)?.mint ?? new PublicKey(p.mint);
         const token = resolveToken(p.mint);
         const amount = token
           ? toBaseUnits(p.amount, token.decimals)
           : new BN(p.amount);
-        const { getAssociatedTokenAddressSync } = await import(
-          "@solana/spl-token"
-        );
+        const { getAssociatedTokenAddressSync } =
+          await import("@solana/spl-token");
         const dest = new PublicKey(p.destination);
-        const vaultAta = getAssociatedTokenAddressSync(
-          mint,
-          vault,
-          true,
-        );
+        const vaultAta = getAssociatedTokenAddressSync(mint, vault, true);
         const destAta = getAssociatedTokenAddressSync(mint, dest, true);
         return this.agentTransfer(vault, {
           amount,
@@ -1777,8 +1761,7 @@ export class PhalnxClient {
 
       case "deposit": {
         const p = intent.params;
-        const mint =
-          resolveToken(p.mint)?.mint ?? new PublicKey(p.mint);
+        const mint = resolveToken(p.mint)?.mint ?? new PublicKey(p.mint);
         const token = resolveToken(p.mint);
         const amount = token
           ? toBaseUnits(p.amount, token.decimals)
@@ -1794,8 +1777,7 @@ export class PhalnxClient {
 
       case "withdraw": {
         const p = intent.params;
-        const mint =
-          resolveToken(p.mint)?.mint ?? new PublicKey(p.mint);
+        const mint = resolveToken(p.mint)?.mint ?? new PublicKey(p.mint);
         const token = resolveToken(p.mint);
         const amount = token
           ? toBaseUnits(p.amount, token.decimals)
@@ -2002,8 +1984,7 @@ export class PhalnxClient {
 
       case "createEscrow": {
         const p = intent.params;
-        const mint =
-          resolveToken(p.mint)?.mint ?? new PublicKey(p.mint);
+        const mint = resolveToken(p.mint)?.mint ?? new PublicKey(p.mint);
         const token = resolveToken(p.mint);
         const amount = token
           ? toBaseUnits(p.amount, token.decimals)
@@ -2014,14 +1995,9 @@ export class PhalnxClient {
           ? Array.from(Buffer.from(p.conditionHash, "hex"))
           : Array(32).fill(0);
         const destVault = new PublicKey(p.destinationVault);
-        const { getAssociatedTokenAddressSync } = await import(
-          "@solana/spl-token"
-        );
-        const vaultAta = getAssociatedTokenAddressSync(
-          mint,
-          vault,
-          true,
-        );
+        const { getAssociatedTokenAddressSync } =
+          await import("@solana/spl-token");
+        const vaultAta = getAssociatedTokenAddressSync(mint, vault, true);
         const escrowId = new BN(Date.now());
 
         return this.createEscrow(

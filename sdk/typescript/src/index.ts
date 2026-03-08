@@ -39,11 +39,7 @@ export {
 } from "./tokens";
 
 // Structured Errors
-export {
-  PhalnxSDKError,
-  parseOnChainError,
-  precheckError,
-} from "./errors";
+export { PhalnxSDKError, parseOnChainError, precheckError } from "./errors";
 
 export {
   getVaultPDA,
