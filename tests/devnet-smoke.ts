@@ -268,7 +268,7 @@ describe("devnet-smoke-test", () => {
 
     // Build finalize instruction
     const finalizeIx = await program.methods
-      .finalizeSession(true)
+      .finalizeSession(true, null)
       .accounts({
         payer: agent.publicKey,
         vault: vaultPda,

@@ -519,7 +519,7 @@ export async function buildFinalizeIx(opts: FinalizeOpts) {
     program.programId,
   );
   return program.methods
-    .finalizeSession(success)
+    .finalizeSession(success, null)
     .accounts({
       payer: payer.publicKey,
       vault: vaultPda,
