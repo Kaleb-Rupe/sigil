@@ -282,6 +282,7 @@ export class PhalnxClient {
   private readonly _simulateBeforeSend: boolean;
   private _intentStorage: IntentStorage | undefined;
   private readonly _protocolRegistry: ProtocolRegistry;
+  private _intentsEngine: import("./intent-engine").IntentEngine | undefined;
 
   constructor(
     connection: Connection,
@@ -2433,6 +2434,21 @@ export class PhalnxClient {
         );
       }
     }
+  }
+
+  // --- IntentEngine (Agent-first facade) ---
+
+  /**
+   * Lazy-initialized IntentEngine for agent-first workflows.
+   * Provides validate → precheck → execute pipeline with structured errors.
+   */
+  get intents(): import("./intent-engine").IntentEngine {
+    if (!this._intentsEngine) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { IntentEngine } = require("./intent-engine") as typeof import("./intent-engine");
+      this._intentsEngine = new IntentEngine(this);
+    }
+    return this._intentsEngine;
   }
 
   // --- Intents (Human-in-the-loop proposal flow) ---

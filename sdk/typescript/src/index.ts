@@ -66,6 +66,22 @@ export {
   type ValidationResult,
 } from "./intent-validator";
 
+// IntentEngine (Agent-first facade)
+export {
+  IntentEngine,
+  type ExplainResult,
+  type ProtocolInfo,
+  type ActionInfo,
+} from "./intent-engine";
+
+// Agent Tool Creation
+export {
+  createPhalnxTools,
+  type PhalnxTool,
+  type PhalnxToolOptions,
+  type PluginName,
+} from "./create-tools";
+
 export {
   getVaultPDA,
   getPolicyPDA,
