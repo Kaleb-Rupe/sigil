@@ -985,7 +985,7 @@ describe("phalnx", () => {
         .instruction();
 
       const finalizeIx = await program.methods
-        .finalizeSession(true, null)
+        .finalizeSession(true)
         .accountsPartial({
           payer: agent.publicKey,
           vault: vaultPda,
@@ -1219,7 +1219,7 @@ describe("phalnx", () => {
         .instruction();
 
       const finalizeIx1 = await program.methods
-        .finalizeSession(true, null)
+        .finalizeSession(true)
         .accountsPartial({
           payer: agent.publicKey,
           vault: vaultPda,
@@ -1899,7 +1899,7 @@ describe("phalnx", () => {
         .instruction();
 
       const finalizeIx = await program.methods
-        .finalizeSession(true, null)
+        .finalizeSession(true)
         .accountsPartial({
           payer: agent.publicKey,
           vault: feeVaultPda,
@@ -2007,7 +2007,7 @@ describe("phalnx", () => {
         .instruction();
 
       const finalizeIx = await program.methods
-        .finalizeSession(true, null)
+        .finalizeSession(true)
         .accountsPartial({
           payer: agent.publicKey,
           vault: feeVaultPda,
@@ -2074,7 +2074,7 @@ describe("phalnx", () => {
         .instruction();
 
       const finalizeIx = await program.methods
-        .finalizeSession(false, null)
+        .finalizeSession(false)
         .accountsPartial({
           payer: agent.publicKey,
           vault: feeVaultPda,
@@ -2289,7 +2289,7 @@ describe("phalnx", () => {
         .instruction();
 
       const finalizeIx = await program.methods
-        .finalizeSession(true, null)
+        .finalizeSession(true)
         .accountsPartial({
           payer: lifecycleAgent.publicKey,
           vault: lifecycleVaultPda,
@@ -2354,7 +2354,7 @@ describe("phalnx", () => {
         .instruction();
 
       const finalizeIx = await program.methods
-        .finalizeSession(true, null)
+        .finalizeSession(true)
         .accountsPartial({
           payer: lifecycleAgent.publicKey,
           vault: lifecycleVaultPda,
@@ -2409,7 +2409,7 @@ describe("phalnx", () => {
           .instruction();
 
         const finalizeIx = await program.methods
-          .finalizeSession(true, null)
+          .finalizeSession(true)
           .accountsPartial({
             payer: lifecycleAgent.publicKey,
             vault: lifecycleVaultPda,
@@ -3049,7 +3049,7 @@ describe("phalnx", () => {
           .instruction();
 
         const finalizeIx = await program.methods
-          .finalizeSession(true, null)
+          .finalizeSession(true)
           .accountsPartial({
             payer: ringAgent.publicKey,
             vault: ringVaultPda,
@@ -3219,7 +3219,7 @@ describe("phalnx", () => {
         .instruction();
 
       const finalizeIx = await program.methods
-        .finalizeSession(true, null)
+        .finalizeSession(true)
         .accountsPartial({
           payer: feeEdgeAgent.publicKey,
           vault: feeEdgeVaultPda,
@@ -3283,7 +3283,7 @@ describe("phalnx", () => {
         .instruction();
 
       const finalizeIx1 = await program.methods
-        .finalizeSession(true, null)
+        .finalizeSession(true)
         .accountsPartial({
           payer: feeEdgeAgent.publicKey,
           vault: feeEdgeVaultPda,
@@ -3333,7 +3333,7 @@ describe("phalnx", () => {
         .instruction();
 
       const finalizeIx2 = await program.methods
-        .finalizeSession(true, null)
+        .finalizeSession(true)
         .accountsPartial({
           payer: feeEdgeAgent.publicKey,
           vault: feeEdgeVaultPda,
@@ -4603,7 +4603,7 @@ describe("phalnx", () => {
         .instruction();
 
       const finalizeIx = await program.methods
-        .finalizeSession(true, null)
+        .finalizeSession(true)
         .accounts({
           payer: agent.publicKey,
           vault: maVault,
@@ -4664,7 +4664,7 @@ describe("phalnx", () => {
         .instruction();
 
       const finalizeIx = await program.methods
-        .finalizeSession(true, null)
+        .finalizeSession(true)
         .accounts({
           payer: agent.publicKey,
           vault: maVault,
@@ -5275,7 +5275,7 @@ describe("phalnx", () => {
         .instruction();
 
       const finalizeIx = await program.methods
-        .finalizeSession(true, null)
+        .finalizeSession(true)
         .accountsPartial({
           payer: protoCapAgent.publicKey,
           vault: pcVault,

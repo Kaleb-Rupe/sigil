@@ -166,7 +166,7 @@ describe("flash-trade-integration", () => {
     const mockDefiIx = createMockDefiInstruction(agentKp.publicKey);
 
     const finalizeIx = await program.methods
-      .finalizeSession(success, null)
+      .finalizeSession(success)
       .accountsPartial({
         payer: agentKp.publicKey,
         vault,

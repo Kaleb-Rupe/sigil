@@ -164,7 +164,7 @@ describe("jupiter-lend-integration", () => {
 
     // 4. Finalize session
     const finalizeIx = await program.methods
-      .finalizeSession(success, null)
+      .finalizeSession(success)
       .accountsPartial({
         payer: agentKp.publicKey,
         vault,
