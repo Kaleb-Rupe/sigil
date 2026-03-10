@@ -1605,7 +1605,7 @@ export class PhalnxClient {
     ) {
       const intentBps = intent.params.slippageBps as number;
       const vaultMaxBps = policyAccount.maxSlippageBps;
-      const slipPassed = vaultMaxBps === 0 || intentBps <= vaultMaxBps;
+      const slipPassed = intentBps <= vaultMaxBps;
       slippageDetails = {
         passed: slipPassed,
         intentBps,

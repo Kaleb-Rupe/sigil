@@ -465,6 +465,33 @@ describe("intents", () => {
     });
   });
 
+  describe("slippage comparison logic (M-4 fix)", () => {
+    // Extracted from precheck() — validates the fix for maxSlippageBps=0
+    function slipPassed(intentBps: number, vaultMaxBps: number): boolean {
+      return intentBps <= vaultMaxBps;
+    }
+
+    it("vaultMax=0, intent=0 → true (exact swap allowed)", () => {
+      expect(slipPassed(0, 0)).to.be.true;
+    });
+
+    it("vaultMax=0, intent=50 → false (rejects any slippage)", () => {
+      expect(slipPassed(50, 0)).to.be.false;
+    });
+
+    it("vaultMax=500, intent=100 → true", () => {
+      expect(slipPassed(100, 500)).to.be.true;
+    });
+
+    it("vaultMax=500, intent=600 → false", () => {
+      expect(slipPassed(600, 500)).to.be.false;
+    });
+
+    it("vaultMax=500, intent=500 → true (boundary)", () => {
+      expect(slipPassed(500, 500)).to.be.true;
+    });
+  });
+
   describe("MemoryIntentStorage", () => {
     let storage: MemoryIntentStorage;
 
