@@ -95,7 +95,7 @@ Work through each section top to bottom. Check off items as they're resolved. Ea
 ## 1. On-Chain Program — Deep Security Audit
 
 **Overall Grade: A — LAYER 1 COMPLETE** ✅
-26 instructions, 73 error types (6000–6072), 28 events, zero-copy accounts, ~2,046 tests (corrected from ~1,102). All critical, high, and medium security findings have been resolved in the codebase. One critical finding remains (S-1: mainnet treasury placeholder) which is intentionally deferred to mainnet preparation. AgentVault SIZE updated from 599→600 bytes (new `active_escrow_count` field).
+26 instructions, 74 error types (6000–6073), 28 events, zero-copy accounts, ~2,046 tests (corrected from ~1,102). All critical, high, and medium security findings have been resolved in the codebase. One critical finding remains (S-1: mainnet treasury placeholder) which is intentionally deferred to mainnet preparation. AgentVault SIZE updated from 599→600 bytes (new `active_escrow_count` field). PolicyConfig SIZE updated from 816→817 bytes (new `has_pending_policy` flag).
 
 > **Reverified 2026-03-09 by 9 parallel verification agents against codebase source of truth** (not docs). Every claim verified line-by-line with exact line numbers confirmed.
 > **2026-03-09 audit fix session:** 7 MEDIUM findings (A-3, F-1, A-1, A-2, GC-2, B-3, GC-1) identified and all resolved. 6 WIP commits on `fix/devnet-test-overlay-args` branch.
@@ -109,7 +109,7 @@ Work through each section top to bottom. Check off items as they're resolved. Ea
 | Security findings S-1 | DEFERRED | Mainnet treasury = zero (intentional placeholder until mainnet prep) | ✅ Verified at mod.rs:78 |
 | Security findings S-2 through S-6 | **ALL RESOLVED** | Verified in source code — see details below | ✅ All 5 verified |
 | Audit findings A-3, F-1, A-1, A-2, GC-2, B-3, GC-1 | **ALL RESOLVED** | 7 MEDIUM findings from 2026-03-09 re-audit — all fixed | ✅ All 7 fixed |
-| Error codes | COMPLETE | 73 errors (6000-6072) | ✅ Updated with ActiveEscrowsExist + ConstraintsNotClosed |
+| Error codes | COMPLETE | 74 errors (6000-6073) | ✅ Updated with ActiveEscrowsExist + ConstraintsNotClosed + PendingPolicyExists |
 | Events | COMPLETE | 28 event types, all emit via `emit!()` | ✅ All 28 listed |
 | Instructions | COMPLETE | 26 dispatchable instructions | ✅ All 26 listed |
 | State types | COMPLETE | 9 PDA account types | ✅ All 9 confirmed |
@@ -135,7 +135,7 @@ Work through each section top to bottom. Check off items as they're resolved. Ea
 - `policy.rs` (116 lines) — policy config state
 - `vault.rs` (95 lines) — vault state and agent management
 - `mod.rs` (334 lines) — constants, stablecoin mints, protocol IDs, action types
-- `errors.rs` (229 lines) — all 73 error types
+- `errors.rs` (232 lines) — all 74 error types
 - `utils.rs` (36 lines) — stablecoin-to-USD conversion
 
 ---
@@ -2247,7 +2247,7 @@ No repository contains a working end-to-end example that a developer can clone a
 
 **STATUS: PASS**
 
-73 named error types (6000–6072) with specific messages. Examples:
+74 named error types (6000–6073) with specific messages. Examples:
 - `TransactionTooLarge` — clear what to fix
 - `DailyCapExceeded` — clear what's wrong
 - `UnauthorizedAgent` — clear who's at fault
@@ -2689,7 +2689,7 @@ All on-chain security findings resolved:
 - [x] S-4: Slot leak on revocation → release_slot on revoke
 - [x] S-5: Feature guard → compile_error! added
 - [x] S-6: Session expiry → configurable per-vault
-- [x] All CPI guards in place, non-spending scan unconditional, 73 error codes, 28 events, 26 instructions, 9 PDAs, 7 constraint operators
+- [x] All CPI guards in place, non-spending scan unconditional, 74 error codes, 28 events, 26 instructions, 9 PDAs, 7 constraint operators
 
 ### Phase 1A: Agent-First SDK Restructuring — ✅ COMPLETE (8 Steps)
 
