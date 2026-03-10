@@ -154,6 +154,7 @@ export function buildValidateAndAuthorize(
     params.tokenMint,
     program.programId,
   );
+  const [agentSpendOverlay] = getAgentOverlayPDA(vault, program.programId);
 
   return program.methods
     .validateAndAuthorize(
@@ -169,6 +170,7 @@ export function buildValidateAndAuthorize(
       policy,
       tracker,
       session,
+      agentSpendOverlay,
       vaultTokenAccount,
       tokenMintAccount: params.tokenMint,
       protocolTreasuryTokenAccount: protocolTreasuryTokenAccount ?? null,
@@ -192,6 +194,7 @@ export function buildFinalizeSession(
   const [session] = getSessionPDA(vault, agent, tokenMint, program.programId);
   const [policy] = getPolicyPDA(vault, program.programId);
   const [tracker] = getTrackerPDA(vault, program.programId);
+  const [agentSpendOverlay] = getAgentOverlayPDA(vault, program.programId);
 
   return program.methods.finalizeSession(success).accounts({
     payer,
@@ -200,6 +203,7 @@ export function buildFinalizeSession(
     sessionRentRecipient: agent,
     policy,
     tracker,
+    agentSpendOverlay,
     vaultTokenAccount,
     outputStablecoinAccount: outputStablecoinAccount ?? null,
     tokenProgram: TOKEN_PROGRAM_ID,
@@ -213,9 +217,11 @@ export function buildRevokeAgent(
   vault: PublicKey,
   agentToRemove: PublicKey,
 ) {
+  const [agentSpendOverlay] = getAgentOverlayPDA(vault, program.programId);
   return program.methods.revokeAgent(agentToRemove).accounts({
     owner,
     vault,
+    agentSpendOverlay,
   } as any);
 }
 
@@ -261,12 +267,14 @@ export function buildCloseVault(
 ) {
   const [policy] = getPolicyPDA(vault, program.programId);
   const [tracker] = getTrackerPDA(vault, program.programId);
+  const [agentSpendOverlay] = getAgentOverlayPDA(vault, program.programId);
 
   return program.methods.closeVault().accounts({
     owner,
     vault,
     policy,
     tracker,
+    agentSpendOverlay,
     systemProgram: SystemProgram.programId,
   } as any);
 }
@@ -347,12 +355,14 @@ export function buildAgentTransfer(
 ) {
   const [policy] = getPolicyPDA(vault, program.programId);
   const [tracker] = getTrackerPDA(vault, program.programId);
+  const [agentSpendOverlay] = getAgentOverlayPDA(vault, program.programId);
 
   return program.methods.agentTransfer(params.amount).accounts({
     agent,
     vault,
     policy,
     tracker,
+    agentSpendOverlay,
     vaultTokenAccount: params.vaultTokenAccount,
     tokenMintAccount: params.tokenMintAccount,
     destinationTokenAccount: params.destinationTokenAccount,
@@ -418,6 +428,7 @@ export function buildCreateEscrow(
 ) {
   const [policy] = getPolicyPDA(sourceVault, program.programId);
   const [tracker] = getTrackerPDA(sourceVault, program.programId);
+  const [agentSpendOverlay] = getAgentOverlayPDA(sourceVault, program.programId);
   const [escrow] = getEscrowPDA(
     sourceVault,
     destinationVault,
@@ -433,6 +444,7 @@ export function buildCreateEscrow(
       sourceVault,
       policy,
       tracker,
+      agentSpendOverlay,
       destinationVault,
       escrow,
       sourceVaultAta,
