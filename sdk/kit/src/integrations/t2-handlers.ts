@@ -1,12 +1,7 @@
 /**
- * T2 Protocol Handler Stubs — Kit-native
+ * T2 Protocol Handlers — Kit-native
  *
- * Drift, Flash Trade, Kamino, and Squads handlers.
- * These are T2 (SDK-wrapped) protocols — their compose() will use compat.ts
- * to bridge web3.js types from the protocol SDKs to Kit types.
- *
- * Currently stubs: compose() throws NOT_IMPLEMENTED.
- * Full implementation requires importing the protocol SDKs.
+ * Drift (compat bridge), Flash Trade (Codama), Kamino (Codama), Squads (stub).
  */
 
 import type { Address } from "@solana/kit";
@@ -18,6 +13,8 @@ import type {
 } from "./protocol-handler.js";
 import { ActionType } from "../generated/types/actionType.js";
 import { dispatchDriftCompose } from "./drift-compose.js";
+import { dispatchFlashTradeCompose } from "./flash-compose.js";
+import { dispatchKaminoCompose } from "./kamino-compose.js";
 
 // ─── Program IDs ────────────────────────────────────────────────────────────
 
@@ -92,25 +89,32 @@ export class FlashTradeHandler implements ProtocolHandler {
   readonly metadata = FLASH_TRADE_METADATA;
 
   async compose(
-    _ctx: ProtocolContext,
-    _action: string,
-    _params: Record<string, unknown>,
+    ctx: ProtocolContext,
+    action: string,
+    params: Record<string, unknown>,
   ): Promise<ProtocolComposeResult> {
-    throw new Error(
-      "FlashTradeHandler.compose() not yet implemented — requires flash-sdk. " +
-      "Use compat.ts bridge when wiring up.",
-    );
+    return dispatchFlashTradeCompose(ctx, action, params);
   }
 
   summarize(action: string, params: Record<string, unknown>): string {
-    const market = params.market ?? "unknown";
+    const target = params.targetSymbol ?? "unknown";
     const side = params.side ?? "";
     switch (action) {
-      case "openPosition": return `Flash open ${side} ${market}`;
-      case "closePosition": return `Flash close ${market}`;
-      case "increasePosition": return `Flash increase ${side} ${market}`;
-      case "decreasePosition": return `Flash decrease ${side} ${market}`;
-      default: return `Flash Trade: ${action} ${market}`;
+      case "openPosition": return `Flash open ${side} ${target}`;
+      case "closePosition": return `Flash close ${target}`;
+      case "increasePosition": return `Flash increase ${side} ${target}`;
+      case "decreasePosition": return `Flash decrease ${target}`;
+      case "addCollateral": return `Flash add collateral ${target}`;
+      case "removeCollateral": return `Flash remove collateral ${target}`;
+      case "placeTriggerOrder": return `Flash trigger order ${side} ${target}`;
+      case "editTriggerOrder": return `Flash edit trigger ${target}`;
+      case "cancelTriggerOrder": return `Flash cancel trigger`;
+      case "placeLimitOrder": return `Flash limit ${side} ${target}`;
+      case "editLimitOrder": return `Flash edit limit ${target}`;
+      case "cancelLimitOrder": return `Flash cancel limit ${target}`;
+      case "swapAndOpen": return `Flash swap+open ${side} ${target}`;
+      case "closeAndSwap": return `Flash close+swap ${target}`;
+      default: return `Flash Trade: ${action}`;
     }
   }
 }
@@ -133,18 +137,15 @@ export class KaminoHandler implements ProtocolHandler {
   readonly metadata = KAMINO_METADATA;
 
   async compose(
-    _ctx: ProtocolContext,
-    _action: string,
-    _params: Record<string, unknown>,
+    ctx: ProtocolContext,
+    action: string,
+    params: Record<string, unknown>,
   ): Promise<ProtocolComposeResult> {
-    throw new Error(
-      "KaminoHandler.compose() not yet implemented — requires @kamino-finance/klend-sdk. " +
-      "Use compat.ts bridge when wiring up.",
-    );
+    return dispatchKaminoCompose(ctx, action, params);
   }
 
   summarize(action: string, params: Record<string, unknown>): string {
-    return `Kamino ${action} ${params.amount ?? ""} ${params.mint ?? ""}`.trim();
+    return `Kamino ${action} ${params.amount ?? ""} ${params.tokenMint ?? ""}`.trim();
   }
 }
 
