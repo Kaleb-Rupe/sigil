@@ -319,6 +319,14 @@ export type {
   WithVaultResult,
 } from "./harden.js";
 
+// ─── Transaction Executor ──────────────────────────────────────────────────
+export { TransactionExecutor } from "./transaction-executor.js";
+export type {
+  ExecuteTransactionParams,
+  ExecuteTransactionResult,
+  TransactionExecutorOptions,
+} from "./transaction-executor.js";
+
 // ─── RPC Helpers ───────────────────────────────────────────────────────────
 export {
   BlockhashCache,
