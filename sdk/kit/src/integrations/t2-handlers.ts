@@ -17,6 +17,7 @@ import type {
   ProtocolContext,
 } from "./protocol-handler.js";
 import { ActionType } from "../generated/types/actionType.js";
+import { dispatchDriftCompose } from "./drift-compose.js";
 
 // ─── Program IDs ────────────────────────────────────────────────────────────
 
@@ -44,14 +45,11 @@ export class DriftHandler implements ProtocolHandler {
   readonly metadata = DRIFT_METADATA;
 
   async compose(
-    _ctx: ProtocolContext,
-    _action: string,
-    _params: Record<string, unknown>,
+    ctx: ProtocolContext,
+    action: string,
+    params: Record<string, unknown>,
   ): Promise<ProtocolComposeResult> {
-    throw new Error(
-      "DriftHandler.compose() not yet implemented — requires @drift-labs/sdk. " +
-      "Use compat.ts bridge when wiring up.",
-    );
+    return dispatchDriftCompose(ctx, action, params);
   }
 
   summarize(action: string, params: Record<string, unknown>): string {

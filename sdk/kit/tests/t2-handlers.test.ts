@@ -26,12 +26,13 @@ describe("t2-handlers", () => {
       expect(action!.isSpending).to.be.true;
     });
 
-    it("compose throws NOT_IMPLEMENTED", async () => {
+    it("compose throws SDK-not-installed (compat bridge wired)", async () => {
       try {
         await handler.compose({} as any, "deposit", {});
         expect.fail("should throw");
       } catch (e: any) {
-        expect(e.message).to.include("not yet implemented");
+        // Now goes through compat bridge — fails at SDK import, not at "not implemented"
+        expect(e.message).to.include("@drift-labs/sdk");
       }
     });
 
