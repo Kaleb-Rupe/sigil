@@ -12,7 +12,7 @@
  */
 
 import type { Address } from "@solana/kit";
-import { analyzeInstructions, type InspectableInstruction } from "./inspector.js";
+import { analyzeInstructions, type InspectableInstruction, type InstructionAnalysis } from "./inspector.js";
 import {
   resolvePolicies,
   type ShieldPolicies,
@@ -128,7 +128,7 @@ export function evaluateInstructions(
   signerAddress: Address,
   resolved: ResolvedPolicies,
   state: ShieldState,
-): PolicyViolation[] {
+): { violations: PolicyViolation[]; analysis: InstructionAnalysis } {
   const violations: PolicyViolation[] = [];
   const analysis = analyzeInstructions(instructions, signerAddress);
 
@@ -205,7 +205,7 @@ export function evaluateInstructions(
     }
   }
 
-  return violations;
+  return { violations, analysis };
 }
 
 const SYSTEM_PROGRAMS = new Set<string>([
@@ -296,7 +296,7 @@ export function shield(
         };
       }
 
-      const violations = evaluateInstructions(
+      const { violations } = evaluateInstructions(
         instructions,
         signerAddress,
         resolved,
@@ -322,7 +322,7 @@ export function shield(
         throw error;
       }
 
-      const violations = evaluateInstructions(
+      const { violations, analysis } = evaluateInstructions(
         instructions,
         signerAddress,
         resolved,
@@ -335,8 +335,7 @@ export function shield(
         throw error;
       }
 
-      // Record the transaction
-      const analysis = analyzeInstructions(instructions, signerAddress);
+      // Record the transaction — reuse analysis from evaluateInstructions
       for (const transfer of analysis.tokenTransfers) {
         if (transfer.authority === signerAddress) {
           state.recordSpend(transfer.mint ?? "", transfer.amount);

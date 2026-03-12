@@ -19,11 +19,13 @@ const SPL_TRANSFER_DISCRIMINATOR = 3;
 const SPL_TRANSFER_CHECKED_DISCRIMINATOR = 12;
 
 /**
- * Token Program address — hardcoded to avoid spl-token dependency.
- * This is the canonical SPL Token Program ID on all Solana clusters.
+ * Token Program addresses — hardcoded to avoid spl-token dependency.
+ * Both Token Program and Token-2022 must be checked for drain detection.
  */
 const TOKEN_PROGRAM_ID: Address =
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address;
+const TOKEN_2022_PROGRAM_ID: Address =
+  "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb" as Address;
 
 /** Infrastructure programs always allowed (ComputeBudget, SystemProgram, ATA) */
 const INFRASTRUCTURE_PROGRAMS = new Set<string>([
@@ -44,7 +46,7 @@ export interface AdapterVerifyResult {
 export interface VerifiableInstruction {
   programAddress: Address;
   accounts?: readonly { address: Address }[];
-  data?: Uint8Array;
+  data?: Uint8Array | Readonly<Uint8Array>;
 }
 
 /**
@@ -81,8 +83,9 @@ export function verifyAdapterOutput(
     }
 
     // Check 2: Block SPL Token transfers referencing vault accounts
+    // Covers both Token Program and Token-2022 to prevent drain via either program
     if (
-      programId === TOKEN_PROGRAM_ID &&
+      (programId === TOKEN_PROGRAM_ID || programId === TOKEN_2022_PROGRAM_ID) &&
       ix.data &&
       ix.data.length > 0
     ) {

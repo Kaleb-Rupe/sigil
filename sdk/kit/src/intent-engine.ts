@@ -31,7 +31,7 @@ import { resolveToken } from "./tokens.js";
 import { hasPermission, isSpendingAction, isStablecoinMint } from "./types.js";
 import { VaultStatus } from "./generated/types/vaultStatus.js";
 import { resolveAccounts } from "./resolve-accounts.js";
-import { verifyAdapterOutput } from "./integrations/adapter-verifier.js";
+import { verifyAdapterOutput, type VerifiableInstruction } from "./integrations/adapter-verifier.js";
 import { fetchAgentVault } from "./generated/accounts/agentVault.js";
 import { fetchPolicyConfig } from "./generated/accounts/policyConfig.js";
 import { getPolicyPDA, getTrackerPDA, getAgentOverlayPDA } from "./resolve-accounts.js";
@@ -126,9 +126,10 @@ export class IntentEngine {
     }
 
     // 3. Precheck (unless skipped)
+    let precheck: PrecheckResult | undefined;
     if (!options?.skipPrecheck) {
       try {
-        const precheck = await this.precheck(intent, vault);
+        precheck = await this.precheck(intent, vault);
         if (!precheck.allowed) {
           return toAgentError(
             new Error(
@@ -147,7 +148,7 @@ export class IntentEngine {
 
     // 4. Execute (compose → verify → build sandwich → simulate → sign → send)
     try {
-      return await this.execute(intent, vault);
+      return await this.execute(intent, vault, precheck);
     } catch (err) {
       return toAgentError(err, { phase: "execute", intent_type: intent.type });
     }
@@ -390,6 +391,7 @@ export class IntentEngine {
   async execute(
     intent: IntentAction,
     vault: Address,
+    _cachedPrecheck?: PrecheckResult,
   ): Promise<ExecuteResult> {
     // Step 1: Validate
     const validation = this.validate(intent);
@@ -404,8 +406,8 @@ export class IntentEngine {
     // Step 3: Resolve token
     const token = this._resolveIntentToken(intent);
 
-    // Step 4: Precheck
-    const precheck = await this.precheck(intent, vault);
+    // Step 4: Precheck (reuse cached result from run() if available)
+    const precheck = _cachedPrecheck ?? await this.precheck(intent, vault);
     if (!precheck.allowed) {
       throw new Error(`Precheck failed: ${precheck.reason ?? precheck.summary}`);
     }
@@ -430,15 +432,20 @@ export class IntentEngine {
       agent: this.agent.address,
     };
 
-    const composeResult = await handler.compose(
-      composeCtx,
-      baseActionType,
-      intent.params as Record<string, unknown>,
-    );
+    let composeResult;
+    try {
+      composeResult = await handler.compose(
+        composeCtx,
+        baseActionType,
+        intent.params as Record<string, unknown>,
+      );
+    } catch (err) {
+      throw toAgentError(err, { phase: "compose", protocol: handler.metadata.protocolId });
+    }
 
     // Step 6: Verify adapter output
     const verification = verifyAdapterOutput(
-      composeResult.instructions as any,
+      composeResult.instructions as VerifiableInstruction[],
       handler.metadata.programIds.map((p) => p as Address),
       vault,
     );
@@ -450,12 +457,17 @@ export class IntentEngine {
 
     // Step 7: Resolve all PDAs
     const tokenMint = token?.mint ?? ("11111111111111111111111111111111" as Address);
-    const accounts = await resolveAccounts({
-      vault,
-      agent: this.agent.address,
-      tokenMint,
-      hasConstraints: policyAccount.data.hasConstraints,
-    });
+    let accounts;
+    try {
+      accounts = await resolveAccounts({
+        vault,
+        agent: this.agent.address,
+        tokenMint,
+        hasConstraints: policyAccount.data.hasConstraints,
+      });
+    } catch (err) {
+      throw toAgentError(err, { phase: "resolve_accounts" });
+    }
 
     // Step 8: Build sandwich instructions (validate + DeFi + finalize)
     const { getValidateAndAuthorizeInstructionAsync } = await import(
@@ -504,15 +516,11 @@ export class IntentEngine {
     });
 
     // Steps 9-12: Compose transaction, simulate, sign + send, parse events
-    // These are stubbed until PhalnxKitClient provides transaction lifecycle.
-    // The built instructions are ready for composePhalnxTransaction().
-
-    return {
-      signature: "",
-      intent,
-      precheck,
-      summary: summarizeAction(intent),
-    };
+    // Not yet implemented — throw so callers don't mistake empty signature for success.
+    throw new Error(
+      "IntentEngine.execute() steps 9-12 (compose transaction, simulate, sign, send) " +
+      "are not yet implemented. Use the built instructions with composePhalnxTransaction() directly.",
+    );
   }
 
   // ─── Transaction Plan Inspection ─────────────────────────────────────

@@ -110,4 +110,27 @@ export class MemoryIntentStorage implements IntentStorage {
     if (updates.updatedAt !== undefined) existing.updatedAt = updates.updatedAt;
     if (updates.error !== undefined) existing.error = updates.error;
   }
+
+  /** Delete a specific intent by ID. */
+  async delete(id: string): Promise<boolean> {
+    return this._intents.delete(id);
+  }
+
+  /** Remove all expired intents. Returns count of pruned entries. */
+  async prune(): Promise<number> {
+    const now = Date.now();
+    let pruned = 0;
+    for (const [id, intent] of this._intents) {
+      if (intent.expiresAt <= now) {
+        this._intents.delete(id);
+        pruned++;
+      }
+    }
+    return pruned;
+  }
+
+  /** Current number of stored intents. */
+  get size(): number {
+    return this._intents.size;
+  }
 }

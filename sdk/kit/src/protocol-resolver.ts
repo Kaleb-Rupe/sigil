@@ -135,14 +135,14 @@ export function resolveProtocol(
       ? ProtocolTier.T1_API
       : T2_PROTOCOL_IDS.has(protocolId)
         ? ProtocolTier.T2_SDK
-        : ProtocolTier.T2_SDK;
+        : ProtocolTier.T3_IDL;
 
     return {
       tier,
       protocolId,
       programId,
       displayName,
-      reason: `${displayName} handled via ${tier === ProtocolTier.T1_API ? "API" : "SDK"} adapter`,
+      reason: `${displayName} handled via ${tier === ProtocolTier.T1_API ? "API" : tier === ProtocolTier.T2_SDK ? "SDK" : "IDL-generated"} adapter`,
     };
   }
 
@@ -212,6 +212,8 @@ function buildAlternatives(
     displayName: meta.displayName,
     tier: T1_PROTOCOL_IDS.has(meta.protocolId)
       ? ProtocolTier.T1_API
-      : ProtocolTier.T2_SDK,
+      : T2_PROTOCOL_IDS.has(meta.protocolId)
+        ? ProtocolTier.T2_SDK
+        : ProtocolTier.T3_IDL,
   }));
 }
