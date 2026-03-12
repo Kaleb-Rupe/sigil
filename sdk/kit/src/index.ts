@@ -52,7 +52,7 @@ export {
   // Types
   ACTION_PERMISSION_MAP,
 } from "./types.js";
-export type { PositionEffect } from "./types.js";
+export type { Network, PositionEffect } from "./types.js";
 
 // ─── PDA Resolution ───────────────────────────────────────────────────────────
 export {
@@ -175,6 +175,173 @@ export type {
   NitroPcrValues,
   TurnkeyAttestationBundle,
 } from "./tee/index.js";
+
+// ─── Custody Adapter ────────────────────────────────────────────────────────
+export { custodyAdapterToTransactionSigner } from "./custody-adapter.js";
+export type { CustodyAdapter } from "./custody-adapter.js";
+
+// ─── Agent Errors ─────────────────────────────────────────────────────────────
+export {
+  ON_CHAIN_ERROR_MAP,
+  toAgentError,
+  protocolEscalationError,
+  parseOnChainErrorCode,
+  isAgentError,
+  getAllOnChainErrorCodes,
+  getAllSdkErrorCodes,
+} from "./agent-errors.js";
+export type {
+  ErrorCategory,
+  RecoveryAction,
+  AgentError,
+} from "./agent-errors.js";
+
+// ─── Intents ──────────────────────────────────────────────────────────────────
+export {
+  DEFAULT_INTENT_TTL_MS,
+  ACTION_TYPE_MAP,
+  summarizeAction,
+  resolveProtocolActionType,
+} from "./intents.js";
+export type {
+  IntentAction,
+  IntentActionType,
+  IntentStatus,
+  PrecheckResult,
+  ExecuteResult,
+  TransactionIntent,
+  IntentStorage,
+  ProtocolRegistryLike,
+} from "./intents.js";
+
+// ─── Intent Validator ─────────────────────────────────────────────────────────
+export { validateIntentInput } from "./intent-validator.js";
+export type { ValidationResult } from "./intent-validator.js";
+
+// ─── Intent Storage ──────────────────────────────────────────────────────────
+export {
+  createIntent,
+  MemoryIntentStorage,
+} from "./intent-storage.js";
+
+// ─── Protocol Handler Interface ──────────────────────────────────────────────
+export type {
+  ProtocolComposeResult,
+  ProtocolContext,
+  ProtocolActionDescriptor,
+  ProtocolHandlerMetadata,
+  ProtocolHandler,
+} from "./integrations/protocol-handler.js";
+
+// ─── Protocol Registry ───────────────────────────────────────────────────────
+export {
+  ProtocolRegistry,
+  globalProtocolRegistry,
+} from "./integrations/protocol-registry.js";
+
+// ─── Adapter Verifier ────────────────────────────────────────────────────────
+export { verifyAdapterOutput } from "./integrations/adapter-verifier.js";
+export type { AdapterVerifyResult } from "./integrations/adapter-verifier.js";
+
+// ─── Protocol Resolver ───────────────────────────────────────────────────────
+export {
+  ProtocolTier,
+  isProtocolAllowed,
+  resolveProtocol,
+} from "./protocol-resolver.js";
+export type {
+  ProtocolResolution,
+  EscalationInfo,
+} from "./protocol-resolver.js";
+
+// ─── Inspector ───────────────────────────────────────────────────────────────
+export { analyzeInstructions } from "./inspector.js";
+export type {
+  InspectableInstruction,
+  TokenTransferInfo,
+  InstructionAnalysis,
+} from "./inspector.js";
+
+// ─── Jupiter Handler (T1) ───────────────────────────────────────────────────
+export {
+  deserializeJupiterInstruction,
+  JupiterHandler,
+} from "./integrations/jupiter-handler.js";
+export type { JupiterSerializedInstruction } from "./integrations/jupiter-handler.js";
+
+// ─── T2 Protocol Handlers ───────────────────────────────────────────────────
+export {
+  DriftHandler,
+  FlashTradeHandler,
+  KaminoHandler,
+  SquadsHandler,
+  driftHandler,
+  flashTradeHandler,
+  kaminoHandler,
+  squadsHandler,
+} from "./integrations/t2-handlers.js";
+
+// ─── Shield ─────────────────────────────────────────────────────────────────
+export {
+  ShieldState,
+  ShieldDeniedError,
+  evaluateInstructions,
+  shield,
+  createShieldedSigner,
+} from "./shield.js";
+export type {
+  PolicyViolation,
+  ShieldCheckResult,
+  SpendingSummary as ShieldSpendingSummary,
+  ShieldOptions,
+  ShieldedContext,
+  ShieldedSignerOptions,
+} from "./shield.js";
+
+// ─── Intent Engine ──────────────────────────────────────────────────────────
+export { IntentEngine } from "./intent-engine.js";
+export type {
+  ExplainResult,
+  ProtocolInfo,
+  ActionInfo,
+  IntentEngineConfig,
+} from "./intent-engine.js";
+
+// ─── PhalnxKitClient ────────────────────────────────────────────────────────
+export { PhalnxKitClient } from "./client.js";
+export type { PhalnxKitClientConfig } from "./client.js";
+
+// ─── Harden / withVault ─────────────────────────────────────────────────────
+export {
+  mapPoliciesToVaultParams,
+  findNextVaultId,
+  harden,
+  withVault,
+} from "./harden.js";
+export type {
+  HardenOptions,
+  HardenResult,
+  WithVaultOptions,
+  WithVaultResult,
+} from "./harden.js";
+
+// ─── Transaction Executor ──────────────────────────────────────────────────
+export { TransactionExecutor } from "./transaction-executor.js";
+export type {
+  ExecuteTransactionParams,
+  ExecuteTransactionResult,
+  TransactionExecutorOptions,
+} from "./transaction-executor.js";
+
+// ─── RPC Helpers ───────────────────────────────────────────────────────────
+export {
+  BlockhashCache,
+  sendAndConfirmTransaction,
+} from "./rpc-helpers.js";
+export type {
+  Blockhash,
+  SendAndConfirmOptions,
+} from "./rpc-helpers.js";
 
 // NOTE: compat.ts is intentionally NOT exported.
 // It is for internal use only when bridging T2 protocol SDKs.
