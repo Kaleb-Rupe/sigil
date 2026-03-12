@@ -65,20 +65,20 @@ describe("t2-handlers", () => {
       expect(action!.isSpending).to.be.false;
     });
 
-    it("compose throws NOT_IMPLEMENTED", async () => {
+    it("compose dispatches to Codama compose (throws on missing params)", async () => {
       try {
         await handler.compose({} as any, "openPosition", {});
         expect.fail("should throw");
       } catch (e: any) {
-        expect(e.message).to.include("not yet implemented");
+        expect(e.message).to.include("Missing required");
       }
     });
 
     it("summarize produces readable output", () => {
-      expect(handler.summarize("openPosition", { side: "long", market: "SOL-PERP" }))
+      expect(handler.summarize("openPosition", { side: "long", targetSymbol: "SOL" }))
         .to.include("Flash")
         .and.include("long")
-        .and.include("SOL-PERP");
+        .and.include("SOL");
     });
   });
 
@@ -99,12 +99,12 @@ describe("t2-handlers", () => {
       expect(action!.isSpending).to.be.false;
     });
 
-    it("compose throws NOT_IMPLEMENTED", async () => {
+    it("compose dispatches to Codama compose (throws on missing params)", async () => {
       try {
         await handler.compose({} as any, "deposit", {});
         expect.fail("should throw");
       } catch (e: any) {
-        expect(e.message).to.include("not yet implemented");
+        expect(e.message).to.include("Missing required");
       }
     });
   });
