@@ -41,8 +41,8 @@ export interface InspectableInstruction {
 
 /** Parsed SPL Token transfer info */
 export interface TokenTransferInfo {
-  /** Token mint address (only available for TransferChecked) */
-  mint: Address;
+  /** Token mint address (only available for TransferChecked, null for Transfer) */
+  mint: Address | null;
   /** Transfer amount in base units */
   amount: bigint;
   /** Source token account */
@@ -109,7 +109,7 @@ export function analyzeInstructions(
       const authority = accounts[2].address;
 
       const transfer: TokenTransferInfo = {
-        mint: "unknown" as Address, // Not available in Transfer instruction
+        mint: null, // Not available in Transfer instruction (only TransferChecked provides mint)
         amount,
         source,
         destination,

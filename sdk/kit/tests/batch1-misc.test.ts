@@ -222,6 +222,29 @@ describe("adapter-verifier", () => {
     expect(drainViolation).to.not.be.undefined;
   });
 
+  it("Token-2022 Transfer referencing vault detected as drain", () => {
+    const TOKEN_2022 =
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb" as Address;
+    const data = new Uint8Array(9);
+    data[0] = 3; // Transfer discriminator
+    const instructions: VerifiableInstruction[] = [
+      {
+        programAddress: TOKEN_2022,
+        accounts: [
+          { address: VAULT_ADDRESS }, // source is vault
+          { address: "DestBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB" as Address },
+          { address: AGENT_ADDRESS },
+        ],
+        data,
+      },
+    ];
+    const result = verifyAdapterOutput(instructions, [], VAULT_ADDRESS);
+    const drainViolation = result.violations.find((v) =>
+      v.includes("SPL Token transfer referencing vault"),
+    );
+    expect(drainViolation).to.not.be.undefined;
+  });
+
   it("ATA program is allowed as infrastructure", () => {
     const ATA_PROGRAM =
       "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" as Address;

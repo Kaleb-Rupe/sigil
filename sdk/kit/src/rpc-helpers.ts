@@ -131,7 +131,7 @@ export async function sendAndConfirmTransaction(
 
     // Exponential backoff: 1s → 1.5s → 2.25s → ...
     await sleep(delay);
-    delay = Math.min(delay * 1.5, 5_000);
+    delay = Math.min(delay * (1.3 + Math.random() * 0.4), 5_000);
   }
 
   throw new Error(

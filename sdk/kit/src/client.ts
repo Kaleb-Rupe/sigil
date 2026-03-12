@@ -34,10 +34,9 @@ import { fetchAgentVault, fetchMaybeAgentVault } from "./generated/accounts/agen
 import { fetchPolicyConfig, fetchMaybePolicyConfig } from "./generated/accounts/policyConfig.js";
 import { fetchSpendTracker, fetchMaybeSpendTracker } from "./generated/accounts/spendTracker.js";
 import { getPolicyPDA, getTrackerPDA, getVaultPDA } from "./resolve-accounts.js";
+import type { Network } from "./types.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
-
-type Network = "devnet" | "mainnet-beta";
 
 export interface PhalnxKitClientConfig {
   rpc: Rpc<SolanaRpcApi>;

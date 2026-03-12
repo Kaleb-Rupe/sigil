@@ -51,21 +51,64 @@ Phalnx is a Solana Anchor program (Rust) that sits between AI agent signing keys
 
 ---
 
-## Reference Skills
+## Reference Skills (`.claude/skills/`) — Load On Demand
 
-Skills are large (20KB–213KB). **Do not read proactively.** See MEMORY.md for the full skill table with sizes and use cases. Path: `.claude/skills/`.
+Skills are large reference files (20KB–213KB each). Reading one permanently consumes that many tokens for the entire session. **Do not read skills proactively.**
+
+Load a skill only when you need specific API specs, integration patterns, or security rules not already covered in CLAUDE.md or MEMORY.md. When you do load a skill, read only the specific file within the skill directory that answers your question — not the entire directory.
+
+| Skill | Size | When to read | Path |
+|-------|------|-------------|------|
+| **solana-dev** | 83KB | Anchor/LiteSVM patterns, program security checklist | `.claude/skills/solana-dev/` |
+| **jupiter** | 21KB | Jupiter API endpoints, swap instruction building | `.claude/skills/jupiter/` |
+| **helius** | 177KB | Priority fees, RPC, DAS API, webhooks | `.claude/skills/helius/` |
+| **vulnhunter** | 54KB | Vulnerability patterns, sharp edges, variant analysis | `.claude/skills/vulnhunter/` |
+| **code-recon** | 58KB | Architectural reviews, trust boundary mapping | `.claude/skills/code-recon/` |
+| **drift** | 137KB | Drift Protocol SDK, perps, spot trading | `.claude/skills/drift/` |
+| **pinocchio-dev** | 126KB | New greenfield programs only — NOT for phalnx | `.claude/skills/pinocchio-dev/` |
+| **squads** | 213KB | Squads V4 multisig, Smart Account, Grid | `.claude/skills/squads/` |
+| **flash-trade** | 123KB | Flash Trade perps, position management, composability | `.claude/skills/flash-trade/` |
+| **solana-kit** | 114KB | @solana/kit modern SDK, tree-shakeable, zero-dependency | `.claude/skills/solana-kit/` |
+| **solana-kit-migration** | 94KB | Migrating @solana/web3.js v1.x → @solana/kit, API mappings | `.claude/skills/solana-kit-migration/` |
 
 ---
 
 ## Monorepo & Commands
 
-pnpm workspace with changesets. `pnpm install --frozen-lockfile` · `pnpm -r run build` · `pnpm changeset` for versioning.
+pnpm workspace with changesets for versioning. All packages publish to npm with OIDC provenance.
+
+```
+pnpm-workspace.yaml → sdk/*, sdk/custody/*, plugins/*, packages/*, apps/*
+```
+
+### Release Workflow
+1. Add changeset: `pnpm changeset` → commit with your PR
+2. Merge to `main` → CI opens a **Version Packages** PR (bumps versions, generates changelogs)
+3. Merge the Version Packages PR → CI publishes to npm with provenance
+4. Never run `npm publish` manually — the release workflow handles it
 
 ```bash
-anchor build --no-idl                    # Build (--no-idl required, Anchor 0.32.1)
-git checkout -- target/idl/ target/types/ # Restore committed IDL after build
-npx ts-mocha -p ./tsconfig.json -t 300000 tests/<file>.ts  # On-chain tests (LiteSVM)
-pnpm --filter <package> test             # Package-specific tests
+# Build the program (--no-idl required on stable Rust with Anchor 0.32.1)
+anchor build --no-idl
+
+# Restore committed IDL after build (build may produce stale IDL)
+git checkout -- target/idl/ target/types/
+
+# Sync program ID with declare_id!
+anchor keys sync
+
+# Lint
+npm run lint          # Check formatting (prettier)
+npm run lint:fix      # Fix formatting
+
+# Check Rust formatting
+cargo fmt --check --manifest-path programs/phalnx/Cargo.toml
+
+# On-chain tests (LiteSVM — no validator needed)
+npx ts-mocha -p ./tsconfig.json -t 300000 tests/<file>.ts
+
+# Package-specific tests (from package directory)
+pnpm --filter <package> test
 ```
 
 See `docs/COMMANDS-REFERENCE.md` for security tooling (Sec3 X-Ray, Trident, Certora), Surfpool, and environment setup.
@@ -150,25 +193,35 @@ MCP server maps all 77 codes to human-readable suggestions in `packages/mcp/src/
 
 ---
 
-## Code Conventions (Anchor-Specific)
+## Code Conventions
 
+### Rust
 - One file per instruction in `instructions/`, one file per account in `state/`
+- Handler functions named `handler` within their module
 - `require!()` for preconditions, `require_keys_eq!()` for pubkey comparisons
 - `pub(crate)` for internal visibility, `emit!()` on every instruction
+- `rustfmt` default formatting, max 100 char lines
 - `.ok_or(error!(PhalnxError::Overflow))?` for checked math
+
+### TypeScript
+- `BN` from `@coral-xyz/anchor` for on-chain numbers
+- `PublicKey` for addresses, never raw strings
+- USD amounts use 6 decimals: `$500 = new BN(500_000_000)`
+
+### Git
 - Conventional commits: `feat:`, `fix:`, `test:`, `refactor:`
 
 ---
 
 ## Current State
 
-Phases 1–5, A, B, C, D, E, F, F.5, G, G.3, H, I, J.1, K, Option C complete. 29 instructions, 9 PDA types, ~1,928 tests passing. See MEMORY.md for details.
+Phases 1–5, A, B, C, D, E, F, F.5, G, G.3, H, I, J.1, K, Option C complete. 29 instructions, 9 PDA types, ~2,242 tests passing. See MEMORY.md for details.
 
 ---
 
 ## Testing
 
-~1,928 tests across 18 suites (1839 CI + 20 Surfpool + 69 devnet).
+~2,242 tests across 18 suites (1839 CI + 20 Surfpool + 69 devnet).
 
 | Tier | Tool | Speed | When to use |
 |------|------|-------|-------------|
@@ -176,4 +229,6 @@ Phases 1–5, A, B, C, D, E, F, F.5, G, G.3, H, I, J.1, K, Option C complete. 29
 | Integration | Surfpool | ~60s for 20 tests | Session expiry, real token balances, CU profiling, time travel |
 | Cluster | Devnet | ~5min for 69 tests | End-to-end with deployed program, costs SOL |
 
-Test file list: `scripts/test-counts.json`. Helpers: `tests/helpers/litesvm-setup.ts`, `tests/helpers/surfpool-setup.ts`.
+On-chain tests use LiteSVM (in-process Solana VM) — no solana-test-validator needed. Shared helpers in `tests/helpers/litesvm-setup.ts`.
+Surfpool tests use a local Surfnet (LiteSVM-backed validator with lazy devnet forking). Shared helpers in `tests/helpers/surfpool-setup.ts`.
+Test file list and counts: `scripts/test-counts.json`.

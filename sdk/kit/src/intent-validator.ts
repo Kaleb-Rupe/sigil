@@ -12,7 +12,7 @@
 
 import type { IntentAction } from "./intents.js";
 import type { AgentError } from "./agent-errors.js";
-import { MAX_ESCROW_DURATION } from "./types.js";
+import { MAX_ESCROW_DURATION, MAX_SLIPPAGE_BPS } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -32,9 +32,6 @@ const BASE58_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 /** u64 max as BigInt */
 const U64_MAX = BigInt("18446744073709551615");
-
-/** Maximum slippage BPS (50% = 5000, but on-chain max is 10000) */
-const MAX_SLIPPAGE_BPS = 10_000;
 
 /** Maximum leverage (100x, per plan spec) */
 const MAX_LEVERAGE = 100;
@@ -287,8 +284,9 @@ export function validateIntentInput(intent: IntentAction): ValidationResult {
     case "kaminoBorrow":
     case "kaminoRepay":
     case "kaminoWithdraw":
-      validateAddress(errors, intent.params.mint, "mint");
+      validateNonEmpty(errors, intent.params.tokenMint, "tokenMint");
       validateAmount(errors, intent.params.amount, "amount");
+      validateAddress(errors, intent.params.obligation, "obligation");
       break;
 
     case "protocol":

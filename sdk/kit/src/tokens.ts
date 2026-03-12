@@ -11,9 +11,8 @@ import {
   USDC_MINT_MAINNET,
   USDT_MINT_DEVNET,
   USDT_MINT_MAINNET,
+  type Network,
 } from "./types.js";
-
-type Network = "devnet" | "mainnet-beta";
 
 export interface ResolvedToken {
   mint: Address;

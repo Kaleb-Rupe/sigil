@@ -308,19 +308,19 @@ describe("intents", () => {
         { type: "driftCancelOrder", params: { orderId: 42 } },
         {
           type: "kaminoDeposit",
-          params: { mint: VALID_ADDRESS, amount: "1000" },
+          params: { tokenMint: "USDC", amount: "1000", obligation: VALID_ADDRESS },
         },
         {
           type: "kaminoBorrow",
-          params: { mint: VALID_ADDRESS, amount: "500" },
+          params: { tokenMint: "USDC", amount: "500", obligation: VALID_ADDRESS },
         },
         {
           type: "kaminoRepay",
-          params: { mint: VALID_ADDRESS, amount: "500" },
+          params: { tokenMint: "USDC", amount: "500", obligation: VALID_ADDRESS },
         },
         {
           type: "kaminoWithdraw",
-          params: { mint: VALID_ADDRESS, amount: "1000" },
+          params: { tokenMint: "USDC", amount: "1000", obligation: VALID_ADDRESS },
         },
         {
           type: "protocol",
@@ -753,9 +753,27 @@ describe("intent-validator", () => {
       expectValid(
         validateIntentInput({
           type: "kaminoDeposit",
-          params: { mint: VALID_ADDRESS, amount: "1000" },
+          params: { tokenMint: "USDC", amount: "1000", obligation: VALID_ADDRESS },
         }),
       );
+    });
+
+    it("kaminoDeposit rejects missing obligation", () => {
+      const result = validateIntentInput({
+        type: "kaminoDeposit",
+        params: { tokenMint: "USDC", amount: "1000", obligation: "" },
+      } as IntentAction);
+      expectInvalid(result);
+      expect(result.errors[0].context["field"]).to.equal("obligation");
+    });
+
+    it("kaminoDeposit rejects missing tokenMint", () => {
+      const result = validateIntentInput({
+        type: "kaminoDeposit",
+        params: { tokenMint: "", amount: "1000", obligation: VALID_ADDRESS },
+      } as IntentAction);
+      expectInvalid(result);
+      expect(result.errors[0].context["field"]).to.equal("tokenMint");
     });
 
     it("protocol with valid params", () => {
@@ -831,14 +849,14 @@ describe("intent-validator", () => {
   });
 
   describe("validateIntentInput - slippage edge cases", () => {
-    it("rejects slippage > 10000", () => {
+    it("rejects slippage > 5000 (on-chain MAX_SLIPPAGE_BPS)", () => {
       const result = validateIntentInput({
         type: "swap",
         params: {
           inputMint: VALID_ADDRESS,
           outputMint: VALID_ADDRESS_2,
           amount: "100",
-          slippageBps: 10001,
+          slippageBps: 5001,
         },
       });
       expectInvalid(result);

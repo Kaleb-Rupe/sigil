@@ -10,7 +10,7 @@
 
 import type { Instruction } from "@solana/kit";
 import type { ProtocolContext, ProtocolComposeResult } from "./protocol-handler.js";
-import { toKitInstruction, toKitAddress } from "../compat.js";
+import { toKitInstruction } from "../compat.js";
 
 // ─── Precision Constants ────────────────────────────────────────────────────
 
@@ -20,6 +20,26 @@ export const DRIFT_QUOTE_PRECISION = 1_000_000;
 export const DRIFT_BASE_PRECISION = 1_000_000_000;
 /** Price precision: 10^6 */
 export const DRIFT_PRICE_PRECISION = 1_000_000;
+
+// ─── Typed Param Interfaces ─────────────────────────────────────────────────
+
+interface DriftAmountParams {
+  amount: string;
+  marketIndex: number;
+  subAccountId?: number;
+}
+
+interface DriftOrderParams {
+  marketIndex: number;
+  side: "long" | "short";
+  amount: string;
+  price?: string;
+  orderType: string;
+}
+
+interface DriftCancelParams {
+  orderId: number;
+}
 
 // ─── Lazy SDK Import ────────────────────────────────────────────────────────
 
@@ -112,70 +132,84 @@ function buildDriftDirection(sdk: any, side: "long" | "short"): any {
     : sdk.PositionDirection.SHORT;
 }
 
+// ─── Param Validation ───────────────────────────────────────────────────────
+
+function requireField<T>(params: Record<string, unknown>, field: string): T {
+  const val = params[field];
+  if (val === undefined || val === null) {
+    throw new Error(`Missing required Drift parameter: ${field}`);
+  }
+  return val as T;
+}
+
+function parseAmountParams(params: Record<string, unknown>): DriftAmountParams {
+  return {
+    amount: requireField<string>(params, "amount"),
+    marketIndex: requireField<number>(params, "marketIndex"),
+    subAccountId: params.subAccountId as number | undefined,
+  };
+}
+
+function parseOrderParams(params: Record<string, unknown>): DriftOrderParams {
+  return {
+    marketIndex: requireField<number>(params, "marketIndex"),
+    side: requireField<"long" | "short">(params, "side"),
+    amount: requireField<string>(params, "amount"),
+    price: params.price as string | undefined,
+    orderType: requireField<string>(params, "orderType"),
+  };
+}
+
+function parseCancelParams(params: Record<string, unknown>): DriftCancelParams {
+  return {
+    orderId: requireField<number>(params, "orderId"),
+  };
+}
+
 // ─── Compose Functions ──────────────────────────────────────────────────────
 
-export async function composeDriftDeposit(
-  ctx: ProtocolContext,
-  params: Record<string, unknown>,
+async function composeDriftDeposit(
+  sdk: any,
+  client: any,
+  p: DriftAmountParams,
 ): Promise<ProtocolComposeResult> {
-  const sdk = await getDriftSdk();
-  const client = await getOrCreateDriftClient(ctx);
-
-  const amount = BigInt(params.amount as string);
-  const marketIndex = params.marketIndex as number;
-  const subAccountId = (params.subAccountId as number) ?? 0;
-
   const ix = await client.getDepositIx(
-    new sdk.BN(amount.toString()),
-    marketIndex,
+    new sdk.BN(p.amount),
+    p.marketIndex,
     undefined, // userTokenAccount — SDK resolves
-    subAccountId,
+    p.subAccountId ?? 0,
   );
 
   return { instructions: [toKitInstruction(ix)] };
 }
 
-export async function composeDriftWithdraw(
-  ctx: ProtocolContext,
-  params: Record<string, unknown>,
+async function composeDriftWithdraw(
+  sdk: any,
+  client: any,
+  p: DriftAmountParams,
 ): Promise<ProtocolComposeResult> {
-  const sdk = await getDriftSdk();
-  const client = await getOrCreateDriftClient(ctx);
-
-  const amount = BigInt(params.amount as string);
-  const marketIndex = params.marketIndex as number;
-  const subAccountId = (params.subAccountId as number) ?? 0;
-
   const ix = await client.getWithdrawIx(
-    new sdk.BN(amount.toString()),
-    marketIndex,
+    new sdk.BN(p.amount),
+    p.marketIndex,
     undefined,
     false, // reduceOnly
-    subAccountId,
+    p.subAccountId ?? 0,
   );
 
   return { instructions: [toKitInstruction(ix)] };
 }
 
-export async function composeDriftPlacePerpOrder(
-  ctx: ProtocolContext,
-  params: Record<string, unknown>,
+async function composeDriftPlacePerpOrder(
+  sdk: any,
+  client: any,
+  p: DriftOrderParams,
 ): Promise<ProtocolComposeResult> {
-  const sdk = await getDriftSdk();
-  const client = await getOrCreateDriftClient(ctx);
-
-  const marketIndex = params.marketIndex as number;
-  const side = params.side as "long" | "short";
-  const amount = BigInt(params.amount as string);
-  const price = params.price ? BigInt(params.price as string) : undefined;
-  const orderType = params.orderType as string;
-
   const orderParams = {
-    orderType: buildDriftOrderType(sdk, orderType),
-    marketIndex,
-    direction: buildDriftDirection(sdk, side),
-    baseAssetAmount: new sdk.BN(amount.toString()),
-    price: price ? new sdk.BN(price.toString()) : undefined,
+    orderType: buildDriftOrderType(sdk, p.orderType),
+    marketIndex: p.marketIndex,
+    direction: buildDriftDirection(sdk, p.side),
+    baseAssetAmount: new sdk.BN(p.amount),
+    price: p.price ? new sdk.BN(p.price) : undefined,
     marketType: sdk.MarketType.PERP,
   };
 
@@ -183,25 +217,17 @@ export async function composeDriftPlacePerpOrder(
   return { instructions: [toKitInstruction(ix)] };
 }
 
-export async function composeDriftPlaceSpotOrder(
-  ctx: ProtocolContext,
-  params: Record<string, unknown>,
+async function composeDriftPlaceSpotOrder(
+  sdk: any,
+  client: any,
+  p: DriftOrderParams,
 ): Promise<ProtocolComposeResult> {
-  const sdk = await getDriftSdk();
-  const client = await getOrCreateDriftClient(ctx);
-
-  const marketIndex = params.marketIndex as number;
-  const side = params.side as "long" | "short";
-  const amount = BigInt(params.amount as string);
-  const price = params.price ? BigInt(params.price as string) : undefined;
-  const orderType = params.orderType as string;
-
   const orderParams = {
-    orderType: buildDriftOrderType(sdk, orderType),
-    marketIndex,
-    direction: buildDriftDirection(sdk, side),
-    baseAssetAmount: new sdk.BN(amount.toString()),
-    price: price ? new sdk.BN(price.toString()) : undefined,
+    orderType: buildDriftOrderType(sdk, p.orderType),
+    marketIndex: p.marketIndex,
+    direction: buildDriftDirection(sdk, p.side),
+    baseAssetAmount: new sdk.BN(p.amount),
+    price: p.price ? new sdk.BN(p.price) : undefined,
     marketType: sdk.MarketType.SPOT,
   };
 
@@ -209,30 +235,18 @@ export async function composeDriftPlaceSpotOrder(
   return { instructions: [toKitInstruction(ix)] };
 }
 
-export async function composeDriftCancelOrder(
-  ctx: ProtocolContext,
-  params: Record<string, unknown>,
+async function composeDriftCancelOrder(
+  sdk: any,
+  client: any,
+  p: DriftCancelParams,
 ): Promise<ProtocolComposeResult> {
-  const sdk = await getDriftSdk();
-  const client = await getOrCreateDriftClient(ctx);
-
-  const orderId = params.orderId as number;
-  const ix = await client.getCancelOrderIx(orderId);
+  const ix = await client.getCancelOrderIx(p.orderId);
   return { instructions: [toKitInstruction(ix)] };
 }
 
 // ─── Dispatcher ─────────────────────────────────────────────────────────────
 
-const COMPOSE_MAP: Record<
-  string,
-  (ctx: ProtocolContext, params: Record<string, unknown>) => Promise<ProtocolComposeResult>
-> = {
-  deposit: composeDriftDeposit,
-  withdraw: composeDriftWithdraw,
-  placePerpOrder: composeDriftPlacePerpOrder,
-  placeSpotOrder: composeDriftPlaceSpotOrder,
-  cancelOrder: composeDriftCancelOrder,
-};
+const SUPPORTED_ACTIONS = ["deposit", "withdraw", "placePerpOrder", "placeSpotOrder", "cancelOrder"];
 
 /**
  * Dispatch a Drift action to the correct compose function.
@@ -243,11 +257,30 @@ export async function dispatchDriftCompose(
   action: string,
   params: Record<string, unknown>,
 ): Promise<ProtocolComposeResult> {
-  const composeFn = COMPOSE_MAP[action];
-  if (!composeFn) {
+  // Validate action before loading SDK (sync check first)
+  if (!SUPPORTED_ACTIONS.includes(action)) {
     throw new Error(
-      `Unsupported Drift action: ${action}. Supported: ${Object.keys(COMPOSE_MAP).join(", ")}`,
+      `Unsupported Drift action: ${action}. Supported: ${SUPPORTED_ACTIONS.join(", ")}`,
     );
   }
-  return composeFn(ctx, params);
+
+  // Resolve SDK + client once (throws if @drift-labs/sdk not installed)
+  const sdk = await getDriftSdk();
+  const client = await getOrCreateDriftClient(ctx);
+
+  switch (action) {
+    case "deposit":
+      return composeDriftDeposit(sdk, client, parseAmountParams(params));
+    case "withdraw":
+      return composeDriftWithdraw(sdk, client, parseAmountParams(params));
+    case "placePerpOrder":
+      return composeDriftPlacePerpOrder(sdk, client, parseOrderParams(params));
+    case "placeSpotOrder":
+      return composeDriftPlaceSpotOrder(sdk, client, parseOrderParams(params));
+    case "cancelOrder":
+      return composeDriftCancelOrder(sdk, client, parseCancelParams(params));
+    default:
+      // Unreachable — covered by guard above
+      throw new Error(`Unsupported Drift action: ${action}`);
+  }
 }

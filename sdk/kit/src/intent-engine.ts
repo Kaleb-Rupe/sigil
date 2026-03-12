@@ -29,7 +29,7 @@ import { toAgentError, protocolEscalationError } from "./agent-errors.js";
 import { resolveProtocol, isProtocolAllowed, ProtocolTier } from "./protocol-resolver.js";
 import { ACTION_TYPE_MAP, summarizeAction, resolveProtocolActionType } from "./intents.js";
 import { resolveToken } from "./tokens.js";
-import { hasPermission, isSpendingAction, isStablecoinMint } from "./types.js";
+import { hasPermission, isSpendingAction, isStablecoinMint, type Network } from "./types.js";
 import { VaultStatus } from "./generated/types/vaultStatus.js";
 import { resolveAccounts } from "./resolve-accounts.js";
 import { verifyAdapterOutput, type VerifiableInstruction } from "./integrations/adapter-verifier.js";
@@ -38,8 +38,6 @@ import { fetchPolicyConfig } from "./generated/accounts/policyConfig.js";
 import { getPolicyPDA, getTrackerPDA, getAgentOverlayPDA } from "./resolve-accounts.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
-
-type Network = "devnet" | "mainnet-beta";
 
 /** Result of IntentEngine.explain() — transaction plan without execution */
 export interface ExplainResult {
@@ -203,56 +201,48 @@ export class IntentEngine {
         : false;
 
       if (!agentEntry) {
-        return {
-          allowed: false,
-          summary: "Agent not registered in vault",
-          reason: `Agent ${agentAddress} is not registered in vault ${vault}`,
-          details: {
+        return this._failedPrecheck(
+          "Agent not registered in vault",
+          `Agent ${agentAddress} is not registered in vault ${vault}`,
+          {
             permission: { passed: false, requiredBit: baseActionType, agentHas: false },
             protocol: { passed: true, inAllowlist: true },
           },
-          riskFlags: [],
-        };
+        );
       }
 
       if (agentEntry.paused) {
-        return {
-          allowed: false,
-          summary: "Agent is paused",
-          reason: `Agent ${agentAddress} is paused in vault ${vault}`,
-          details: {
+        return this._failedPrecheck(
+          "Agent is paused",
+          `Agent ${agentAddress} is paused in vault ${vault}`,
+          {
             permission: { passed: false, requiredBit: baseActionType, agentHas: false },
             protocol: { passed: true, inAllowlist: true },
           },
-          riskFlags: [],
-        };
+        );
       }
 
       // Check vault is active
       if (vaultData.status !== VaultStatus.Active) {
-        return {
-          allowed: false,
-          summary: `Vault is ${VaultStatus[vaultData.status] ?? "unknown"}`,
-          reason: `Vault ${vault} is not active`,
-          details: {
+        return this._failedPrecheck(
+          `Vault is ${VaultStatus[vaultData.status] ?? "unknown"}`,
+          `Vault ${vault} is not active`,
+          {
             permission: { passed: false, requiredBit: baseActionType, agentHas: false },
             protocol: { passed: true, inAllowlist: true },
           },
-          riskFlags: [],
-        };
+        );
       }
 
       if (!permissionPassed) {
-        return {
-          allowed: false,
-          summary: `Missing permission for ${baseActionType}`,
-          reason: `Agent lacks permission bit for ${baseActionType}`,
-          details: {
+        return this._failedPrecheck(
+          `Missing permission for ${baseActionType}`,
+          `Agent lacks permission bit for ${baseActionType}`,
+          {
             permission: { passed: false, requiredBit: baseActionType, agentHas: false },
             protocol: { passed: true, inAllowlist: true },
           },
-          riskFlags: [],
-        };
+        );
       }
 
       // Protocol allowlist check
@@ -273,16 +263,14 @@ export class IntentEngine {
       }
 
       if (!protocolPassed) {
-        return {
-          allowed: false,
-          summary: "Protocol not in allowlist",
-          reason: "Protocol not allowed by vault policy",
-          details: {
+        return this._failedPrecheck(
+          "Protocol not in allowlist",
+          "Protocol not allowed by vault policy",
+          {
             permission: { passed: true, requiredBit: baseActionType, agentHas: true },
             protocol: { passed: false, inAllowlist: false },
           },
-          riskFlags: [],
-        };
+        );
       }
 
       // Slippage check (swaps only)
@@ -295,17 +283,15 @@ export class IntentEngine {
           vaultMaxBps: policyData.maxSlippageBps,
         };
         if (!slippagePassed) {
-          return {
-            allowed: false,
-            summary: `Slippage ${intent.params.slippageBps} BPS > max ${policyData.maxSlippageBps} BPS`,
-            reason: "Intent slippage exceeds vault max",
-            details: {
+          return this._failedPrecheck(
+            `Slippage ${intent.params.slippageBps} BPS > max ${policyData.maxSlippageBps} BPS`,
+            "Intent slippage exceeds vault max",
+            {
               permission: { passed: true, requiredBit: baseActionType, agentHas: true },
               protocol: { passed: true, inAllowlist: true },
               slippage: slippageDetails,
             },
-            riskFlags: [],
-          };
+          );
         }
       }
 
@@ -328,17 +314,15 @@ export class IntentEngine {
               intentAmount,
             };
             if (!spendingPassed) {
-              return {
-                allowed: false,
-                summary: "Amount exceeds agent spending limit",
-                reason: `${amountUsd} USD > agent limit ${agentEntry.spendingLimitUsd}`,
-                details: {
+              return this._failedPrecheck(
+                "Amount exceeds agent spending limit",
+                `${amountUsd} USD > agent limit ${agentEntry.spendingLimitUsd}`,
+                {
                   permission: { passed: true, requiredBit: baseActionType, agentHas: true },
                   spendingCap: spendingDetails,
                   protocol: { passed: true, inAllowlist: true },
                 },
-                riskFlags: [],
-              };
+              );
             }
           }
         }
@@ -349,16 +333,14 @@ export class IntentEngine {
         (baseActionType === "openPosition" || baseActionType === "swapAndOpenPosition") &&
         !policyData.canOpenPositions
       ) {
-        return {
-          allowed: false,
-          summary: "Vault does not allow opening positions",
-          reason: "canOpenPositions is false in policy",
-          details: {
+        return this._failedPrecheck(
+          "Vault does not allow opening positions",
+          "canOpenPositions is false in policy",
+          {
             permission: { passed: true, requiredBit: baseActionType, agentHas: true },
             protocol: { passed: true, inAllowlist: true },
           },
-          riskFlags: [],
-        };
+        );
       }
 
       return {
@@ -373,16 +355,14 @@ export class IntentEngine {
         riskFlags: [],
       };
     } catch (err) {
-      return {
-        allowed: false,
-        summary: "Precheck failed",
-        reason: err instanceof Error ? err.message : String(err),
-        details: {
+      return this._failedPrecheck(
+        "Precheck failed",
+        err instanceof Error ? err.message : String(err),
+        {
           permission: { passed: false, requiredBit: intent.type, agentHas: false },
           protocol: { passed: false, inAllowlist: false },
         },
-        riskFlags: [],
-      };
+      );
     }
   }
 
@@ -439,9 +419,10 @@ export class IntentEngine {
 
     let composeResult;
     try {
+      const composeAction = this._getComposeAction(intent);
       composeResult = await handler.compose(
         composeCtx,
-        baseActionType,
+        composeAction,
         intent.params as Record<string, unknown>,
       );
     } catch (err) {
@@ -602,6 +583,14 @@ export class IntentEngine {
 
   // ─── Internal Helpers ────────────────────────────────────────────────
 
+  private _failedPrecheck(
+    summary: string,
+    reason: string,
+    details: PrecheckResult["details"],
+  ): PrecheckResult {
+    return { allowed: false, summary, reason, details, riskFlags: [] };
+  }
+
   /**
    * Get the base action type string from an intent.
    * For protocol intents, uses resolveProtocolActionType with the registry.
@@ -621,6 +610,18 @@ export class IntentEngine {
         );
         return typeStr?.[0] ?? intent.type;
       }
+    }
+    return intent.type;
+  }
+
+  /**
+   * Get the compose-layer action string from an intent.
+   * Strips protocol prefixes so the compose dispatcher gets the base verb.
+   * e.g. "kaminoDeposit" → "deposit", "swap" → "swap"
+   */
+  private _getComposeAction(intent: IntentAction): string {
+    if (intent.type.startsWith("kamino")) {
+      return intent.type.slice(6).toLowerCase();
     }
     return intent.type;
   }
@@ -681,6 +682,14 @@ export class IntentEngine {
       }
       return this.registry.getByProtocolId("kamino-lending");
     }
+    if (
+      intent.type === "kaminoDeposit" ||
+      intent.type === "kaminoBorrow" ||
+      intent.type === "kaminoRepay" ||
+      intent.type === "kaminoWithdraw"
+    ) {
+      return this.registry.getByProtocolId("kamino-lending");
+    }
     if (intent.type === "protocol") {
       const protocolId = (intent.params as Record<string, unknown>).protocolId as string | undefined;
       if (protocolId) {
@@ -695,6 +704,7 @@ export class IntentEngine {
     const tokenField =
       (params.inputMint as string) ??
       (params.mint as string) ??
+      (params.tokenMint as string) ??
       (params.collateral as string);
     if (!tokenField) return null;
     return resolveToken(tokenField, this.network);

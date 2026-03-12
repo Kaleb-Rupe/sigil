@@ -21,10 +21,9 @@ import type { ShieldPolicies } from "./policies.js";
 import { getVaultPDA, getPolicyPDA, getPendingPolicyPDA } from "./resolve-accounts.js";
 import { fetchMaybeAgentVault } from "./generated/accounts/agentVault.js";
 import { PHALNX_PROGRAM_ADDRESS } from "./generated/programs/phalnx.js";
+import type { Network } from "./types.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
-
-type Network = "devnet" | "mainnet-beta";
 
 /** Configuration for hardening a wallet to on-chain enforcement. */
 export interface HardenOptions {

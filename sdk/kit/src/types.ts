@@ -92,7 +92,7 @@ export const USDT_MINT_MAINNET =
 export const JUPITER_PROGRAM_ADDRESS =
   "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4" as Address;
 
-type Network = "devnet" | "mainnet-beta";
+export type Network = "devnet" | "mainnet-beta";
 
 /** Check if a mint address is a recognized stablecoin (network-aware). */
 export function isStablecoinMint(mint: Address, network: Network): boolean {

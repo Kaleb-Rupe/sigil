@@ -241,32 +241,36 @@ export type IntentAction =
   | {
       type: "kaminoDeposit";
       params: {
-        mint: string;
+        tokenMint: string;
         amount: string;
+        obligation: string;
         market?: string;
       };
     }
   | {
       type: "kaminoBorrow";
       params: {
-        mint: string;
+        tokenMint: string;
         amount: string;
+        obligation: string;
         market?: string;
       };
     }
   | {
       type: "kaminoRepay";
       params: {
-        mint: string;
+        tokenMint: string;
         amount: string;
+        obligation: string;
         market?: string;
       };
     }
   | {
       type: "kaminoWithdraw";
       params: {
-        mint: string;
+        tokenMint: string;
         amount: string;
+        obligation: string;
         market?: string;
       };
     }
@@ -510,13 +514,13 @@ export function summarizeAction(action: IntentAction): string {
       return `Drift cancel order #${action.params.orderId}`;
     // Kamino
     case "kaminoDeposit":
-      return `Kamino deposit ${action.params.amount} of ${action.params.mint}`;
+      return `Kamino deposit ${action.params.amount} of ${action.params.tokenMint}`;
     case "kaminoBorrow":
-      return `Kamino borrow ${action.params.amount} of ${action.params.mint}`;
+      return `Kamino borrow ${action.params.amount} of ${action.params.tokenMint}`;
     case "kaminoRepay":
-      return `Kamino repay ${action.params.amount} of ${action.params.mint}`;
+      return `Kamino repay ${action.params.amount} of ${action.params.tokenMint}`;
     case "kaminoWithdraw":
-      return `Kamino withdraw ${action.params.amount} of ${action.params.mint}`;
+      return `Kamino withdraw ${action.params.amount} of ${action.params.tokenMint}`;
     // Generic protocol
     case "protocol":
       return `${action.params.protocolId}: ${action.params.action}`;

@@ -94,6 +94,7 @@ describe("inspector", () => {
     expect(result.tokenTransfers[0].source).to.equal(SOURCE_ATA);
     expect(result.tokenTransfers[0].destination).to.equal(DEST_ATA);
     expect(result.tokenTransfers[0].authority).to.equal(SIGNER);
+    expect(result.tokenTransfers[0].mint).to.be.null;
   });
 
   it("detects SPL TransferChecked (discriminator 12)", () => {
