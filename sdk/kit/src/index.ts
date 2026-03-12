@@ -319,5 +319,15 @@ export type {
   WithVaultResult,
 } from "./harden.js";
 
+// ─── RPC Helpers ───────────────────────────────────────────────────────────
+export {
+  BlockhashCache,
+  sendAndConfirmTransaction,
+} from "./rpc-helpers.js";
+export type {
+  Blockhash,
+  SendAndConfirmOptions,
+} from "./rpc-helpers.js";
+
 // NOTE: compat.ts is intentionally NOT exported.
 // It is for internal use only when bridging T2 protocol SDKs.
