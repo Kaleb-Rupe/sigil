@@ -25,6 +25,7 @@ import type { ResolvedToken } from "./tokens.js";
 import type { Account } from "@solana/kit";
 
 import { IntentEngine, type IntentEngineConfig, type ExplainResult, type ProtocolInfo } from "./intent-engine.js";
+import { TransactionExecutor } from "./transaction-executor.js";
 import { ProtocolRegistry, globalProtocolRegistry } from "./integrations/protocol-registry.js";
 import { JupiterHandler } from "./integrations/jupiter-handler.js";
 import { DriftHandler, FlashTradeHandler, KaminoHandler, SquadsHandler } from "./integrations/t2-handlers.js";
@@ -73,12 +74,14 @@ export class PhalnxKitClient {
     this.agent = config.agent;
 
     const registry = config.protocolRegistry ?? createDefaultRegistry();
+    const executor = new TransactionExecutor(config.rpc, config.agent);
 
     this.engine = new IntentEngine({
       rpc: config.rpc,
       network: config.network,
       protocolRegistry: registry,
       agent: config.agent,
+      executor,
     });
   }
 

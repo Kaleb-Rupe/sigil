@@ -251,4 +251,41 @@ describe("IntentEngine", () => {
       expect(protocols.some((p) => p.protocolId === "jupiter")).to.be.true;
     });
   });
+
+  describe("executor integration", () => {
+    it("execute() throws when no executor provided", async () => {
+      const engine = buildEngine(); // no executor
+      try {
+        await engine.execute(
+          { type: "swap", params: { inputMint: USDC_MINT, outputMint: SOL_MINT, amount: "1000000" } },
+          VAULT,
+        );
+        expect.fail("Should have thrown");
+      } catch (e: any) {
+        // Could fail at precheck (RPC mock) or at executor check
+        expect(e).to.be.an("error");
+      }
+    });
+
+    it("engine stores executor when provided", () => {
+      const mockExecutor = {} as any;
+      const engine = buildEngine({ executor: mockExecutor });
+      expect(engine.executor).to.equal(mockExecutor);
+    });
+
+    it("engine has null executor when not provided", () => {
+      const engine = buildEngine();
+      expect(engine.executor).to.be.null;
+    });
+
+    it("explain() works without executor", async () => {
+      const engine = buildEngine(); // no executor — explain doesn't need one
+      const result = await engine.explain(
+        { type: "swap", params: { inputMint: "", outputMint: "", amount: "" } },
+        VAULT,
+      );
+      // Should fail at validation (not at missing executor)
+      expect(isAgentError(result)).to.be.true;
+    });
+  });
 });

@@ -24,6 +24,7 @@ import type { ProtocolRegistry } from "./integrations/protocol-registry.js";
 import type { ResolvedToken } from "./tokens.js";
 
 import { validateIntentInput, type ValidationResult } from "./intent-validator.js";
+import type { TransactionExecutor } from "./transaction-executor.js";
 import { toAgentError, protocolEscalationError } from "./agent-errors.js";
 import { resolveProtocol, isProtocolAllowed, ProtocolTier } from "./protocol-resolver.js";
 import { ACTION_TYPE_MAP, summarizeAction, resolveProtocolActionType } from "./intents.js";
@@ -73,6 +74,8 @@ export interface IntentEngineConfig {
   protocolRegistry: ProtocolRegistry;
   /** The agent signer that will sign transactions */
   agent: TransactionSigner;
+  /** Optional TransactionExecutor for steps 9-12. When absent, execute() throws. */
+  executor?: TransactionExecutor;
 }
 
 // ─── IntentEngine ───────────────────────────────────────────────────────────
@@ -82,12 +85,14 @@ export class IntentEngine {
   readonly network: Network;
   readonly registry: ProtocolRegistry;
   readonly agent: TransactionSigner;
+  readonly executor: TransactionExecutor | null;
 
   constructor(config: IntentEngineConfig) {
     this.rpc = config.rpc;
     this.network = config.network;
     this.registry = config.protocolRegistry;
     this.agent = config.agent;
+    this.executor = config.executor ?? null;
   }
 
   // ─── Core Agent Workflow ─────────────────────────────────────────────
@@ -516,11 +521,27 @@ export class IntentEngine {
     });
 
     // Steps 9-12: Compose transaction, simulate, sign + send, parse events
-    // Not yet implemented — throw so callers don't mistake empty signature for success.
-    throw new Error(
-      "IntentEngine.execute() steps 9-12 (compose transaction, simulate, sign, send) " +
-      "are not yet implemented. Use the built instructions with composePhalnxTransaction() directly.",
-    );
+    if (!this.executor) {
+      throw new Error(
+        "IntentEngine.execute() steps 9-12 require a TransactionExecutor. " +
+        "Pass executor in IntentEngineConfig, or use composePhalnxTransaction() directly.",
+      );
+    }
+
+    const txResult = await this.executor.executeTransaction({
+      feePayer: this.agent.address,
+      validateIx: _validateIx,
+      defiInstructions: composeResult.instructions,
+      finalizeIx: _finalizeIx,
+      skipSimulation: false,
+    });
+
+    return {
+      signature: txResult.signature,
+      intent,
+      precheck,
+      summary: summarizeAction(intent),
+    };
   }
 
   // ─── Transaction Plan Inspection ─────────────────────────────────────
