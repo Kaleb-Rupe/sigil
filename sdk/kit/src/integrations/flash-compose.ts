@@ -57,7 +57,7 @@ function requireField<T>(params: Record<string, unknown>, field: string): T {
 }
 
 function parseOraclePrice(price: { price: string; exponent: number }): OraclePriceArgs {
-  return { price: BigInt(price.price), exponent: price.exponent };
+  return { price: safeBigInt(price.price, "oraclePrice.price"), exponent: price.exponent };
 }
 
 function parseSide(side: string): "long" | "short" {
@@ -65,6 +65,17 @@ function parseSide(side: string): "long" | "short" {
     throw new FlashTradeComposeError("INVALID_SIDE", `Invalid side: ${side}. Must be "long" or "short".`);
   }
   return side;
+}
+
+function safeBigInt(value: unknown, field: string): bigint {
+  try {
+    return BigInt(value as string | number | bigint);
+  } catch {
+    throw new FlashTradeComposeError(
+      "INVALID_BIGINT",
+      `Invalid numeric value for ${field}: ${String(value)}`,
+    );
+  }
 }
 
 // ─── Signer Helpers ──────────────────────────────────────────────────────────
@@ -117,8 +128,8 @@ async function composeOpenPosition(
     ixSysvar: accts.ixSysvar,
     fundingMint: accts.collateralCustody.mint,
     priceWithSlippage: parseOraclePrice(priceWithSlippage),
-    collateralAmount: BigInt(collateralAmount),
-    sizeAmount: BigInt(sizeAmount),
+    collateralAmount: safeBigInt(collateralAmount, "collateralAmount"),
+    sizeAmount: safeBigInt(sizeAmount, "sizeAmount"),
     privilege: Privilege.None,
   });
 
@@ -192,7 +203,7 @@ async function composeIncreasePosition(
     ixSysvar: accts.ixSysvar,
     collateralMint: accts.collateralCustody.mint,
     priceWithSlippage: parseOraclePrice(priceWithSlippage),
-    sizeDelta: BigInt(sizeDelta),
+    sizeDelta: safeBigInt(sizeDelta, "sizeDelta"),
     privilege: Privilege.None,
   });
 
@@ -229,7 +240,7 @@ async function composeDecreasePosition(
     ixSysvar: accts.ixSysvar,
     collateralMint: accts.collateralCustody.mint,
     priceWithSlippage: parseOraclePrice(priceWithSlippage),
-    sizeDelta: BigInt(sizeDelta),
+    sizeDelta: safeBigInt(sizeDelta, "sizeDelta"),
     privilege: Privilege.None,
   });
 
@@ -264,7 +275,7 @@ async function composeAddCollateral(
     program: PERPETUALS_PROGRAM,
     ixSysvar: accts.ixSysvar,
     fundingMint: accts.collateralCustody.mint,
-    collateralDelta: BigInt(amount),
+    collateralDelta: safeBigInt(amount, "amount"),
   });
 
   return { instructions: [ix as Instruction] };
@@ -299,7 +310,7 @@ async function composeRemoveCollateral(
     program: PERPETUALS_PROGRAM,
     ixSysvar: accts.ixSysvar,
     receivingMint: accts.collateralCustody.mint,
-    collateralDeltaUsd: BigInt(amount),
+    collateralDeltaUsd: safeBigInt(amount, "amount"),
   });
 
   return { instructions: [ix as Instruction] };
@@ -343,7 +354,7 @@ async function composePlaceTriggerOrder(
     program: PERPETUALS_PROGRAM,
     ixSysvar: accts.ixSysvar,
     triggerPrice: parseOraclePrice(triggerPrice),
-    deltaSizeAmount: BigInt(deltaSizeAmount),
+    deltaSizeAmount: safeBigInt(deltaSizeAmount, "deltaSizeAmount"),
     isStopLoss,
   });
 
@@ -384,7 +395,7 @@ async function composeEditTriggerOrder(
     ixSysvar: accts.ixSysvar,
     orderId,
     triggerPrice: parseOraclePrice(triggerPrice),
-    deltaSizeAmount: BigInt(deltaSizeAmount),
+    deltaSizeAmount: safeBigInt(deltaSizeAmount, "deltaSizeAmount"),
     isStopLoss,
   });
 
@@ -459,8 +470,8 @@ async function composePlaceLimitOrder(
     ixSysvar: accts.ixSysvar,
     fundingMint: reserveCustody.mint,
     limitPrice: parseOraclePrice(limitPrice),
-    reserveAmount: BigInt(reserveAmount),
-    sizeAmount: BigInt(sizeAmount),
+    reserveAmount: safeBigInt(reserveAmount, "reserveAmount"),
+    sizeAmount: safeBigInt(sizeAmount, "sizeAmount"),
     stopLossPrice: parseOraclePrice(stopLossPrice),
     takeProfitPrice: parseOraclePrice(takeProfitPrice),
   });
@@ -512,7 +523,7 @@ async function composeEditLimitOrder(
     receivingMint: reserveCustody.mint,
     orderId,
     limitPrice: parseOraclePrice(limitPrice),
-    sizeAmount: BigInt(sizeAmount),
+    sizeAmount: safeBigInt(sizeAmount, "sizeAmount"),
     stopLossPrice: parseOraclePrice(stopLossPrice),
     takeProfitPrice: parseOraclePrice(takeProfitPrice),
   });
@@ -585,8 +596,8 @@ async function composeSwapAndOpen(
     collateralMint: accts.collateralCustody.mint,
     collateralTokenProgram: TOKEN_PROGRAM,
     priceWithSlippage: parseOraclePrice(priceWithSlippage),
-    amountIn: BigInt(collateralAmount),
-    sizeAmount: BigInt(sizeAmount),
+    amountIn: safeBigInt(collateralAmount, "collateralAmount"),
+    sizeAmount: safeBigInt(sizeAmount, "sizeAmount"),
     privilege: Privilege.None,
   });
 
