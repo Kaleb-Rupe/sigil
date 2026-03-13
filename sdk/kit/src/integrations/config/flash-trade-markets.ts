@@ -120,6 +120,21 @@ export const FLASH_MARKET_MAP: Record<string, FlashMarketConfig> = {
     targetCustody: "4oX9yQW5oW4MEjphzMuUV9gn5VQvjCL1LwkBqrSLscQ9" as Address,
     collateralCustody: "5N2St2e1BdgWsJiXxfetwWKkHS1BYochAp1ruPFJUfgY" as Address,
   },
+  "SOL-JitoSOL-long": {
+    market: "61Y5pCSk3PWrKgvSibcLmXUaNEUADB2mY1hZbqHvEQ5E" as Address,
+    targetCustody: "BjzZ33nMnbXZ7rw3Uy9Uu1W7BDCzzugqkiZoamJHRKF7" as Address,
+    collateralCustody: "BA4Au3RCBQyZf3f55RQBsxbaHpE32qLnoGoYJYwkCQPg" as Address,
+  },
+  "JitoSOL-JitoSOL-long": {
+    market: "EZHFxNxNwsPgZijdQ7st1kf8iUBEymN3EqCwUJVF6Jze" as Address,
+    targetCustody: "BA4Au3RCBQyZf3f55RQBsxbaHpE32qLnoGoYJYwkCQPg" as Address,
+    collateralCustody: "BA4Au3RCBQyZf3f55RQBsxbaHpE32qLnoGoYJYwkCQPg" as Address,
+  },
+  "JitoSOL-USDC-short": {
+    market: "39eUVsjGzDBQPYALoE1F49FvSKHaYvZghkSBfNzXj28u" as Address,
+    targetCustody: "BA4Au3RCBQyZf3f55RQBsxbaHpE32qLnoGoYJYwkCQPg" as Address,
+    collateralCustody: "5N2St2e1BdgWsJiXxfetwWKkHS1BYochAp1ruPFJUfgY" as Address,
+  },
 };
 
 // ─── Account Resolution ──────────────────────────────────────────────────────

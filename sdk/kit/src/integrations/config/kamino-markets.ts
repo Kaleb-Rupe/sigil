@@ -66,6 +66,33 @@ export const KAMINO_RESERVES: Record<string, KaminoReserveConfig> = {
     feeReceiver: "61ZxRXAVRhZfvKH8m1mTMsHxjHy12TaBYzDrfXRRk8sk" as Address,
     decimals: 9,
   },
+  USDT: {
+    reserve: "DNeuk7bXEYEYRn3MNjNFWqB5aVTW48dd55KfnKqBEhpp" as Address,
+    liquidityMint: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB" as Address,
+    liquiditySupply: "3NeZzU46kBbPkMjNEVS6v37V8gZ7LqF3Y5bdFTGKoZJC" as Address,
+    collateralMint: "H7gXVf5Gro2AB1v8r8opEmHCPmHJH2PG7B9JZU7WspGJ" as Address,
+    collateralSupply: "HbPCRhYPAiLHCwBiFKwpDDsM9FNzYwpgfS1VZZQA3EEb" as Address,
+    feeReceiver: "BGUMAp9Gq7iTEuizy9pqRNqkJ5yS92JkGs7vnE9hhfXr" as Address,
+    decimals: 6,
+  },
+  JitoSOL: {
+    reserve: "EVbyPKrHG6WBfm4dLxLMJpUDY43cCAcHSpnAyB5u38Zz" as Address,
+    liquidityMint: "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn" as Address,
+    liquiditySupply: "ACHcDbUQEcPH2GpjU7P7CVWLg14rn5YE8XLTL3sXhY4v" as Address,
+    collateralMint: "7jJi9qt7DBGfMRxLKjNkhT78jRzmrdSB1TaaEN7ysvV1" as Address,
+    collateralSupply: "6RhvUhbHHJ5qJBbtrnQ3xLQn3TGPMiijB7K5SMEWtL6E" as Address,
+    feeReceiver: "FcGbxZjMw1nyuCV4r8YcL5aBvkMbwrZqNBPsUxj6PAXG" as Address,
+    decimals: 9,
+  },
+  mSOL: {
+    reserve: "HBm5i8Hno8wh4TG3apjLy6BNkb2xMuvo9bbbLsDR7NWR" as Address,
+    liquidityMint: "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So" as Address,
+    liquiditySupply: "8RB3r3c5a1eJRw1RLXN6sEJ3jQ3fzDePVkJN4iXcSJd8" as Address,
+    collateralMint: "G3ick1h2gD1msFn4oSgkH5R5E3XPWML7b2g5UaKJn5MZ" as Address,
+    collateralSupply: "CxBLLTTXaFcqDMb3s6praJwf5eoLr5QGH9Kk4B3d3jsu" as Address,
+    feeReceiver: "ALdCw2zsqUQ6HjfxqFBdNQJdQt3tr7GXFWXE9TGEcPAg" as Address,
+    decimals: 9,
+  },
 };
 
 /** Oracle configs keyed by token symbol */
@@ -76,6 +103,18 @@ export const KAMINO_ORACLES: Record<string, KaminoOracleConfig> = {
   },
   SOL: {
     pythOracle: "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE" as Address,
+    scopePrices: "3NJYftD5cfHsKMGqMFbLHC7kWaBQWclEkEkGXCfYFRzm" as Address,
+  },
+  USDT: {
+    pythOracle: "3vxLXJqLqF3JG5TCbYycbKWRBbCJQLxQmBGCkyqEEefL" as Address,
+    scopePrices: "3NJYftD5cfHsKMGqMFbLHC7kWaBQWclEkEkGXCfYFRzm" as Address,
+  },
+  JitoSOL: {
+    pythOracle: "AxaxyeDT8JnWERSaTKvFXvPKkEdxnamKSqpWbsSjYg1g" as Address,
+    scopePrices: "3NJYftD5cfHsKMGqMFbLHC7kWaBQWclEkEkGXCfYFRzm" as Address,
+  },
+  mSOL: {
+    pythOracle: "E4v1BBgoso9s64TQvmyownAVJbhbEPGyzA3qn4n46qAo" as Address,
     scopePrices: "3NJYftD5cfHsKMGqMFbLHC7kWaBQWclEkEkGXCfYFRzm" as Address,
   },
 };
