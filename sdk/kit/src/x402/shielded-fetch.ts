@@ -287,35 +287,56 @@ export async function shieldedFetch(
     }
   }
 
-  // Step 17: Record spend, emit audit event, return response
-  if (config?.enableReplayProtection !== false) {
-    globalNonceTracker.record(urlStr, selected.payTo, selected.amount);
+  // Step 17: Record spend ONLY on successful payment (BUG-1 fix)
+  if (retryResponse.ok) {
+    if (config?.enableReplayProtection !== false) {
+      globalNonceTracker.record(urlStr, selected.payTo, selected.amount);
+    }
+    recordPaymentAmount(parsedAmount);
+
+    if (shieldCtx) {
+      recordX402Spend(shieldCtx, selected.asset, parsedAmount);
+    }
+
+    const event = createPaymentEvent({
+      url: urlStr,
+      payTo: selected.payTo,
+      asset: selected.asset,
+      amount: selected.amount,
+      paid: true,
+      settlement,
+      startTime,
+      nonce: NonceTracker.buildKey(urlStr, selected.payTo, selected.amount),
+    });
+    emitPaymentEvent(config, event);
+
+    retryResponse.x402 = {
+      paid: true,
+      amountPaid: selected.amount,
+      asset: selected.asset,
+      payTo: selected.payTo,
+      settlement,
+    };
+  } else {
+    const failEvent = createPaymentEvent({
+      url: urlStr,
+      payTo: selected.payTo,
+      asset: selected.asset,
+      amount: selected.amount,
+      paid: false,
+      deniedReason: `Server returned ${retryResponse.status} after payment attempt`,
+      startTime,
+    });
+    emitPaymentEvent(config, failEvent);
+
+    retryResponse.x402 = {
+      paid: false,
+      amountPaid: selected.amount,
+      asset: selected.asset,
+      payTo: selected.payTo,
+      settlement,
+    };
   }
-  recordPaymentAmount(parsedAmount);
-
-  if (shieldCtx) {
-    recordX402Spend(shieldCtx, selected.asset, parsedAmount);
-  }
-
-  const event = createPaymentEvent({
-    url: urlStr,
-    payTo: selected.payTo,
-    asset: selected.asset,
-    amount: selected.amount,
-    paid: true,
-    settlement,
-    startTime,
-    nonce: NonceTracker.buildKey(urlStr, selected.payTo, selected.amount),
-  });
-  emitPaymentEvent(config, event);
-
-  retryResponse.x402 = {
-    paid: true,
-    amountPaid: selected.amount,
-    asset: selected.asset,
-    payTo: selected.payTo,
-    settlement,
-  };
 
   return retryResponse;
 }
@@ -360,5 +381,5 @@ function hasPaymentSignatureHeader(
     );
   }
   const rec = headers as Record<string, string>;
-  return "PAYMENT-SIGNATURE" in rec || "payment-signature" in rec;
+  return Object.keys(rec).some((k) => k.toLowerCase() === "payment-signature");
 }

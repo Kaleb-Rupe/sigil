@@ -99,7 +99,7 @@ describe("x402/codec", () => {
   it("throws on invalid amount string", () => {
     const pr = makePaymentRequired({ amount: "not-a-number" });
     const encoded = encodeHeader(pr);
-    expect(() => decodePaymentRequiredHeader(encoded)).to.throw("non-negative integer");
+    expect(() => decodePaymentRequiredHeader(encoded)).to.throw("valid integer string");
   });
 
   it("validates required fields in accepts entries", () => {

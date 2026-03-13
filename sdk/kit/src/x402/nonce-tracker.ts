@@ -32,7 +32,15 @@ export class NonceTracker {
    * Build the dedup key from payment parameters.
    */
   static buildKey(url: string, payTo: string, amount: string): string {
-    return `${url}|${payTo}|${amount}`;
+    let normalizedUrl: string;
+    try {
+      const parsed = new URL(url);
+      parsed.search = "";
+      normalizedUrl = parsed.toString().replace(/\/$/, "");
+    } catch {
+      normalizedUrl = url;
+    }
+    return `${normalizedUrl}|${payTo}|${amount}`;
   }
 
   /**

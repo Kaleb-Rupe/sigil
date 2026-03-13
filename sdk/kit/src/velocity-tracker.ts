@@ -94,8 +94,8 @@ export class VelocityTracker {
       });
     }
 
-    // 3. USD/hour check
-    const usdPerHour = this.state.getSpendInWindow("", 3_600_000);
+    // 3. USD/hour check (cross-mint aggregation — BUG-3 fix)
+    const usdPerHour = this.state.getTotalSpendInWindow(3_600_000);
     if (usdPerHour >= this.config.maxUsdPerHour) {
       violations.push({
         rule: "velocity_usd_per_hour",
@@ -172,7 +172,7 @@ export class VelocityTracker {
     return {
       txPerMinute: this.state.getTransactionCountInWindow(60_000),
       txPerHour: this.state.getTransactionCountInWindow(3_600_000),
-      usdPerHour: this.state.getSpendInWindow("", 3_600_000),
+      usdPerHour: this.state.getTotalSpendInWindow(3_600_000),
       inCooldown: this.isInCooldown(),
       cooldownRemainingMs: this.getCooldownRemainingMs(),
     };

@@ -37,7 +37,7 @@ export function evaluateX402Payment(
   // 2. Cumulative spend check via ShieldState
   if (config?.maxCumulativeSpend !== undefined) {
     const windowMs = config.cumulativeWindowMs ?? 86_400_000;
-    const currentSpend = shieldCtx.state.getSpendInWindow(selected.asset, windowMs);
+    const currentSpend = shieldCtx.state.getTotalSpendInWindow(windowMs);
     const paymentAmount = BigInt(selected.amount);
 
     if (currentSpend + paymentAmount > config.maxCumulativeSpend) {

@@ -124,6 +124,7 @@ export function enforceIntentDrift(
         rule: `intent_drift:${v.type}`,
         message: v.message,
       })),
+      7021, // INTENT_DRIFT_DETECTED
     );
   }
 
@@ -244,7 +245,28 @@ function checkAmountMismatch(
     return;
   }
 
-  if (declared === 0n) return;
+  // BUG-13 fix: declared=0 but transfers exist → suspicious
+  if (declared === 0n) {
+    for (const ix of instructions) {
+      if (!TOKEN_PROGRAMS.has(ix.programAddress)) continue;
+      if (!ix.data || ix.data.length < 9) continue;
+      const disc = ix.data[0];
+      if (disc !== SPL_TRANSFER && disc !== SPL_TRANSFER_CHECKED) continue;
+      let ixAmount = 0n;
+      for (let i = 8; i >= 1; i--) {
+        ixAmount = (ixAmount << 8n) | BigInt(ix.data[i]);
+      }
+      if (ixAmount > 0n) {
+        violations.push({
+          type: "amount_mismatch",
+          message: `Declared amount is 0 but found transfer of ${ixAmount}`,
+          expected: "0",
+          actual: String(ixAmount),
+        });
+      }
+    }
+    return;
+  }
 
   // Find SPL transfer amounts in instructions
   for (const ix of instructions) {
@@ -287,7 +309,9 @@ function checkRecipientMismatch(
   const params = intent.params as Record<string, unknown>;
   const declaredDest = params.destination as string | undefined;
 
-  if (!declaredDest || intent.type !== "transfer") return;
+  // BUG-10 fix: extend recipient check beyond just "transfer"
+  const RECIPIENT_CHECK_TYPES = new Set(["transfer", "deposit", "kaminoDeposit", "driftDeposit"]);
+  if (!declaredDest || !RECIPIENT_CHECK_TYPES.has(intent.type)) return;
 
   // Check that the transfer destination matches
   for (const ix of instructions) {
@@ -297,9 +321,12 @@ function checkRecipientMismatch(
     const disc = ix.data[0];
     if (disc !== SPL_TRANSFER && disc !== SPL_TRANSFER_CHECKED) continue;
 
-    // Destination account is index 1
-    if (ix.accounts && ix.accounts.length > 1) {
-      const destAccount = ix.accounts[1].address;
+    // BUG-2 fix: Destination index depends on instruction type
+    // SPL Transfer: [source, dest, authority] → index 1
+    // SPL TransferChecked: [source, mint, dest, authority] → index 2
+    const destIdx = disc === SPL_TRANSFER_CHECKED ? 2 : 1;
+    if (ix.accounts && ix.accounts.length > destIdx) {
+      const destAccount = ix.accounts[destIdx].address;
       if (destAccount !== declaredDest) {
         violations.push({
           type: "recipient_mismatch",
@@ -350,6 +377,14 @@ function getExpectedPrograms(intent: IntentAction): Set<string> {
     case "kaminoWithdraw":
       programs.add("KLend2g3cP87ber8CanZHA48X3CpM8ZBz45yjrKkCMsn"); // Kamino Lending (potential)
       programs.add("dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH"); // Drift (potential)
+      break;
+    // BUG-6 fix: Drift intent types
+    case "driftDeposit":
+    case "driftWithdraw":
+    case "driftPerpOrder":
+    case "driftSpotOrder":
+    case "driftCancelOrder":
+      programs.add("dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH"); // Drift Protocol
       break;
     case "transfer":
       // Only token programs + system expected

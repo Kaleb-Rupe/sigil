@@ -34,7 +34,7 @@ describe("jupiter-api", () => {
     it("rejects bare domain without protocol", () => {
       expect(() =>
         configureJupiterApi({ baseUrl: "api.jup.ag" }),
-      ).to.throw("Jupiter API base URL must use HTTPS");
+      ).to.throw("Invalid Jupiter API base URL");
     });
 
     it("default config uses https", () => {

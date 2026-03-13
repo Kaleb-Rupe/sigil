@@ -8,7 +8,12 @@
 import type { X402Config } from "./types.js";
 import { X402PaymentError } from "./errors.js";
 
-/** Recent payment amounts for spike detection */
+/**
+ * Recent payment amounts for spike detection.
+ * Intentionally module-level (global): all shieldedFetch instances share spike
+ * history so cross-instance spike detection catches manipulation attempts.
+ * Use resetPaymentHistory() in tests to clear between suites.
+ */
 const recentPayments: bigint[] = [];
 const MAX_RECENT = 20;
 

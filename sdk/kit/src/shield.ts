@@ -40,10 +40,12 @@ export interface PolicyViolation {
 }
 
 export class ShieldDeniedError extends Error {
-  constructor(public readonly violations: PolicyViolation[]) {
+  public code?: number;
+  constructor(public readonly violations: PolicyViolation[], code?: number) {
     const msgs = violations.map((v) => v.message).join("; ");
     super(`Shield denied: ${msgs}`);
     this.name = "ShieldDeniedError";
+    this.code = code;
   }
 }
 
@@ -95,6 +97,13 @@ export class ShieldState {
     const cutoff = Date.now() - windowMs;
     return this.spendEntries
       .filter((e) => e.mint === mint && e.timestamp >= cutoff)
+      .reduce((sum, e) => sum + e.amount, 0n);
+  }
+
+  getTotalSpendInWindow(windowMs: number): bigint {
+    const cutoff = Date.now() - windowMs;
+    return this.spendEntries
+      .filter((e) => e.timestamp >= cutoff)
       .reduce((sum, e) => sum + e.amount, 0n);
   }
 
@@ -596,7 +605,7 @@ function checkVelocityCeiling(
 
   if (thresholds.maxUsdPerHour !== undefined) {
     const analysis = analyzeInstructions(instructions, signerAddress);
-    const currentSpend = state.getSpendInWindow("", 3_600_000);
+    const currentSpend = state.getTotalSpendInWindow(3_600_000);
     const projectedSpend = currentSpend + analysis.estimatedValue;
     if (projectedSpend > thresholds.maxUsdPerHour) {
       throw new ShieldDeniedError([
