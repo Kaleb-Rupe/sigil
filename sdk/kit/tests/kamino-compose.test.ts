@@ -150,7 +150,7 @@ describe("Kamino Compose (Codama)", () => {
         await dispatchKaminoCompose(ctx, "liquidate", {});
         expect.fail("should have thrown");
       } catch (e: any) {
-        expect(e.message).to.include("Unsupported Kamino action");
+        expect(e.message).to.include("Unsupported action");
       }
     });
 
@@ -194,7 +194,7 @@ describe("Kamino Compose (Codama)", () => {
         try {
           await dispatchKaminoCompose(ctx, action, {});
         } catch (e: any) {
-          expect(e.message).to.not.include("Unsupported Kamino action");
+          expect(e.message).to.not.include("Unsupported action");
         }
       });
     }

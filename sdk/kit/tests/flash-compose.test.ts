@@ -345,7 +345,7 @@ describe("Flash Trade Compose (Codama)", () => {
         await dispatchFlashTradeCompose(ctx, "invalidAction", {});
         expect.fail("should have thrown");
       } catch (e: any) {
-        expect(e.message).to.include("Unsupported Flash Trade action");
+        expect(e.message).to.include("Unsupported action");
       }
     });
 
@@ -400,7 +400,7 @@ describe("Flash Trade Compose (Codama)", () => {
           // Will throw for missing params, but NOT for unsupported action
           await dispatchFlashTradeCompose(ctx, action, {});
         } catch (e: any) {
-          expect(e.message).to.not.include("Unsupported Flash Trade action");
+          expect(e.message).to.not.include("Unsupported action");
         }
       });
     }
