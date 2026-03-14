@@ -15,14 +15,14 @@ const ERROR_MAP: Record<number, ErrorInfo> = {
     name: "VaultNotActive",
     message: "Vault is not active",
     suggestion:
-      "Use shield_reactivate_vault to reactivate a frozen vault, or create a new vault.",
+      "Use phalnx_manage action='reactivateVault' to reactivate a frozen vault, or create a new vault.",
   },
   6001: {
     code: 6001,
     name: "UnauthorizedAgent",
     message: "Unauthorized: signer is not the registered agent",
     suggestion:
-      "Verify the agent keypair matches the one registered with shield_register_agent.",
+      "Verify the agent keypair matches the one registered with phalnx_manage action='registerAgent'.",
   },
   6002: {
     code: 6002,
@@ -43,28 +43,28 @@ const ERROR_MAP: Record<number, ErrorInfo> = {
     name: "ProtocolNotAllowed",
     message: "Protocol not allowed by policy",
     suggestion:
-      "Use shield_update_policy to add the protocol to the allowlist, or switch protocolMode to allow-all (mode 0).",
+      "Use phalnx_manage action='updatePolicy' to add the protocol to the allowlist, or switch protocolMode to allow-all (mode 0).",
   },
   6005: {
     code: 6005,
     name: "TransactionTooLarge",
     message: "Transaction exceeds maximum single transaction size",
     suggestion:
-      "Reduce the amount or use shield_update_policy to increase maxTransactionSizeUsd.",
+      "Reduce the amount or use phalnx_manage action='updatePolicy' to increase maxTransactionSizeUsd.",
   },
   6006: {
     code: 6006,
     name: "DailyCapExceeded",
     message: "Daily spending cap would be exceeded",
     suggestion:
-      "Wait for the 24h rolling window to reset, or use shield_update_policy to increase dailySpendingCapUsd.",
+      "Wait for the 24h rolling window to reset, or use phalnx_manage action='updatePolicy' to increase dailySpendingCapUsd.",
   },
   6007: {
     code: 6007,
     name: "LeverageTooHigh",
     message: "Leverage exceeds maximum allowed",
     suggestion:
-      "Reduce leverage or use shield_update_policy to increase maxLeverageBps.",
+      "Reduce leverage or use phalnx_manage action='updatePolicy' to increase maxLeverageBps.",
   },
   6008: {
     code: 6008,
@@ -77,7 +77,7 @@ const ERROR_MAP: Record<number, ErrorInfo> = {
     code: 6009,
     name: "PositionOpeningDisallowed",
     message: "Cannot open new positions (policy disallows)",
-    suggestion: "Use shield_update_policy to set canOpenPositions to true.",
+    suggestion: "Use phalnx_manage action='updatePolicy' to set canOpenPositions to true.",
   },
   6010: {
     code: 6010,
@@ -110,14 +110,14 @@ const ERROR_MAP: Record<number, ErrorInfo> = {
     code: 6014,
     name: "AgentAlreadyRegistered",
     message: "Agent already registered for this vault",
-    suggestion: "Use shield_revoke_agent first, then register the new agent.",
+    suggestion: "Use phalnx_manage action='revokeAgent' first, then register the new agent.",
   },
   6015: {
     code: 6015,
     name: "NoAgentRegistered",
     message: "No agent registered for this vault",
     suggestion:
-      "Use shield_register_agent to register an agent before executing trades.",
+      "Use phalnx_manage action='registerAgent' to register an agent before executing trades.",
   },
   6016: {
     code: 6016,
@@ -138,7 +138,7 @@ const ERROR_MAP: Record<number, ErrorInfo> = {
     name: "InsufficientBalance",
     message: "Insufficient vault balance for withdrawal",
     suggestion:
-      "Use shield_check_vault to verify balances. Deposit more funds or reduce the withdrawal amount.",
+      "Use phalnx_query query='vault' to verify balances. Deposit more funds or reduce the withdrawal amount.",
   },
   6019: {
     code: 6019,
@@ -197,21 +197,21 @@ const ERROR_MAP: Record<number, ErrorInfo> = {
     name: "TimelockActive",
     message: "Vault has timelock active — use queue_policy_update instead",
     suggestion:
-      "This vault has a timelock configured. Use shield_queue_policy_update to queue changes, then apply after the timelock expires.",
+      "This vault has a timelock configured. Use phalnx_manage action='queuePolicyUpdate' to queue changes, then apply after the timelock expires.",
   },
   6028: {
     code: 6028,
     name: "NoTimelockConfigured",
     message: "No timelock configured on this vault",
     suggestion:
-      "This vault does not have a timelock. Use shield_update_policy directly instead of queue_policy_update.",
+      "This vault does not have a timelock. Use phalnx_manage action='updatePolicy' directly instead of queuePolicyUpdate.",
   },
   6029: {
     code: 6029,
     name: "DestinationNotAllowed",
     message: "Destination not in allowed list",
     suggestion:
-      "Use shield_update_policy to add the destination address to allowedDestinations.",
+      "Use phalnx_manage action='updatePolicy' to add the destination address to allowedDestinations.",
   },
   6030: {
     code: 6030,
@@ -269,7 +269,7 @@ const ERROR_MAP: Record<number, ErrorInfo> = {
     message:
       "Jupiter slippage exceeds policy max_slippage_bps or quoted_out is zero",
     suggestion:
-      "Reduce the slippage tolerance or use shield_update_policy to increase maxSlippageBps.",
+      "Reduce the slippage tolerance or use phalnx_manage action='updatePolicy' to increase maxSlippageBps.",
   },
   6038: {
     code: 6038,
@@ -335,14 +335,14 @@ const ERROR_MAP: Record<number, ErrorInfo> = {
     name: "MaxAgentsReached",
     message: "Maximum agents per vault reached (limit: 10)",
     suggestion:
-      "Remove an existing agent with shield_revoke_agent before registering a new one. Maximum 10 agents per vault.",
+      "Remove an existing agent with phalnx_manage action='revokeAgent' before registering a new one. Maximum 10 agents per vault.",
   },
   6047: {
     code: 6047,
     name: "InsufficientPermissions",
     message: "Agent lacks permission for this action type",
     suggestion:
-      "The agent's permission bitmask does not include this action. Use shield_update_agent_permissions to grant the required permission bits.",
+      "The agent's permission bitmask does not include this action. Use phalnx_manage action='updateAgentPermissions' to grant the required permission bits.",
   },
   6048: {
     code: 6048,
@@ -358,14 +358,14 @@ const ERROR_MAP: Record<number, ErrorInfo> = {
     name: "EscrowNotActive",
     message: "Escrow is not in Active status",
     suggestion:
-      "The escrow has already been settled or refunded. Check the escrow status with shield_check_escrow.",
+      "The escrow has already been settled or refunded. Check the escrow status with phalnx_query query='escrow'.",
   },
   6050: {
     code: 6050,
     name: "EscrowExpired",
     message: "Escrow has expired",
     suggestion:
-      "The escrow expiration time has passed. Use shield_refund_escrow to return funds to the source vault.",
+      "The escrow expiration time has passed. Use phalnx_execute action='refundEscrow' to return funds to the source vault.",
   },
   6051: {
     code: 6051,
@@ -409,7 +409,7 @@ const ERROR_MAP: Record<number, ErrorInfo> = {
     name: "ConstraintViolated",
     message: "Instruction constraint violated",
     suggestion:
-      "A DeFi instruction in the transaction violates the vault's instruction constraints. Check the constraint rules with shield_check_constraints.",
+      "A DeFi instruction in the transaction violates the vault's instruction constraints. Check the constraint rules with phalnx_query query='constraints'.",
   },
   6057: {
     code: 6057,
@@ -423,14 +423,14 @@ const ERROR_MAP: Record<number, ErrorInfo> = {
     name: "NoPendingConstraintsUpdate",
     message: "No pending constraints update to apply or cancel",
     suggestion:
-      "No constraints update is queued. Use shield_queue_constraints_update to queue one first.",
+      "No constraints update is queued. Use phalnx_manage action='queueConstraintsUpdate' to queue one first.",
   },
   6059: {
     code: 6059,
     name: "PendingConstraintsUpdateExists",
     message: "A pending constraints update already exists",
     suggestion:
-      "Cancel the existing pending update with shield_cancel_constraints_update before queuing a new one.",
+      "Cancel the existing pending update with phalnx_manage action='cancelConstraintsUpdate' before queuing a new one.",
   },
   6060: {
     code: 6060,
@@ -502,7 +502,7 @@ const ERROR_MAP: Record<number, ErrorInfo> = {
     name: "ProtocolCapExceeded",
     message: "Per-protocol daily spending cap would be exceeded",
     suggestion:
-      "This protocol has reached its individual spending cap. Wait for the rolling window to expire or increase the protocol's cap via shield_update_policy.",
+      "This protocol has reached its individual spending cap. Wait for the rolling window to expire or increase the protocol's cap via phalnx_manage action='updatePolicy'.",
   },
   6070: {
     code: 6070,
@@ -539,7 +539,7 @@ const ERROR_MAP: Record<number, ErrorInfo> = {
     name: "AgentPaused",
     message: "Agent is paused and cannot execute actions",
     suggestion:
-      "The vault owner has paused this agent. Use shield_unpause_agent to restore access.",
+      "The vault owner has paused this agent. Use phalnx_manage action='unpauseAgent' to restore access.",
   },
   6075: {
     code: 6075,
@@ -552,7 +552,7 @@ const ERROR_MAP: Record<number, ErrorInfo> = {
     name: "AgentNotPaused",
     message: "Agent is not paused",
     suggestion:
-      "Cannot unpause an agent that is not paused. Use shield_check_vault to check agent status.",
+      "Cannot unpause an agent that is not paused. Use phalnx_query query='vault' to check agent status.",
   },
 };
 
