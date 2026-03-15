@@ -694,6 +694,67 @@ describe("shield", () => {
     });
   });
 
+  // ─── S-7: enforce/ShieldedSigner mutual exclusivity ──────────────────────
+  describe("S-7: enforce/ShieldedSigner mutual exclusivity", () => {
+    it("enforce() sets enforceUsed flag", () => {
+      const warnings: string[] = [];
+      const origWarn = console.warn;
+      console.warn = (msg: string) => { warnings.push(msg); };
+      try {
+        const ctx = shield();
+        expect(ctx.state.enforceUsed).to.be.false;
+        ctx.enforce([noopIx("11111111111111111111111111111111" as Address)], SIGNER);
+        expect(ctx.state.enforceUsed).to.be.true;
+      } finally {
+        console.warn = origWarn;
+      }
+    });
+
+    it("ShieldedSigner warns when enforce was already used", async () => {
+      const warnings: string[] = [];
+      const origWarn = console.warn;
+      console.warn = (msg: string) => { warnings.push(msg); };
+      try {
+        const ctx = shield();
+        // First enforce
+        ctx.enforce([noopIx("11111111111111111111111111111111" as Address)], SIGNER);
+
+        // Then ShieldedSigner
+        const baseSigner = {
+          address: SIGNER,
+          modifyAndSignTransactions: async (txs: readonly any[]) => txs,
+        } as any;
+        const signer = createShieldedSigner(baseSigner, ctx, { skipSimulation: true });
+
+        const tx = {
+          compiledMessage: {
+            staticAccounts: ["11111111111111111111111111111111" as Address],
+            instructions: [{ programAddressIndex: 0, accountIndices: [], data: new Uint8Array([1]) }],
+          },
+        };
+        await (signer as any).modifyAndSignTransactions([tx]);
+        expect(warnings.some((w) => w.includes("double-count spending"))).to.be.true;
+      } finally {
+        console.warn = origWarn;
+      }
+    });
+
+    it("reset() clears enforceUsed flag", () => {
+      const warnings: string[] = [];
+      const origWarn = console.warn;
+      console.warn = (msg: string) => { warnings.push(msg); };
+      try {
+        const ctx = shield();
+        ctx.enforce([noopIx("11111111111111111111111111111111" as Address)], SIGNER);
+        expect(ctx.state.enforceUsed).to.be.true;
+        ctx.resetState();
+        expect(ctx.state.enforceUsed).to.be.false;
+      } finally {
+        console.warn = origWarn;
+      }
+    });
+  });
+
   // ─── S-1: Ephemeral warning ─────────────────────────────────────────────
   describe("S-1: ephemeral warning", () => {
     it("warns when shield created without onChainSync", () => {

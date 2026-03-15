@@ -106,6 +106,7 @@ interface Checkpoint {
   resolvedState: ResolvedVaultState | null;
   localUsdAdditions: bigint;
   network: Network | null;
+  enforceUsed: boolean;
 }
 
 export class ShieldState {
@@ -116,6 +117,9 @@ export class ShieldState {
   private _resolvedState: ResolvedVaultState | null = null;
   private _localUsdAdditions = 0n;
   private _network: Network | null = null;
+
+  // S-7: Mutual exclusivity tracking
+  private _enforceUsed = false;
 
   getSpendInWindow(mint: string, windowMs: number): bigint {
     const cutoff = Date.now() - windowMs;
@@ -201,6 +205,16 @@ export class ShieldState {
     return spent < cap ? cap - spent : 0n;
   }
 
+  /** S-7: Whether enforce() has been called on this state. */
+  get enforceUsed(): boolean {
+    return this._enforceUsed;
+  }
+
+  /** S-7: Mark that enforce() was used. */
+  markEnforceUsed(): void {
+    this._enforceUsed = true;
+  }
+
   checkpoint(): Checkpoint {
     return {
       spendEntries: [...this.spendEntries],
@@ -208,6 +222,7 @@ export class ShieldState {
       resolvedState: this._resolvedState,
       localUsdAdditions: this._localUsdAdditions,
       network: this._network,
+      enforceUsed: this._enforceUsed,
     };
   }
 
@@ -217,6 +232,7 @@ export class ShieldState {
     this._resolvedState = cp.resolvedState;
     this._localUsdAdditions = cp.localUsdAdditions;
     this._network = cp.network;
+    this._enforceUsed = cp.enforceUsed;
   }
 
   reset(): void {
@@ -225,6 +241,7 @@ export class ShieldState {
     this._resolvedState = null;
     this._localUsdAdditions = 0n;
     this._network = null;
+    this._enforceUsed = false;
   }
 }
 
@@ -558,6 +575,9 @@ export function shield(
         }
       }
 
+      // S-7: Mark that enforce() was used
+      state.markEnforceUsed();
+
       options?.onApproved?.();
     },
 
@@ -765,6 +785,14 @@ export function createShieldedSigner(
             tx,
             PHALNX_PROGRAM_ADDRESS,
             options?.sessionBindingSeverity ?? "hard",
+          );
+        }
+
+        // S-7: Warn about double-counting risk if enforce() was already used
+        if (shieldCtx.state.enforceUsed) {
+          console.warn(
+            "[ShieldedSigner] enforce() was already called on this ShieldState — " +
+            "using ShieldedSigner after enforce() may double-count spending",
           );
         }
 
