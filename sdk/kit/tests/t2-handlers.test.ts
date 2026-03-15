@@ -89,8 +89,8 @@ describe("t2-handlers", () => {
       expect(handler.metadata.protocolId).to.equal("kamino-lending");
     });
 
-    it("has 4 supported actions", () => {
-      expect(handler.metadata.supportedActions.size).to.equal(4);
+    it("has 7 supported actions", () => {
+      expect(handler.metadata.supportedActions.size).to.equal(7);
     });
 
     it("borrow maps to Withdraw (non-spending)", () => {

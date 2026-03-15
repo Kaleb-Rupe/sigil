@@ -55,6 +55,8 @@ export {
   OVERLAY_EPOCH_DURATION,
   OVERLAY_NUM_EPOCHS,
   ROLLING_WINDOW_SECONDS,
+  // u64 boundary
+  U64_MAX,
 } from "./types.js";
 export type { Network, PositionEffect } from "./types.js";
 

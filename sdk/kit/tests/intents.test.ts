@@ -49,9 +49,9 @@ describe("intents", () => {
   });
 
   describe("ACTION_TYPE_MAP", () => {
-    it("has entries for all 32 IntentAction types", () => {
-      // 21 base + 5 drift + 4 kamino + 1 protocol + 1 passthrough = 32
-      expect(ALL_INTENT_TYPES.length).to.equal(32);
+    it("has entries for all 35 IntentAction types", () => {
+      // 21 base + 5 drift + 7 kamino + 1 protocol + 1 passthrough = 35
+      expect(ALL_INTENT_TYPES.length).to.equal(35);
     });
 
     it("every entry has an ActionType enum value and isSpending boolean", () => {
@@ -321,6 +321,18 @@ describe("intents", () => {
         {
           type: "kaminoWithdraw",
           params: { tokenMint: "USDC", amount: "1000", obligation: VALID_ADDRESS },
+        },
+        {
+          type: "kaminoVaultDeposit",
+          params: { kvault: VALID_ADDRESS, amount: "1000" },
+        },
+        {
+          type: "kaminoVaultWithdraw",
+          params: { kvault: VALID_ADDRESS, amount: "1000" },
+        },
+        {
+          type: "kaminoMultiply",
+          params: { depositToken: "USDC", borrowToken: "SOL", amount: "1000" },
         },
         {
           type: "protocol",

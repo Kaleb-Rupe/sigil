@@ -32,6 +32,11 @@ export const PROTOCOL_TREASURY =
 // ─── USD Constants ────────────────────────────────────────────────────────────
 
 export const USD_DECIMALS = 6;
+/** Scaling factor for stablecoin-to-USD conversion.
+ *  USDC/USDT both use 6 decimals: amount / STABLECOIN_USD_FACTOR = USD.
+ *  This assumption is load-bearing — if a stablecoin with different decimals
+ *  is added to isStablecoinMint(), this factor must be updated. */
+export const STABLECOIN_USD_FACTOR = 10n ** BigInt(USD_DECIMALS);
 
 // ─── Multi-agent Constants ────────────────────────────────────────────────────
 
@@ -62,6 +67,11 @@ export const PERPS_FULL =
 // ─── Escrow Constants ─────────────────────────────────────────────────────────
 
 export const MAX_ESCROW_DURATION = 2_592_000; // 30 days in seconds
+
+// ─── u64 Boundary ────────────────────────────────────────────────────────────
+
+/** Maximum u64 value — used for BigInt clamping to match on-chain Rust math. */
+export const U64_MAX = BigInt("18446744073709551615");
 
 // ─── Slippage Constants ───────────────────────────────────────────────────────
 

@@ -518,6 +518,63 @@ describe("edge cases", () => {
   });
 });
 
+// ─── G-1: u64::MAX clamping ──────────────────────────────────────────────────
+
+describe("G-1: u64::MAX clamping", () => {
+  const U64_MAX = (1n << 64n) - 1n;
+
+  it("getRolling24hUsd clamps at u64::MAX with extreme bucket values", () => {
+    const nowUnix = 200n * EPOCH_DURATION;
+    const buckets = emptyBuckets(144);
+    // Place multiple buckets with values near u64::MAX — sum exceeds u64
+    for (const epoch of [198n, 199n, 200n]) {
+      const idx = Number(epoch % 144n);
+      buckets[idx] = makeBucket(epoch, U64_MAX);
+    }
+    const tracker = makeTracker({ buckets, lastWriteEpoch: 200n });
+    expect(getRolling24hUsd(tracker, nowUnix)).to.equal(U64_MAX);
+  });
+
+  it("getAgentRolling24hUsd clamps at u64::MAX with extreme contributions", () => {
+    const lastWrite = 50n;
+    const contributions = Array(24).fill(0n) as bigint[];
+    // Place multiple hours with values near u64::MAX
+    for (const epoch of [48n, 49n, 50n]) {
+      contributions[Number(epoch % 24n)] = U64_MAX;
+    }
+    const entry = makeContributionEntry({
+      lastWriteEpoch: lastWrite,
+      contributions,
+    });
+    const nowUnix = lastWrite * OVERLAY_EPOCH_DURATION;
+    expect(getAgentRolling24hUsd(entry, nowUnix)).to.equal(U64_MAX);
+  });
+});
+
+// ─── G-2: saturating windowStart ─────────────────────────────────────────────
+
+describe("G-2: saturating windowStart", () => {
+  it("getRolling24hUsd with nowUnix=100n doesn't throw", () => {
+    const nowUnix = 100n; // < 86400 → windowStart would be negative without saturation
+    const buckets = emptyBuckets(144);
+    buckets[0] = makeBucket(0n, 500_000n);
+    const tracker = makeTracker({ buckets, lastWriteEpoch: 0n });
+    // Should not throw and should include the bucket
+    expect(getRolling24hUsd(tracker, nowUnix)).to.equal(500_000n);
+  });
+
+  it("getAgentRolling24hUsd with nowUnix=100n doesn't throw", () => {
+    const contributions = Array(24).fill(0n) as bigint[];
+    contributions[0] = 100_000n;
+    const entry = makeContributionEntry({
+      lastWriteEpoch: 0n,
+      contributions,
+    });
+    // nowUnix=100n < 86400 → windowStart saturates to 0
+    expect(getAgentRolling24hUsd(entry, 100n)).to.equal(100_000n);
+  });
+});
+
 // ─── resolveVaultState ───────────────────────────────────────────────────────
 
 describe("resolveVaultState", () => {

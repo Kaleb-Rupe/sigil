@@ -51,6 +51,7 @@ import {
   OVERLAY_EPOCH_DURATION,
   OVERLAY_NUM_EPOCHS,
   ROLLING_WINDOW_SECONDS,
+  U64_MAX,
 } from "./types.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -129,7 +130,10 @@ export function getRolling24hUsd(
   // Early exit: if no writes in 144+ epochs, all data is expired
   if (currentEpoch - tracker.lastWriteEpoch > numEpochs) return 0n;
 
-  const windowStart = nowUnix - BigInt(ROLLING_WINDOW_SECONDS);
+  // G-2: Saturating subtraction — avoid negative windowStart when nowUnix < 86400
+  const windowStart = nowUnix > BigInt(ROLLING_WINDOW_SECONDS)
+    ? nowUnix - BigInt(ROLLING_WINDOW_SECONDS)
+    : 0n;
   let total = 0n;
 
   for (const bucket of tracker.buckets) {
@@ -151,7 +155,8 @@ export function getRolling24hUsd(
     }
   }
 
-  return total;
+  // G-1: Clamp to u64::MAX to match on-chain Rust math
+  return total > U64_MAX ? U64_MAX : total;
 }
 
 /**
@@ -174,7 +179,10 @@ export function getAgentRolling24hUsd(
   // Early exit: if last write was more than 24 epochs ago, all expired
   if (currentEpoch - entry.lastWriteEpoch > numEpochs) return 0n;
 
-  const windowStart = nowUnix - BigInt(ROLLING_WINDOW_SECONDS);
+  // G-2: Saturating subtraction — avoid negative windowStart when nowUnix < 86400
+  const windowStart = nowUnix > BigInt(ROLLING_WINDOW_SECONDS)
+    ? nowUnix - BigInt(ROLLING_WINDOW_SECONDS)
+    : 0n;
   let total = 0n;
 
   // Iterate backward from lastWriteEpoch (most recent data)
@@ -205,7 +213,8 @@ export function getAgentRolling24hUsd(
     }
   }
 
-  return total;
+  // G-1: Clamp to u64::MAX to match on-chain Rust math
+  return total > U64_MAX ? U64_MAX : total;
 }
 
 /**
