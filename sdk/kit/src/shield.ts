@@ -488,7 +488,7 @@ export function createShieldedSigner(
       txs: readonly any[],
     ): Promise<readonly any[]> {
       for (const tx of txs) {
-        const instructions = extractInstructionsFromCompiled(tx, options?.altCache);
+        const instructions = _extractInstructionsFromCompiled(tx, options?.altCache);
 
         // Property 1: Intent-TX correspondence (SOFT)
         if (options?.intentContext) {
@@ -566,14 +566,16 @@ export function createShieldedSigner(
   } as TransactionSigner;
 }
 
-// ─── Internal Helpers (not exported) ────────────────────────────────────────
+// ─── Internal Helpers ────────────────────────────────────────────────────────
 
 /**
  * Extract InspectableInstruction[] from a compiled transaction object.
  * Resolves program addresses from staticAccounts[programAddressIndex].
  * When ALTs are used, resolves ALT-compressed account indices via AltCache.
+ *
+ * Exported as _extractInstructionsFromCompiled for direct testing.
  */
-function extractInstructionsFromCompiled(
+export function _extractInstructionsFromCompiled(
   tx: any,
   altCache?: AltCache,
 ): InspectableInstruction[] {
@@ -586,14 +588,22 @@ function extractInstructionsFromCompiled(
   let accountTable: Address[] = [...msg.staticAccounts];
 
   if (msg.addressTableLookups?.length && altCache) {
+    // Two-pass ordering: Solana compiled messages order ALL writables from
+    // ALL lookups first, then ALL readonlys from ALL lookups.
+    // Pass 1: ALL writables from ALL lookups (in lookup order)
     for (const lookup of msg.addressTableLookups) {
-      const altAddress = lookup.lookupTableAddress as Address;
-      const resolved = altCache.getCachedAddresses(altAddress);
+      const resolved = altCache.getCachedAddresses(lookup.lookupTableAddress as Address);
       if (resolved) {
-        for (const idx of lookup.writableIndices ?? []) {
+        for (const idx of lookup.writableIndexes ?? []) {
           accountTable.push(resolved[idx]);
         }
-        for (const idx of lookup.readonlyIndices ?? []) {
+      }
+    }
+    // Pass 2: ALL readonlys from ALL lookups
+    for (const lookup of msg.addressTableLookups) {
+      const resolved = altCache.getCachedAddresses(lookup.lookupTableAddress as Address);
+      if (resolved) {
+        for (const idx of lookup.readonlyIndexes ?? []) {
           accountTable.push(resolved[idx]);
         }
       }

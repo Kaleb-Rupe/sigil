@@ -135,13 +135,14 @@ export class TransactionExecutor {
         params.addressLookupTables != null &&
         Object.keys(params.addressLookupTables).length > 0;
 
-      const err = new Error(
-        altsApplied
-          ? `Transaction ${byteLength}B exceeds ${MAX_TX_SIZE}B limit even with ALTs applied. Simplify the DeFi route.`
-          : `Transaction ${byteLength}B exceeds ${MAX_TX_SIZE}B limit. ALT fetch may have failed — retry, or simplify the route.`,
+      const err = Object.assign(
+        new Error(
+          altsApplied
+            ? `Transaction ${byteLength}B exceeds ${MAX_TX_SIZE}B limit even with ALTs applied. Simplify the DeFi route.`
+            : `Transaction ${byteLength}B exceeds ${MAX_TX_SIZE}B limit. ALT fetch may have failed — retry, or simplify the route.`,
+        ),
+        { code: 7033, context: { byteLength, limit: MAX_TX_SIZE, altsApplied } },
       );
-      (err as any).code = 7033;
-      (err as any).context = { byteLength, limit: MAX_TX_SIZE, altsApplied };
       throw err;
     }
 
