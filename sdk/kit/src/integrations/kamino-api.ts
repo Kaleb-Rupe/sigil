@@ -16,7 +16,7 @@ import {
   createSafeBigInt,
   createRequireField,
 } from "./compose-errors.js";
-import { KAMINO_LENDING_PROGRAM } from "./config/kamino-markets.js";
+import { verifyKaminoInstructions } from "./kamino-verify.js";
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
@@ -319,7 +319,8 @@ function base64ToUint8Array(b64: string): Uint8Array {
 
 // ─── Transaction Building ────────────────────────────────────────────────────
 
-export async function fetchKlendDepositInstructions(
+export async function fetchKlendInstructions(
+  action: "deposit" | "withdraw" | "borrow" | "repay",
   wallet: string,
   market: string,
   reserve: string,
@@ -329,52 +330,7 @@ export async function fetchKlendDepositInstructions(
   const config = currentConfig;
   const envParam = env ?? config.env;
   return kaminoFetch<KaminoTxResponse>(
-    `/ktx/klend/deposit-instructions?env=${envParam}`,
-    { method: "POST", body: { wallet, market, reserve, amount } },
-  );
-}
-
-export async function fetchKlendWithdrawInstructions(
-  wallet: string,
-  market: string,
-  reserve: string,
-  amount: string,
-  env?: string,
-): Promise<KaminoTxResponse> {
-  const config = currentConfig;
-  const envParam = env ?? config.env;
-  return kaminoFetch<KaminoTxResponse>(
-    `/ktx/klend/withdraw-instructions?env=${envParam}`,
-    { method: "POST", body: { wallet, market, reserve, amount } },
-  );
-}
-
-export async function fetchKlendBorrowInstructions(
-  wallet: string,
-  market: string,
-  reserve: string,
-  amount: string,
-  env?: string,
-): Promise<KaminoTxResponse> {
-  const config = currentConfig;
-  const envParam = env ?? config.env;
-  return kaminoFetch<KaminoTxResponse>(
-    `/ktx/klend/borrow-instructions?env=${envParam}`,
-    { method: "POST", body: { wallet, market, reserve, amount } },
-  );
-}
-
-export async function fetchKlendRepayInstructions(
-  wallet: string,
-  market: string,
-  reserve: string,
-  amount: string,
-  env?: string,
-): Promise<KaminoTxResponse> {
-  const config = currentConfig;
-  const envParam = env ?? config.env;
-  return kaminoFetch<KaminoTxResponse>(
-    `/ktx/klend/repay-instructions?env=${envParam}`,
+    `/ktx/klend/${action}-instructions?env=${envParam}`,
     { method: "POST", body: { wallet, market, reserve, amount } },
   );
 }
@@ -555,31 +511,27 @@ async function composeKlend(
   params: Record<string, unknown>,
   env: string,
 ): Promise<ProtocolComposeResult> {
+  const validActions = ["deposit", "withdraw", "borrow", "repay"] as const;
+  if (!validActions.includes(action as typeof validActions[number])) {
+    throw new KaminoComposeError(COMPOSE_ERROR_CODES.UNSUPPORTED_ACTION, `Unknown klend action: ${action}`);
+  }
+
   const tokenMint = requireField<string>(params, "tokenMint");
-  const amount = String(safeBigInt(requireField(params, "amount"), "amount"));
+  const amountBigInt = safeBigInt(requireField(params, "amount"), "amount");
+  const amount = String(amountBigInt);
   const market = (params.market as string) ?? await resolvePrimaryMarket(env);
   const reserve = await resolveReserveBySymbol(tokenMint, market, env);
 
-  let response: KaminoTxResponse;
-  switch (action) {
-    case "deposit":
-      response = await fetchKlendDepositInstructions(ctx.vault, market, reserve, amount, env);
-      break;
-    case "withdraw":
-      response = await fetchKlendWithdrawInstructions(ctx.vault, market, reserve, amount, env);
-      break;
-    case "borrow":
-      response = await fetchKlendBorrowInstructions(ctx.vault, market, reserve, amount, env);
-      break;
-    case "repay":
-      response = await fetchKlendRepayInstructions(ctx.vault, market, reserve, amount, env);
-      break;
-    default:
-      throw new KaminoComposeError(COMPOSE_ERROR_CODES.UNSUPPORTED_ACTION, `Unknown klend action: ${action}`);
-  }
+  const response = await fetchKlendInstructions(
+    action as typeof validActions[number],
+    ctx.vault, market, reserve, amount, env,
+  );
 
   const instructions = response.instructions.map(deserializeKaminoInstruction);
   const addressLookupTables = (response.addressLookupTableAddresses ?? []) as Address[];
+
+  // Pre-submit verification: program ID, discriminator, amount, signer
+  verifyKaminoInstructions(instructions, action, amountBigInt, ctx.vault);
 
   return { instructions, addressLookupTables };
 }
@@ -633,38 +585,33 @@ async function composeMultiply(
     allAlts.push(...depositResult.addressLookupTables);
   }
 
-  // Leverage loops: borrow → deposit
+  // Leverage loops: borrow → deposit (parallel within each iteration)
   let remainingLeverage = targetLeverage - 1;
   let currentAmount = BigInt(initialAmount);
 
   for (let i = 0; i < maxLoops && remainingLeverage > 0.1; i++) {
-    const borrowRatio = Math.min(remainingLeverage, 1);
-    const borrowAmount = String(BigInt(Math.floor(Number(currentAmount) * borrowRatio * 0.95)));
+    // BigInt-safe multiplication: (currentAmount * ratio_bps) / 10000
+    const ratioBps = BigInt(Math.min(Math.round(Math.min(remainingLeverage, 1) * 9500), 10000));
+    const borrowAmount = String((currentAmount * ratioBps) / 10000n);
 
-    const borrowResult = await composeKlend(
-      ctx,
-      "borrow",
-      { tokenMint: borrowToken, amount: borrowAmount, market },
-      env,
-    );
+    // Borrow and re-deposit are independent — run in parallel
+    const [borrowResult, reDepositResult] = await Promise.all([
+      composeKlend(ctx, "borrow", { tokenMint: borrowToken, amount: borrowAmount, market }, env),
+      composeKlend(ctx, "deposit", { tokenMint: depositToken, amount: borrowAmount, market }, env),
+    ]);
+
+    // Order matters: borrow instructions must precede deposit
     allInstructions.push(...borrowResult.instructions);
     if (borrowResult.addressLookupTables) {
       allAlts.push(...borrowResult.addressLookupTables);
     }
-
-    const reDepositResult = await composeKlend(
-      ctx,
-      "deposit",
-      { tokenMint: depositToken, amount: borrowAmount, market },
-      env,
-    );
     allInstructions.push(...reDepositResult.instructions);
     if (reDepositResult.addressLookupTables) {
       allAlts.push(...reDepositResult.addressLookupTables);
     }
 
     currentAmount = BigInt(borrowAmount);
-    remainingLeverage -= borrowRatio;
+    remainingLeverage -= Math.min(remainingLeverage, 1);
   }
 
   // Deduplicate ALTs

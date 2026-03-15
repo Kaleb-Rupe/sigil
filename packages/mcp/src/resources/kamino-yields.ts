@@ -19,16 +19,14 @@ export async function getKaminoYieldsResource(): Promise<string> {
       fetchStakingYields().catch(() => []),
     ]);
 
-    // Get primary market reserves for lending yields
+    // Get primary market reserves and leverage metrics in parallel
     const primaryMarket = markets.find((m) => m.isPrimary);
-    const lendingYields = primaryMarket
-      ? await fetchReserveMetrics(primaryMarket.lendingMarket).catch(() => [])
-      : [];
-
-    // Get leverage metrics from primary market
-    const leverageYields = primaryMarket
-      ? await fetchLeverageMetrics(primaryMarket.lendingMarket).catch(() => [])
-      : [];
+    const [lendingYields, leverageYields] = primaryMarket
+      ? await Promise.all([
+          fetchReserveMetrics(primaryMarket.lendingMarket).catch(() => [] as Awaited<ReturnType<typeof fetchReserveMetrics>>),
+          fetchLeverageMetrics(primaryMarket.lendingMarket).catch(() => [] as Awaited<ReturnType<typeof fetchLeverageMetrics>>),
+        ])
+      : [[], []];
 
     return JSON.stringify(
       {
