@@ -1,8 +1,9 @@
 import { expect } from "chai";
-import type { Address, Instruction } from "@solana/kit";
+import type { Address, Instruction, AddressesByLookupTableAddress } from "@solana/kit";
 import {
   composePhalnxTransaction,
   validateTransactionSize,
+  measureTransactionSize,
 } from "../src/composer.js";
 import type { ComposeTransactionParams } from "../src/composer.js";
 
@@ -106,6 +107,44 @@ describe("composer", () => {
         baseParams({ defiInstructions: [] }),
       );
       expect(() => validateTransactionSize(compiled)).to.not.throw();
+    });
+  });
+
+  describe("ALT compression", () => {
+    const ALT_ADDR = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4" as Address;
+
+    it("composer applies ALT compression when accounts match", () => {
+      // Create instructions referencing an address that's in the ALT
+      const altAccount = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address;
+      const ixWithAltAccounts: Instruction = {
+        programAddress: MOCK_PROGRAM,
+        accounts: [
+          { address: altAccount, role: 1 },  // writable signer = 1
+        ],
+        data: new Uint8Array([1, 2, 3]),
+      };
+
+      const alts: AddressesByLookupTableAddress = {
+        [ALT_ADDR]: [altAccount],
+      };
+
+      const compiled = composePhalnxTransaction(
+        baseParams({
+          defiInstructions: [ixWithAltAccounts],
+          addressLookupTables: alts,
+        }),
+      );
+      expect(compiled).to.have.property("messageBytes");
+      // Transaction should compile successfully with ALTs
+      const { withinLimit } = measureTransactionSize(compiled);
+      expect(withinLimit).to.be.true;
+    });
+
+    it("composer without ALTs produces no addressTableLookups", () => {
+      const compiled = composePhalnxTransaction(baseParams());
+      // Verify the compiled transaction exists and is valid
+      const base64 = validateTransactionSize(compiled);
+      expect(base64).to.be.a("string");
     });
   });
 

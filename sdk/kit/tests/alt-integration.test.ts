@@ -174,6 +174,37 @@ describe("ALT integration", () => {
     });
   });
 
+  describe("CU recompose preserves ALT compression (V3)", () => {
+    it("size delta is small between initial and recomposed CU", () => {
+      // Compose with a specific CU value
+      const compiled1 = composePhalnxTransaction(
+        baseParams({ computeUnits: 200_000 }),
+      );
+      const size1 = measureTransactionSize(compiled1);
+
+      // Recompose with different CU (simulating adjustCU result)
+      const compiled2 = composePhalnxTransaction(
+        baseParams({ computeUnits: 250_000 }),
+      );
+      const size2 = measureTransactionSize(compiled2);
+
+      // CU change only affects the ComputeBudget ix data (~3 bytes difference max)
+      const delta = Math.abs(size1.byteLength - size2.byteLength);
+      expect(delta).to.be.lessThanOrEqual(5);
+    });
+
+    it("CU recompose with ALTs still within limit", () => {
+      const alts: AddressesByLookupTableAddress = {
+        [ALT_ADDR]: [ADDR_1],
+      };
+      const compiled = composePhalnxTransaction(
+        baseParams({ computeUnits: 300_000, addressLookupTables: alts }),
+      );
+      const { withinLimit } = measureTransactionSize(compiled);
+      expect(withinLimit).to.be.true;
+    });
+  });
+
   describe("AltCache integration", () => {
     it("getCachedAddresses works with populated cache", () => {
       const cache = new AltCache();

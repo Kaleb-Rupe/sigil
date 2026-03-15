@@ -4,9 +4,11 @@ import {
   ShieldState,
   ShieldDeniedError,
   evaluateInstructions,
+  _extractInstructionsFromCompiled,
 } from "../src/shield.js";
 import type { InspectableInstruction } from "../src/inspector.js";
 import type { Address } from "@solana/kit";
+import { AltCache } from "../src/alt-loader.js";
 
 const SIGNER = "SignerAddr1111111111111111111111111111111" as Address;
 const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address;
@@ -333,6 +335,124 @@ describe("shield", () => {
         state,
       );
       expect(violations).to.have.length(0);
+    });
+  });
+
+  describe("ALT resolution in _extractInstructionsFromCompiled", () => {
+    const ALT_A = "ALTaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as Address;
+    const ALT_B = "ALTbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as Address;
+    const PROG = "Prog1111111111111111111111111111111111111111" as Address;
+    const ACCT_W1 = "Writabl1111111111111111111111111111111111" as Address;
+    const ACCT_W2 = "Writabl2222222222222222222222222222222222" as Address;
+    const ACCT_R1 = "Readonl1111111111111111111111111111111111" as Address;
+    const ACCT_R2 = "Readonl2222222222222222222222222222222222" as Address;
+
+    function populateCache(cache: AltCache, altAddr: Address, addresses: Address[]) {
+      (cache as any).cache.set(altAddr as string, {
+        data: { [altAddr]: addresses },
+        expiresAt: Date.now() + 300_000,
+      });
+    }
+
+    it("V6 — resolves ALT-referenced accounts via AltCache", () => {
+      const cache = new AltCache();
+      populateCache(cache, ALT_A, [ACCT_W1, ACCT_R1]);
+
+      const tx = {
+        compiledMessage: {
+          staticAccounts: [PROG],
+          instructions: [
+            {
+              programAddressIndex: 0,
+              accountIndices: [1, 2], // indices into combined table
+              data: new Uint8Array([1]),
+            },
+          ],
+          addressTableLookups: [
+            {
+              lookupTableAddress: ALT_A,
+              writableIndexes: [0], // ACCT_W1
+              readonlyIndexes: [1], // ACCT_R1
+            },
+          ],
+        },
+      };
+
+      const ixs = _extractInstructionsFromCompiled(tx, cache);
+      expect(ixs).to.have.length(1);
+      expect(ixs[0].programAddress).to.equal(PROG);
+      // Account table: [PROG, ACCT_W1 (writable pass), ACCT_R1 (readonly pass)]
+      expect(ixs[0].accounts[0].address).to.equal(ACCT_W1);
+      expect(ixs[0].accounts[1].address).to.equal(ACCT_R1);
+    });
+
+    it("V10 — warns without crash when AltCache absent", () => {
+      const tx = {
+        compiledMessage: {
+          staticAccounts: [PROG],
+          instructions: [
+            {
+              programAddressIndex: 0,
+              accountIndices: [],
+              data: new Uint8Array([1]),
+            },
+          ],
+          addressTableLookups: [
+            {
+              lookupTableAddress: ALT_A,
+              writableIndexes: [0],
+              readonlyIndexes: [],
+            },
+          ],
+        },
+      };
+
+      // Should not throw, just warn
+      const ixs = _extractInstructionsFromCompiled(tx);
+      expect(ixs).to.have.length(1);
+      expect(ixs[0].programAddress).to.equal(PROG);
+    });
+
+    it("V6b — multi-ALT two-pass ordering", () => {
+      const cache = new AltCache();
+      // ALT_A has [ACCT_W1, ACCT_R1], ALT_B has [ACCT_W2, ACCT_R2]
+      populateCache(cache, ALT_A, [ACCT_W1, ACCT_R1]);
+      populateCache(cache, ALT_B, [ACCT_W2, ACCT_R2]);
+
+      const tx = {
+        compiledMessage: {
+          staticAccounts: [PROG],
+          instructions: [
+            {
+              programAddressIndex: 0,
+              // Indices into: [PROG, W1(A), W2(B), R1(A), R2(B)]
+              accountIndices: [1, 2, 3, 4],
+              data: new Uint8Array([1]),
+            },
+          ],
+          addressTableLookups: [
+            {
+              lookupTableAddress: ALT_A,
+              writableIndexes: [0],  // ACCT_W1
+              readonlyIndexes: [1],  // ACCT_R1
+            },
+            {
+              lookupTableAddress: ALT_B,
+              writableIndexes: [0],  // ACCT_W2
+              readonlyIndexes: [1],  // ACCT_R2
+            },
+          ],
+        },
+      };
+
+      const ixs = _extractInstructionsFromCompiled(tx, cache);
+      expect(ixs).to.have.length(1);
+      // Two-pass ordering: all writables first, then all readonlys
+      // [PROG, ACCT_W1, ACCT_W2, ACCT_R1, ACCT_R2]
+      expect(ixs[0].accounts[0].address).to.equal(ACCT_W1); // idx 1
+      expect(ixs[0].accounts[1].address).to.equal(ACCT_W2); // idx 2
+      expect(ixs[0].accounts[2].address).to.equal(ACCT_R1); // idx 3
+      expect(ixs[0].accounts[3].address).to.equal(ACCT_R2); // idx 4
     });
   });
 });
