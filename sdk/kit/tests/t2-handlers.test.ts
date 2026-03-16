@@ -75,7 +75,12 @@ describe("t2-handlers", () => {
     });
 
     it("summarize produces readable output", () => {
-      expect(handler.summarize("openPosition", { side: "long", targetSymbol: "SOL" }))
+      expect(
+        handler.summarize("openPosition", {
+          side: "long",
+          targetSymbol: "SOL",
+        }),
+      )
         .to.include("Flash")
         .and.include("long")
         .and.include("SOL");
@@ -89,8 +94,8 @@ describe("t2-handlers", () => {
       expect(handler.metadata.protocolId).to.equal("kamino-lending");
     });
 
-    it("has 4 supported actions", () => {
-      expect(handler.metadata.supportedActions.size).to.equal(4);
+    it("has 7 supported actions", () => {
+      expect(handler.metadata.supportedActions.size).to.equal(7);
     });
 
     it("borrow maps to Withdraw (non-spending)", () => {

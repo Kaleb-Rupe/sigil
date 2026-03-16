@@ -11,9 +11,20 @@
  * swapAndOpen, closeAndSwap.
  */
 
-import type { Address, Instruction, TransactionSigner } from "@solana/kit";
+import type { Address, Instruction } from "@solana/kit";
 import { generateKeyPairSigner } from "@solana/kit";
-import type { ProtocolContext, ProtocolComposeResult } from "./protocol-handler.js";
+import { JUPITER_PROGRAM_ADDRESS } from "../types.js";
+import type {
+  ProtocolContext,
+  ProtocolComposeResult,
+} from "./protocol-handler.js";
+import {
+  COMPOSE_ERROR_CODES,
+  FlashTradeComposeError,
+  createSafeBigInt,
+  createRequireField,
+  addressAsSigner,
+} from "./compose-errors.js";
 import {
   resolveFlashAccounts,
   FLASH_PERPETUALS,
@@ -47,36 +58,52 @@ import { getCloseAndSwapInstruction } from "../generated/protocols/flash-trade/i
 
 // ─── Param Validation ────────────────────────────────────────────────────────
 
-function requireField<T>(params: Record<string, unknown>, field: string): T {
-  const val = params[field];
-  if (val === undefined || val === null) {
-    throw new Error(`Missing required Flash Trade parameter: ${field}`);
-  }
-  return val as T;
-}
+const requireField = createRequireField(
+  (field) =>
+    new FlashTradeComposeError(
+      COMPOSE_ERROR_CODES.MISSING_PARAM,
+      `Missing required parameter: ${field}`,
+    ),
+);
 
-function parseOraclePrice(price: { price: string; exponent: number }): OraclePriceArgs {
-  return { price: BigInt(price.price), exponent: price.exponent };
+function parseOraclePrice(price: {
+  price: string;
+  exponent: number;
+}): OraclePriceArgs {
+  return {
+    price: safeBigInt(price.price, "oraclePrice.price"),
+    exponent: price.exponent,
+  };
 }
 
 function parseSide(side: string): "long" | "short" {
   if (side !== "long" && side !== "short") {
-    throw new Error(`Invalid side: ${side}. Must be "long" or "short".`);
+    throw new FlashTradeComposeError(
+      COMPOSE_ERROR_CODES.INVALID_SIDE,
+      `Invalid side: ${side}. Must be "long" or "short".`,
+    );
   }
   return side;
 }
 
-// ─── Signer Helpers ──────────────────────────────────────────────────────────
+const safeBigInt = createSafeBigInt(
+  (field, value) =>
+    new FlashTradeComposeError(
+      COMPOSE_ERROR_CODES.INVALID_BIGINT,
+      `Invalid numeric value for ${field}: ${String(value)}`,
+    ),
+);
 
-/**
- * Create a fake TransactionSigner from an Address for compose-time account resolution.
- * The actual signing happens at transaction execution time.
- */
-function addressAsSigner(address: Address): TransactionSigner {
-  return {
-    address,
-    signTransactions: async () => { throw new Error("addressAsSigner is for compose-time only"); },
-  } as unknown as TransactionSigner;
+function validateSwapInstructions(instructions: Instruction[]): void {
+  for (let i = 0; i < instructions.length; i++) {
+    const ix = instructions[i];
+    if (ix.programAddress !== JUPITER_PROGRAM_ADDRESS) {
+      throw new FlashTradeComposeError(
+        COMPOSE_ERROR_CODES.INVALID_PARAM,
+        `swapInstructions[${i}] has unexpected program ${ix.programAddress} — expected Jupiter V6 (${JUPITER_PROGRAM_ADDRESS})`,
+      );
+    }
+  }
 }
 
 // ─── Compose: Core Perps (6 actions) ─────────────────────────────────────────
@@ -88,7 +115,10 @@ async function composeOpenPosition(
   const targetSymbol = requireField<string>(params, "targetSymbol");
   const collateralSymbol = requireField<string>(params, "collateralSymbol");
   const side = parseSide(requireField<string>(params, "side"));
-  const priceWithSlippage = requireField<{ price: string; exponent: number }>(params, "priceWithSlippage");
+  const priceWithSlippage = requireField<{ price: string; exponent: number }>(
+    params,
+    "priceWithSlippage",
+  );
   const collateralAmount = requireField<string>(params, "collateralAmount");
   const sizeAmount = requireField<string>(params, "sizeAmount");
 
@@ -116,8 +146,8 @@ async function composeOpenPosition(
     ixSysvar: accts.ixSysvar,
     fundingMint: accts.collateralCustody.mint,
     priceWithSlippage: parseOraclePrice(priceWithSlippage),
-    collateralAmount: BigInt(collateralAmount),
-    sizeAmount: BigInt(sizeAmount),
+    collateralAmount: safeBigInt(collateralAmount, "collateralAmount"),
+    sizeAmount: safeBigInt(sizeAmount, "sizeAmount"),
     privilege: Privilege.None,
   });
 
@@ -131,7 +161,10 @@ async function composeClosePosition(
   const targetSymbol = requireField<string>(params, "targetSymbol");
   const collateralSymbol = requireField<string>(params, "collateralSymbol");
   const side = parseSide(requireField<string>(params, "side"));
-  const priceWithSlippage = requireField<{ price: string; exponent: number }>(params, "priceWithSlippage");
+  const priceWithSlippage = requireField<{ price: string; exponent: number }>(
+    params,
+    "priceWithSlippage",
+  );
 
   const accts = resolveFlashAccounts(targetSymbol, collateralSymbol, side);
 
@@ -168,7 +201,10 @@ async function composeIncreasePosition(
   const targetSymbol = requireField<string>(params, "targetSymbol");
   const collateralSymbol = requireField<string>(params, "collateralSymbol");
   const side = parseSide(requireField<string>(params, "side"));
-  const priceWithSlippage = requireField<{ price: string; exponent: number }>(params, "priceWithSlippage");
+  const priceWithSlippage = requireField<{ price: string; exponent: number }>(
+    params,
+    "priceWithSlippage",
+  );
   const sizeDelta = requireField<string>(params, "sizeDelta");
 
   const accts = resolveFlashAccounts(targetSymbol, collateralSymbol, side);
@@ -191,7 +227,7 @@ async function composeIncreasePosition(
     ixSysvar: accts.ixSysvar,
     collateralMint: accts.collateralCustody.mint,
     priceWithSlippage: parseOraclePrice(priceWithSlippage),
-    sizeDelta: BigInt(sizeDelta),
+    sizeDelta: safeBigInt(sizeDelta, "sizeDelta"),
     privilege: Privilege.None,
   });
 
@@ -205,7 +241,10 @@ async function composeDecreasePosition(
   const targetSymbol = requireField<string>(params, "targetSymbol");
   const collateralSymbol = requireField<string>(params, "collateralSymbol");
   const side = parseSide(requireField<string>(params, "side"));
-  const priceWithSlippage = requireField<{ price: string; exponent: number }>(params, "priceWithSlippage");
+  const priceWithSlippage = requireField<{ price: string; exponent: number }>(
+    params,
+    "priceWithSlippage",
+  );
   const sizeDelta = requireField<string>(params, "sizeDelta");
 
   const accts = resolveFlashAccounts(targetSymbol, collateralSymbol, side);
@@ -228,7 +267,7 @@ async function composeDecreasePosition(
     ixSysvar: accts.ixSysvar,
     collateralMint: accts.collateralCustody.mint,
     priceWithSlippage: parseOraclePrice(priceWithSlippage),
-    sizeDelta: BigInt(sizeDelta),
+    sizeDelta: safeBigInt(sizeDelta, "sizeDelta"),
     privilege: Privilege.None,
   });
 
@@ -263,7 +302,7 @@ async function composeAddCollateral(
     program: PERPETUALS_PROGRAM,
     ixSysvar: accts.ixSysvar,
     fundingMint: accts.collateralCustody.mint,
-    collateralDelta: BigInt(amount),
+    collateralDelta: safeBigInt(amount, "amount"),
   });
 
   return { instructions: [ix as Instruction] };
@@ -298,7 +337,7 @@ async function composeRemoveCollateral(
     program: PERPETUALS_PROGRAM,
     ixSysvar: accts.ixSysvar,
     receivingMint: accts.collateralCustody.mint,
-    collateralDeltaUsd: BigInt(amount),
+    collateralDeltaUsd: safeBigInt(amount, "amount"),
   });
 
   return { instructions: [ix as Instruction] };
@@ -314,13 +353,24 @@ async function composePlaceTriggerOrder(
   const collateralSymbol = requireField<string>(params, "collateralSymbol");
   const receiveSymbol = requireField<string>(params, "receiveSymbol");
   const side = parseSide(requireField<string>(params, "side"));
-  const triggerPrice = requireField<{ price: string; exponent: number }>(params, "triggerPrice");
+  const triggerPrice = requireField<{ price: string; exponent: number }>(
+    params,
+    "triggerPrice",
+  );
+  const triggerPriceVal = safeBigInt(triggerPrice.price, "triggerPrice.price");
+  if (triggerPriceVal <= 0n) {
+    throw new FlashTradeComposeError(
+      COMPOSE_ERROR_CODES.INVALID_BIGINT,
+      "triggerPrice must be > 0 for placeTriggerOrder",
+    );
+  }
   const deltaSizeAmount = requireField<string>(params, "deltaSizeAmount");
   const isStopLoss = requireField<boolean>(params, "isStopLoss");
 
   const accts = resolveFlashAccounts(targetSymbol, collateralSymbol, side);
   const receiveCustody = FLASH_CUSTODY_MAP[receiveSymbol];
-  if (!receiveCustody) throw new Error(`Unknown receive symbol: ${receiveSymbol}`);
+  if (!receiveCustody)
+    throw new Error(`Unknown receive symbol: ${receiveSymbol}`);
 
   const orderKp = await generateKeyPairSigner();
 
@@ -342,7 +392,7 @@ async function composePlaceTriggerOrder(
     program: PERPETUALS_PROGRAM,
     ixSysvar: accts.ixSysvar,
     triggerPrice: parseOraclePrice(triggerPrice),
-    deltaSizeAmount: BigInt(deltaSizeAmount),
+    deltaSizeAmount: safeBigInt(deltaSizeAmount, "deltaSizeAmount"),
     isStopLoss,
   });
 
@@ -358,13 +408,24 @@ async function composeEditTriggerOrder(
   const receiveSymbol = requireField<string>(params, "receiveSymbol");
   const side = parseSide(requireField<string>(params, "side"));
   const orderId = requireField<number>(params, "orderId");
-  const triggerPrice = requireField<{ price: string; exponent: number }>(params, "triggerPrice");
+  const triggerPrice = requireField<{ price: string; exponent: number }>(
+    params,
+    "triggerPrice",
+  );
+  const triggerPriceVal = safeBigInt(triggerPrice.price, "triggerPrice.price");
+  if (triggerPriceVal <= 0n) {
+    throw new FlashTradeComposeError(
+      COMPOSE_ERROR_CODES.INVALID_BIGINT,
+      "triggerPrice must be > 0 for editTriggerOrder",
+    );
+  }
   const deltaSizeAmount = requireField<string>(params, "deltaSizeAmount");
   const isStopLoss = requireField<boolean>(params, "isStopLoss");
 
   const accts = resolveFlashAccounts(targetSymbol, collateralSymbol, side);
   const receiveCustody = FLASH_CUSTODY_MAP[receiveSymbol];
-  if (!receiveCustody) throw new Error(`Unknown receive symbol: ${receiveSymbol}`);
+  if (!receiveCustody)
+    throw new Error(`Unknown receive symbol: ${receiveSymbol}`);
 
   const ix = getEditTriggerOrderInstruction({
     owner: addressAsSigner(ctx.vault),
@@ -383,7 +444,7 @@ async function composeEditTriggerOrder(
     ixSysvar: accts.ixSysvar,
     orderId,
     triggerPrice: parseOraclePrice(triggerPrice),
-    deltaSizeAmount: BigInt(deltaSizeAmount),
+    deltaSizeAmount: safeBigInt(deltaSizeAmount, "deltaSizeAmount"),
     isStopLoss,
   });
 
@@ -421,17 +482,28 @@ async function composePlaceLimitOrder(
   const reserveSymbol = requireField<string>(params, "reserveSymbol");
   const receiveSymbol = requireField<string>(params, "receiveSymbol");
   const side = parseSide(requireField<string>(params, "side"));
-  const limitPrice = requireField<{ price: string; exponent: number }>(params, "limitPrice");
+  const limitPrice = requireField<{ price: string; exponent: number }>(
+    params,
+    "limitPrice",
+  );
   const reserveAmount = requireField<string>(params, "reserveAmount");
   const sizeAmount = requireField<string>(params, "sizeAmount");
-  const stopLossPrice = requireField<{ price: string; exponent: number }>(params, "stopLossPrice");
-  const takeProfitPrice = requireField<{ price: string; exponent: number }>(params, "takeProfitPrice");
+  const stopLossPrice = requireField<{ price: string; exponent: number }>(
+    params,
+    "stopLossPrice",
+  );
+  const takeProfitPrice = requireField<{ price: string; exponent: number }>(
+    params,
+    "takeProfitPrice",
+  );
 
   const accts = resolveFlashAccounts(targetSymbol, collateralSymbol, side);
   const reserveCustody = FLASH_CUSTODY_MAP[reserveSymbol];
-  if (!reserveCustody) throw new Error(`Unknown reserve symbol: ${reserveSymbol}`);
+  if (!reserveCustody)
+    throw new Error(`Unknown reserve symbol: ${reserveSymbol}`);
   const receiveCustody = FLASH_CUSTODY_MAP[receiveSymbol];
-  if (!receiveCustody) throw new Error(`Unknown receive symbol: ${receiveSymbol}`);
+  if (!receiveCustody)
+    throw new Error(`Unknown receive symbol: ${receiveSymbol}`);
 
   const orderKp = await generateKeyPairSigner();
   const positionKp = await generateKeyPairSigner();
@@ -458,13 +530,16 @@ async function composePlaceLimitOrder(
     ixSysvar: accts.ixSysvar,
     fundingMint: reserveCustody.mint,
     limitPrice: parseOraclePrice(limitPrice),
-    reserveAmount: BigInt(reserveAmount),
-    sizeAmount: BigInt(sizeAmount),
+    reserveAmount: safeBigInt(reserveAmount, "reserveAmount"),
+    sizeAmount: safeBigInt(sizeAmount, "sizeAmount"),
     stopLossPrice: parseOraclePrice(stopLossPrice),
     takeProfitPrice: parseOraclePrice(takeProfitPrice),
   });
 
-  return { instructions: [ix as Instruction], additionalSigners: [positionKp, orderKp] };
+  return {
+    instructions: [ix as Instruction],
+    additionalSigners: [positionKp, orderKp],
+  };
 }
 
 async function composeEditLimitOrder(
@@ -477,16 +552,27 @@ async function composeEditLimitOrder(
   const receiveSymbol = requireField<string>(params, "receiveSymbol");
   const side = parseSide(requireField<string>(params, "side"));
   const orderId = requireField<number>(params, "orderId");
-  const limitPrice = requireField<{ price: string; exponent: number }>(params, "limitPrice");
+  const limitPrice = requireField<{ price: string; exponent: number }>(
+    params,
+    "limitPrice",
+  );
   const sizeAmount = requireField<string>(params, "sizeAmount");
-  const stopLossPrice = requireField<{ price: string; exponent: number }>(params, "stopLossPrice");
-  const takeProfitPrice = requireField<{ price: string; exponent: number }>(params, "takeProfitPrice");
+  const stopLossPrice = requireField<{ price: string; exponent: number }>(
+    params,
+    "stopLossPrice",
+  );
+  const takeProfitPrice = requireField<{ price: string; exponent: number }>(
+    params,
+    "takeProfitPrice",
+  );
 
   const accts = resolveFlashAccounts(targetSymbol, collateralSymbol, side);
   const reserveCustody = FLASH_CUSTODY_MAP[reserveSymbol];
-  if (!reserveCustody) throw new Error(`Unknown reserve symbol: ${reserveSymbol}`);
+  if (!reserveCustody)
+    throw new Error(`Unknown reserve symbol: ${reserveSymbol}`);
   const receiveCustody = FLASH_CUSTODY_MAP[receiveSymbol];
-  if (!receiveCustody) throw new Error(`Unknown receive symbol: ${receiveSymbol}`);
+  if (!receiveCustody)
+    throw new Error(`Unknown receive symbol: ${receiveSymbol}`);
 
   const ix = getEditLimitOrderInstruction({
     owner: addressAsSigner(ctx.vault),
@@ -511,7 +597,7 @@ async function composeEditLimitOrder(
     receivingMint: reserveCustody.mint,
     orderId,
     limitPrice: parseOraclePrice(limitPrice),
-    sizeAmount: BigInt(sizeAmount),
+    sizeAmount: safeBigInt(sizeAmount, "sizeAmount"),
     stopLossPrice: parseOraclePrice(stopLossPrice),
     takeProfitPrice: parseOraclePrice(takeProfitPrice),
   });
@@ -546,15 +632,22 @@ async function composeSwapAndOpen(
   const targetSymbol = requireField<string>(params, "targetSymbol");
   const collateralSymbol = requireField<string>(params, "collateralSymbol");
   const side = parseSide(requireField<string>(params, "side"));
-  const priceWithSlippage = requireField<{ price: string; exponent: number }>(params, "priceWithSlippage");
+  const priceWithSlippage = requireField<{ price: string; exponent: number }>(
+    params,
+    "priceWithSlippage",
+  );
   const collateralAmount = requireField<string>(params, "collateralAmount");
   const sizeAmount = requireField<string>(params, "sizeAmount");
   const swapInstructions = (params.swapInstructions ?? []) as Instruction[];
+  if (swapInstructions.length > 0) {
+    validateSwapInstructions(swapInstructions);
+  }
 
   const accts = resolveFlashAccounts(targetSymbol, collateralSymbol, side);
   // For swapAndOpen: receivingCustody = the custody that receives the swap output
   const receivingCustody = FLASH_CUSTODY_MAP[collateralSymbol];
-  if (!receivingCustody) throw new Error(`Unknown collateral symbol: ${collateralSymbol}`);
+  if (!receivingCustody)
+    throw new Error(`Unknown collateral symbol: ${collateralSymbol}`);
 
   const positionKp = await generateKeyPairSigner();
 
@@ -584,8 +677,8 @@ async function composeSwapAndOpen(
     collateralMint: accts.collateralCustody.mint,
     collateralTokenProgram: TOKEN_PROGRAM,
     priceWithSlippage: parseOraclePrice(priceWithSlippage),
-    amountIn: BigInt(collateralAmount),
-    sizeAmount: BigInt(sizeAmount),
+    amountIn: safeBigInt(collateralAmount, "collateralAmount"),
+    sizeAmount: safeBigInt(sizeAmount, "sizeAmount"),
     privilege: Privilege.None,
   });
 
@@ -602,13 +695,20 @@ async function composeCloseAndSwap(
   const targetSymbol = requireField<string>(params, "targetSymbol");
   const collateralSymbol = requireField<string>(params, "collateralSymbol");
   const side = parseSide(requireField<string>(params, "side"));
-  const priceWithSlippage = requireField<{ price: string; exponent: number }>(params, "priceWithSlippage");
+  const priceWithSlippage = requireField<{ price: string; exponent: number }>(
+    params,
+    "priceWithSlippage",
+  );
   const swapInstructions = (params.swapInstructions ?? []) as Instruction[];
+  if (swapInstructions.length > 0) {
+    validateSwapInstructions(swapInstructions);
+  }
 
   const accts = resolveFlashAccounts(targetSymbol, collateralSymbol, side);
   // For closeAndSwap: dispensingCustody = what gets dispensed after close
   const dispensingCustody = FLASH_CUSTODY_MAP[collateralSymbol];
-  if (!dispensingCustody) throw new Error(`Unknown collateral symbol: ${collateralSymbol}`);
+  if (!dispensingCustody)
+    throw new Error(`Unknown collateral symbol: ${collateralSymbol}`);
 
   const ix = getCloseAndSwapInstruction({
     owner: addressAsSigner(ctx.vault),
@@ -647,22 +747,28 @@ async function composeCloseAndSwap(
 
 // ─── Dispatcher ──────────────────────────────────────────────────────────────
 
-const SUPPORTED_ACTIONS = [
-  "openPosition",
-  "closePosition",
-  "increasePosition",
-  "decreasePosition",
-  "addCollateral",
-  "removeCollateral",
-  "placeTriggerOrder",
-  "editTriggerOrder",
-  "cancelTriggerOrder",
-  "placeLimitOrder",
-  "editLimitOrder",
-  "cancelLimitOrder",
-  "swapAndOpen",
-  "closeAndSwap",
-];
+type FlashActionHandler = (
+  ctx: ProtocolContext,
+  params: Record<string, unknown>,
+) => Promise<ProtocolComposeResult>;
+
+const FLASH_ACTIONS: Readonly<Record<string, FlashActionHandler>> =
+  Object.freeze({
+    openPosition: composeOpenPosition,
+    closePosition: composeClosePosition,
+    increasePosition: composeIncreasePosition,
+    decreasePosition: composeDecreasePosition,
+    addCollateral: composeAddCollateral,
+    removeCollateral: composeRemoveCollateral,
+    placeTriggerOrder: composePlaceTriggerOrder,
+    editTriggerOrder: composeEditTriggerOrder,
+    cancelTriggerOrder: composeCancelTriggerOrder,
+    placeLimitOrder: composePlaceLimitOrder,
+    editLimitOrder: composeEditLimitOrder,
+    cancelLimitOrder: composeCancelLimitOrder,
+    swapAndOpen: composeSwapAndOpen,
+    closeAndSwap: composeCloseAndSwap,
+  });
 
 /**
  * Dispatch a Flash Trade action to the correct compose function.
@@ -673,27 +779,11 @@ export async function dispatchFlashTradeCompose(
   action: string,
   params: Record<string, unknown>,
 ): Promise<ProtocolComposeResult> {
-  if (!SUPPORTED_ACTIONS.includes(action)) {
-    throw new Error(
-      `Unsupported Flash Trade action: ${action}. Supported: ${SUPPORTED_ACTIONS.join(", ")}`,
+  if (!Object.hasOwn(FLASH_ACTIONS, action)) {
+    throw new FlashTradeComposeError(
+      COMPOSE_ERROR_CODES.UNSUPPORTED_ACTION,
+      `Unsupported action: ${action}. Supported: ${Object.keys(FLASH_ACTIONS).join(", ")}`,
     );
   }
-
-  switch (action) {
-    case "openPosition": return composeOpenPosition(ctx, params);
-    case "closePosition": return composeClosePosition(ctx, params);
-    case "increasePosition": return composeIncreasePosition(ctx, params);
-    case "decreasePosition": return composeDecreasePosition(ctx, params);
-    case "addCollateral": return composeAddCollateral(ctx, params);
-    case "removeCollateral": return composeRemoveCollateral(ctx, params);
-    case "placeTriggerOrder": return composePlaceTriggerOrder(ctx, params);
-    case "editTriggerOrder": return composeEditTriggerOrder(ctx, params);
-    case "cancelTriggerOrder": return composeCancelTriggerOrder(ctx, params);
-    case "placeLimitOrder": return composePlaceLimitOrder(ctx, params);
-    case "editLimitOrder": return composeEditLimitOrder(ctx, params);
-    case "cancelLimitOrder": return composeCancelLimitOrder(ctx, params);
-    case "swapAndOpen": return composeSwapAndOpen(ctx, params);
-    case "closeAndSwap": return composeCloseAndSwap(ctx, params);
-    default: throw new Error(`Unsupported Flash Trade action: ${action}`);
-  }
+  return FLASH_ACTIONS[action as keyof typeof FLASH_ACTIONS](ctx, params);
 }

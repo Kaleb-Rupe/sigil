@@ -16,6 +16,15 @@ describe("errors", () => {
     it("has exactly 77 entries", () => {
       expect(Object.keys(ERROR_MAP)).to.have.length(77);
     });
+
+    it("no suggestion string contains legacy shield_ tool names", () => {
+      for (const [code, info] of Object.entries(ERROR_MAP)) {
+        expect(
+          info.suggestion,
+          `Error ${code} (${info.name}) still references shield_`,
+        ).to.not.include("shield_");
+      }
+    });
   });
 
   describe("lookupError", () => {

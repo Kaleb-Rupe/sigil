@@ -11,11 +11,7 @@ import {
 } from "../src/simulation.js";
 import type { BalanceDelta, DrainDetectionInput } from "../src/simulation.js";
 
-function makeDelta(
-  account: string,
-  pre: bigint,
-  post: bigint,
-): BalanceDelta {
+function makeDelta(account: string, pre: bigint, post: bigint): BalanceDelta {
   return { account, preBalance: pre, postBalance: post, delta: post - pre };
 }
 
@@ -51,14 +47,14 @@ describe("simulation", () => {
       expect(RISK_FLAG_ERROR_MAP[RISK_FLAG_UNKNOWN_RECIPIENT]).to.equal(7002);
     });
 
-    it("maps all 5 flags to codes 7001-7005", () => {
+    it("maps all 5 flags to correct codes (SIZE_OVERFLOW → 7033)", () => {
       const codes = Object.values(RISK_FLAG_ERROR_MAP);
       expect(codes).to.have.length(5);
       expect(codes).to.include(7001);
       expect(codes).to.include(7002);
       expect(codes).to.include(7003);
       expect(codes).to.include(7004);
-      expect(codes).to.include(7005);
+      expect(codes).to.include(7033);
     });
   });
 

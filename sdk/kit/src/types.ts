@@ -32,6 +32,11 @@ export const PROTOCOL_TREASURY =
 // ─── USD Constants ────────────────────────────────────────────────────────────
 
 export const USD_DECIMALS = 6;
+/** Scaling factor for stablecoin-to-USD conversion.
+ *  USDC/USDT both use 6 decimals: amount / STABLECOIN_USD_FACTOR = USD.
+ *  This assumption is load-bearing — if a stablecoin with different decimals
+ *  is added to isStablecoinMint(), this factor must be updated. */
+export const STABLECOIN_USD_FACTOR = 10n ** BigInt(USD_DECIMALS);
 
 // ─── Multi-agent Constants ────────────────────────────────────────────────────
 
@@ -63,6 +68,11 @@ export const PERPS_FULL =
 
 export const MAX_ESCROW_DURATION = 2_592_000; // 30 days in seconds
 
+// ─── u64 Boundary ────────────────────────────────────────────────────────────
+
+/** Maximum u64 value — used for BigInt clamping to match on-chain Rust math. */
+export const U64_MAX = BigInt("18446744073709551615");
+
 // ─── Slippage Constants ───────────────────────────────────────────────────────
 
 export const MAX_SLIPPAGE_BPS = 5_000; // 50%
@@ -71,6 +81,12 @@ export const MAX_SLIPPAGE_BPS = 5_000; // 50%
 
 export const EPOCH_DURATION = 600; // 10 minutes in seconds
 export const NUM_EPOCHS = 144; // 144 × 10 min = 24h
+
+// ─── AgentSpendOverlay Constants ─────────────────────────────────────────────
+
+export const OVERLAY_EPOCH_DURATION = 3600; // 1 hour in seconds
+export const OVERLAY_NUM_EPOCHS = 24; // 24 × 1h = 24h
+export const ROLLING_WINDOW_SECONDS = 86_400; // 24 hours in seconds
 
 // ─── Protocol Mode ────────────────────────────────────────────────────────────
 

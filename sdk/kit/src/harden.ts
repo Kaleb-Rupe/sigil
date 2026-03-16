@@ -18,10 +18,17 @@ import type {
 import type { ResolvedPolicies } from "./policies.js";
 import { shield, type ShieldedContext, type ShieldOptions } from "./shield.js";
 import type { ShieldPolicies } from "./policies.js";
-import { getVaultPDA, getPolicyPDA, getPendingPolicyPDA } from "./resolve-accounts.js";
+import {
+  getVaultPDA,
+  getPolicyPDA,
+  getPendingPolicyPDA,
+} from "./resolve-accounts.js";
 import { fetchMaybeAgentVault } from "./generated/accounts/agentVault.js";
 import { PHALNX_PROGRAM_ADDRESS } from "./generated/programs/phalnx.js";
 import type { Network } from "./types.js";
+import type { ProtocolRuleConfig } from "./constraints/types.js";
+import type { ConstraintEntryArgs } from "./generated/index.js";
+import type { ConstraintBuilder } from "./constraints/builder.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -57,6 +64,10 @@ export interface HardenOptions {
   allowedDestinations?: Address[];
   /** Skip TEE wallet requirement — devnet testing only. Default: false */
   unsafeSkipTeeCheck?: boolean;
+  /** Protocol constraint configs to compile during provisioning. */
+  protocolConstraints?: ProtocolRuleConfig[];
+  /** Pre-configured ConstraintBuilder with registered descriptors. Required if protocolConstraints is provided. */
+  constraintBuilder?: ConstraintBuilder;
 }
 
 /** Result of hardening a wallet. */
@@ -73,13 +84,25 @@ export interface HardenResult {
   agentAddress: Address;
   /** Owner address */
   ownerAddress: Address;
+  /** Compiled constraint entries (if protocolConstraints provided) */
+  constraintEntries?: ConstraintEntryArgs[];
+  /** Constraint build warnings */
+  constraintWarnings?: string[];
+  /** Constraint budget info */
+  constraintBudget?: {
+    used: number;
+    total: number;
+    perProtocol: Record<string, number>;
+  };
 }
 
 /** Configuration for withVault() convenience wrapper. */
-export interface WithVaultOptions extends HardenOptions {
-  /** Shield policies (client-side enforcement) */
+export interface WithVaultOptions {
+  /** On-chain vault provisioning configuration. */
+  harden: HardenOptions;
+  /** Shield policies (client-side enforcement). */
   policies?: ShieldPolicies;
-  /** Shield event callbacks */
+  /** Shield event callbacks. */
   shieldCallbacks?: ShieldOptions;
 }
 
@@ -199,26 +222,48 @@ export async function findNextVaultId(
  * - getRegisterAgentInstructionAsync()
  * - getUpdatePolicyInstructionAsync()
  */
-export async function harden(
-  options: HardenOptions,
-): Promise<HardenResult> {
+export async function harden(options: HardenOptions): Promise<HardenResult> {
   const { rpc, owner, agent } = options;
 
   // Validate owner ≠ agent
   if (owner.address === agent.address) {
     throw new Error(
       "Owner and agent must be different keys. " +
-      "The owner has full vault authority; the agent has constrained execution only.",
+        "The owner has full vault authority; the agent has constrained execution only.",
     );
   }
 
   // Resolve vault ID
-  const vaultId = options.vaultId ?? await findNextVaultId(rpc, owner.address);
+  const vaultId =
+    options.vaultId ?? (await findNextVaultId(rpc, owner.address));
 
   // Derive PDAs
   const [vaultAddress] = await getVaultPDA(owner.address, vaultId);
   const [policyAddress] = await getPolicyPDA(vaultAddress);
   const [pendingPolicyAddress] = await getPendingPolicyPDA(vaultAddress);
+
+  // Compile constraints if provided
+  let constraintEntries: ConstraintEntryArgs[] | undefined;
+  let constraintWarnings: string[] | undefined;
+  let constraintBudget:
+    | { used: number; total: number; perProtocol: Record<string, number> }
+    | undefined;
+
+  if (options.protocolConstraints && options.protocolConstraints.length > 0) {
+    if (!options.constraintBuilder) {
+      throw new Error(
+        "protocolConstraints requires a constraintBuilder with registered descriptors. " +
+          "Create a ConstraintBuilder, register descriptors, and pass it via options.constraintBuilder.",
+      );
+    }
+
+    const buildResult = options.constraintBuilder.compile(
+      options.protocolConstraints,
+    );
+    constraintEntries = buildResult.entries;
+    constraintWarnings = buildResult.warnings;
+    constraintBudget = buildResult.budget;
+  }
 
   return {
     vaultAddress,
@@ -227,6 +272,9 @@ export async function harden(
     pendingPolicyAddress,
     agentAddress: agent.address,
     ownerAddress: owner.address,
+    constraintEntries,
+    constraintWarnings,
+    constraintBudget,
   };
 }
 
@@ -236,16 +284,27 @@ export async function harden(
  * Convenience: shield + harden in one call.
  *
  * Creates both client-side (shield) and on-chain (vault) enforcement.
+ * Auto-configures shield's on-chain sync using the derived vault address.
  * This is the primary entry point for the single-product model.
  */
 export async function withVault(
   options: WithVaultOptions,
 ): Promise<WithVaultResult> {
-  // Create client-side shield
-  const shieldCtx = shield(options.policies, options.shieldCallbacks);
+  // Provision on-chain vault first (derives vault address)
+  const hardenResult = await harden(options.harden);
 
-  // Create on-chain vault
-  const hardenResult = await harden(options);
+  // Auto-configure shield's on-chain sync using the derived vault address
+  const shieldOpts: ShieldOptions = {
+    ...options.shieldCallbacks,
+    onChainSync: {
+      rpc: options.harden.rpc,
+      vaultAddress: hardenResult.vaultAddress,
+      agentAddress: options.harden.agent.address,
+      network: options.harden.network,
+    },
+  };
+
+  const shieldCtx = shield(options.policies, shieldOpts);
 
   return {
     shield: shieldCtx,

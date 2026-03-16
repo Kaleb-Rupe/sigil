@@ -35,25 +35,50 @@ const DEFAULT_CONFIG: Required<JupiterApiConfig> = {
   maxDelayMs: 30_000,
 };
 
-let currentConfig: Required<JupiterApiConfig> = { ...DEFAULT_CONFIG };
+let currentConfig: Readonly<Required<JupiterApiConfig>> = Object.freeze({
+  ...DEFAULT_CONFIG,
+});
 
 export function configureJupiterApi(config: JupiterApiConfig): void {
-  currentConfig = {
+  const normalizedUrl = (config.baseUrl ?? DEFAULT_CONFIG.baseUrl).replace(
+    /\/$/,
+    "",
+  );
+  // H-3: Enforce HTTPS for Jupiter API (security audit fix, BUG-5 URL parsing fix)
+  if (normalizedUrl) {
+    try {
+      const parsed = new URL(normalizedUrl);
+      const isLocalhost =
+        parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
+      if (parsed.protocol !== "https:" && !isLocalhost) {
+        throw new Error(
+          `Jupiter API base URL must use HTTPS (got: ${normalizedUrl}). ` +
+            "Use http://localhost only for local development/testing.",
+        );
+      }
+    } catch (e) {
+      if (e instanceof TypeError) {
+        throw new Error(`Invalid Jupiter API base URL: ${normalizedUrl}`);
+      }
+      throw e;
+    }
+  }
+  currentConfig = Object.freeze({
     apiKey: config.apiKey ?? DEFAULT_CONFIG.apiKey,
-    baseUrl: (config.baseUrl ?? DEFAULT_CONFIG.baseUrl).replace(/\/$/, ""),
+    baseUrl: normalizedUrl,
     maxRetries: config.maxRetries ?? DEFAULT_CONFIG.maxRetries,
     retryDelayMs: config.retryDelayMs ?? DEFAULT_CONFIG.retryDelayMs,
     timeoutMs: config.timeoutMs ?? DEFAULT_CONFIG.timeoutMs,
     maxDelayMs: config.maxDelayMs ?? DEFAULT_CONFIG.maxDelayMs,
-  };
+  });
 }
 
-export function getJupiterApiConfig(): Required<JupiterApiConfig> {
-  return { ...currentConfig };
+export function getJupiterApiConfig(): Readonly<Required<JupiterApiConfig>> {
+  return currentConfig;
 }
 
 export function resetJupiterApiConfig(): void {
-  currentConfig = { ...DEFAULT_CONFIG };
+  currentConfig = Object.freeze({ ...DEFAULT_CONFIG });
 }
 
 // ─── Fetch with Retry ───────────────────────────────────────────────────────

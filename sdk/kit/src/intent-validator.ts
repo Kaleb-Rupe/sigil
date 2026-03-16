@@ -12,7 +12,7 @@
 
 import type { IntentAction } from "./intents.js";
 import type { AgentError } from "./agent-errors.js";
-import { MAX_ESCROW_DURATION, MAX_SLIPPAGE_BPS } from "./types.js";
+import { MAX_ESCROW_DURATION, MAX_SLIPPAGE_BPS, U64_MAX } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -29,9 +29,6 @@ export interface ValidationResult {
 
 /** Base58 regex: 32-44 chars from the base58 alphabet */
 const BASE58_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-
-/** u64 max as BigInt */
-const U64_MAX = BigInt("18446744073709551615");
 
 /** Maximum leverage (100x, per plan spec) */
 const MAX_LEVERAGE = 100;
@@ -486,7 +483,8 @@ function validateSide(
     errors.push(
       makeError(field, value, 'Side must be "long" or "short"', {
         action: "fix_side",
-        description: 'Use exactly "long" or "short" -- no other values accepted',
+        description:
+          'Use exactly "long" or "short" -- no other values accepted',
       }),
     );
   }

@@ -165,14 +165,90 @@ describe("harden", () => {
     });
   });
 
-  describe("withVault()", () => {
-    it("returns both shield and harden results", async () => {
-      const result = await withVault({
+  describe("harden() constraint wiring", () => {
+    it("returns undefined constraint fields when no protocolConstraints", async () => {
+      const result = await harden({
         rpc: {} as any,
         network: "devnet",
         owner: mockOwner(),
         agent: mockAgentSigner(),
         vaultId: 0n,
+      });
+      expect(result.constraintEntries).to.be.undefined;
+      expect(result.constraintWarnings).to.be.undefined;
+      expect(result.constraintBudget).to.be.undefined;
+    });
+
+    it("throws when protocolConstraints given without constraintBuilder", async () => {
+      try {
+        await harden({
+          rpc: {} as any,
+          network: "devnet",
+          owner: mockOwner(),
+          agent: mockAgentSigner(),
+          vaultId: 0n,
+          protocolConstraints: [
+            {
+              protocolId: "flash-trade",
+              actionRules: [
+                { actions: ["openPosition"], type: "allowAll", params: {} },
+              ],
+            },
+          ],
+        });
+        expect.fail("should throw");
+      } catch (e: any) {
+        expect(e.message).to.include(
+          "protocolConstraints requires a constraintBuilder",
+        );
+      }
+    });
+
+    it("compiles constraints when builder and configs provided", async () => {
+      const { ConstraintBuilder, FlashTradeDescriptor } =
+        await import("../src/constraints/index.js");
+      const builder = new ConstraintBuilder();
+      builder.register(FlashTradeDescriptor);
+
+      const result = await harden({
+        rpc: {} as any,
+        network: "devnet",
+        owner: mockOwner(),
+        agent: mockAgentSigner(),
+        vaultId: 0n,
+        constraintBuilder: builder,
+        protocolConstraints: [
+          {
+            protocolId: "flash-trade",
+            actionRules: [
+              { actions: ["openPosition"], type: "allowAll", params: {} },
+            ],
+          },
+        ],
+      });
+
+      expect(result.constraintEntries).to.be.an("array");
+      expect(result.constraintEntries!.length).to.be.greaterThan(0);
+      expect(result.constraintBudget).to.exist;
+      expect(result.constraintBudget!.used).to.be.greaterThan(0);
+      expect(result.constraintBudget!.total).to.equal(16);
+      expect(
+        result.constraintBudget!.perProtocol["flash-trade"],
+      ).to.be.greaterThan(0);
+      expect(result.constraintWarnings).to.be.an("array");
+    });
+  });
+
+  describe("withVault()", () => {
+    it("returns both shield and harden results", async () => {
+      const result = await withVault({
+        harden: {
+          rpc: {} as any,
+          network: "devnet",
+          owner: mockOwner(),
+          agent: mockAgentSigner(),
+          vaultId: 0n,
+        },
       });
       expect(result.shield).to.exist;
       expect(result.shield.isPaused).to.be.false;
@@ -181,14 +257,48 @@ describe("harden", () => {
 
     it("passes shield policies through", async () => {
       const result = await withVault({
+        harden: {
+          rpc: {} as any,
+          network: "devnet",
+          owner: mockOwner(),
+          agent: mockAgentSigner(),
+          vaultId: 0n,
+        },
+        policies: { blockUnknownPrograms: true },
+      });
+      expect(result.shield.resolvedPolicies.blockUnknownPrograms).to.be.true;
+    });
+
+    it("auto-configures onChainSync on shield", async () => {
+      const result = await withVault({
+        harden: {
+          rpc: {} as any,
+          network: "devnet",
+          owner: mockOwner(),
+          agent: mockAgentSigner(),
+          vaultId: 0n,
+        },
+        policies: {},
+      });
+      expect(result.shield.hasOnChainSync).to.be.true;
+    });
+
+    it("harden() still works independently with unchanged API", async () => {
+      const result = await harden({
         rpc: {} as any,
         network: "devnet",
         owner: mockOwner(),
         agent: mockAgentSigner(),
         vaultId: 0n,
-        policies: { blockUnknownPrograms: true },
       });
-      expect(result.shield.resolvedPolicies.blockUnknownPrograms).to.be.true;
+      expect(result.vaultAddress).to.be.a("string");
+      expect(result.agentAddress).to.equal(AGENT);
+    });
+
+    it("mapPoliciesToVaultParams still works (regression)", () => {
+      const resolved = resolvePolicies({});
+      const params = mapPoliciesToVaultParams(resolved, 0n, FEE_DEST);
+      expect(typeof params.dailySpendingCap).to.equal("bigint");
     });
   });
 });

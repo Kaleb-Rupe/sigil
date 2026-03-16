@@ -51,8 +51,28 @@ export {
   PermissionBuilder,
   // Types
   ACTION_PERMISSION_MAP,
+  // Overlay constants
+  OVERLAY_EPOCH_DURATION,
+  OVERLAY_NUM_EPOCHS,
+  ROLLING_WINDOW_SECONDS,
+  // u64 boundary
+  U64_MAX,
 } from "./types.js";
 export type { Network, PositionEffect } from "./types.js";
+
+// ─── State Resolver ──────────────────────────────────────────────────────────
+export {
+  resolveVaultState,
+  getRolling24hUsd,
+  getAgentRolling24hUsd,
+  getProtocolSpend,
+  bytesToAddress,
+} from "./state-resolver.js";
+export type {
+  EffectiveBudget,
+  ProtocolBudget,
+  ResolvedVaultState,
+} from "./state-resolver.js";
 
 // ─── PDA Resolution ───────────────────────────────────────────────────────────
 export {
@@ -72,19 +92,24 @@ export type {
   ResolvedAccounts,
 } from "./resolve-accounts.js";
 
+// ─── ALT (Address Lookup Table) ──────────────────────────────────────────────
+export {
+  PHALNX_ALT_DEVNET,
+  PHALNX_ALT_MAINNET,
+  getPhalnxAltAddress,
+} from "./alt-config.js";
+export { AltCache, mergeAltAddresses } from "./alt-loader.js";
+
 // ─── Transaction Composer ─────────────────────────────────────────────────────
 export {
   composePhalnxTransaction,
   validateTransactionSize,
+  measureTransactionSize,
 } from "./composer.js";
 export type { ComposeTransactionParams } from "./composer.js";
 
 // ─── Event Parser ─────────────────────────────────────────────────────────────
-export {
-  parsePhalnxEvents,
-  filterEvents,
-  getEventNames,
-} from "./events.js";
+export { parsePhalnxEvents, filterEvents, getEventNames } from "./events.js";
 export type { PhalnxEvent, PhalnxEventName } from "./events.js";
 
 // ─── Priority Fees ────────────────────────────────────────────────────────────
@@ -152,6 +177,7 @@ export {
   AttestationStatus,
   AttestationCache,
   DEFAULT_CACHE_TTL_MS,
+  VALID_TEE_PROVIDERS,
   isTeeWallet,
   TeeAttestationError,
   AttestationCertChainError,
@@ -219,10 +245,7 @@ export { validateIntentInput } from "./intent-validator.js";
 export type { ValidationResult } from "./intent-validator.js";
 
 // ─── Intent Storage ──────────────────────────────────────────────────────────
-export {
-  createIntent,
-  MemoryIntentStorage,
-} from "./intent-storage.js";
+export { createIntent, MemoryIntentStorage } from "./intent-storage.js";
 
 // ─── Protocol Handler Interface ──────────────────────────────────────────────
 export type {
@@ -334,14 +357,167 @@ export type {
 } from "./transaction-executor.js";
 
 // ─── RPC Helpers ───────────────────────────────────────────────────────────
+export { BlockhashCache, sendAndConfirmTransaction } from "./rpc-helpers.js";
+export type { Blockhash, SendAndConfirmOptions } from "./rpc-helpers.js";
+
+// ─── Constraint Builder ──────────────────────────────────────────────────
 export {
-  BlockhashCache,
-  sendAndConfirmTransaction,
-} from "./rpc-helpers.js";
+  // Builder
+  ConstraintBuilder,
+  ConstraintBudgetExceededError,
+  // Flash Trade
+  FlashTradeDescriptor,
+  FLASH_TRADE_SCHEMA,
+  FLASH_TRADE_PROGRAM,
+  checkStrictModeWarnings,
+  // Kamino
+  KaminoDescriptor,
+  KAMINO_SCHEMA,
+  KAMINO_LENDING_PROGRAM,
+  KAMINO_SPENDING_ACTIONS,
+  KAMINO_RISK_REDUCING_ACTIONS,
+  KAMINO_AMOUNT_CONSTRAINED_ACTIONS,
+  // Encoding
+  bigintToLeBytes,
+  numberToLeBytes,
+  mapOperator,
+  fieldTypeToSize,
+  // Schema constants
+  SPENDING_ACTIONS,
+  RISK_REDUCING_ACTIONS,
+  SIZE_CONSTRAINED_ACTIONS,
+  COLLATERAL_CONSTRAINED_ACTIONS,
+  ORDER_SIZE_ACTIONS,
+} from "./constraints/index.js";
 export type {
-  Blockhash,
-  SendAndConfirmOptions,
-} from "./rpc-helpers.js";
+  FieldType,
+  InstructionFieldSchema,
+  InstructionSchema,
+  ProtocolSchema,
+  ProtocolRuleConfig,
+  ActionRule,
+  CompiledConstraint,
+  ProtocolDescriptor,
+  ConstraintBuildResult,
+  RuleTypeMetadata,
+  RuleParamMeta,
+} from "./constraints/index.js";
+
+// ─── Flash Trade Analytics ──────────────────────────────────────────────────
+export * from "./analytics/index.js";
+
+// ─── Kamino API ──────────────────────────────────────────────────────────
+export {
+  // Config
+  configureKaminoApi,
+  getKaminoApiConfig,
+  resetKaminoApiConfig,
+  KaminoApiError,
+  // Data queries
+  fetchKaminoMarkets,
+  fetchReserveMetrics,
+  fetchLeverageMetrics,
+  fetchObligations,
+  fetchLoanInfo,
+  fetchObligationPnl,
+  fetchStakingYields,
+  fetchUserRewards,
+  // Deserialization
+  deserializeKaminoInstruction,
+} from "./integrations/kamino-api.js";
+export type {
+  KaminoApiConfig,
+  KaminoSerializedInstruction,
+  KaminoTxResponse,
+  KaminoMarketInfo,
+  KaminoReserveMetrics,
+  KaminoLeverageMetrics,
+  KaminoObligation,
+  KaminoLoanInfo,
+  KaminoPnl,
+  StakingYield,
+  KaminoRewards,
+} from "./integrations/kamino-api.js";
+
+// ─── Kamino Verification ──────────────────────────────────────────────────
+export { verifyKaminoInstructions } from "./integrations/kamino-verify.js";
+
+// ─── Compose Errors ──────────────────────────────────────────────────────
+export {
+  COMPOSE_ERROR_CODES,
+  ComposeError,
+  FlashTradeComposeError,
+  KaminoComposeError,
+  createSafeBigInt,
+  createRequireField,
+  addressAsSigner,
+} from "./integrations/compose-errors.js";
+export type { ComposeErrorCode } from "./integrations/compose-errors.js";
+
+// ─── x402 HTTP 402 Payment Required ───────────────────────────────────────
+export {
+  // Core
+  shieldedFetch,
+  createShieldedFetch,
+  // Codec
+  decodePaymentRequiredHeader,
+  encodePaymentSignatureHeader,
+  decodePaymentResponseHeader,
+  // Selector
+  selectPaymentOption,
+  // Transfer Builder
+  buildX402TransferInstruction,
+  deriveAta,
+  transferToInspectable,
+  X402_TOKEN_PROGRAM_ID,
+  X402_ATA_PROGRAM_ID,
+  // Nonce Tracker
+  NonceTracker,
+  // Amount Guard
+  validatePaymentAmount,
+  recordPaymentAmount,
+  resetPaymentHistory,
+  // Policy Bridge
+  evaluateX402Payment,
+  recordX402Spend,
+  // Facilitator
+  validateSettlement,
+  // Audit
+  emitPaymentEvent,
+  createPaymentEvent,
+  // Errors
+  X402ParseError,
+  X402PaymentError,
+  X402UnsupportedError,
+  X402DestinationBlockedError,
+  X402ReplayError,
+} from "./x402/index.js";
+export type {
+  PaymentRequired,
+  PaymentRequirements,
+  ResourceInfo,
+  PaymentPayload,
+  SettleResponse,
+  X402Config,
+  ShieldedFetchOptions,
+  ShieldedFetchResponse,
+  X402PaymentResult,
+  X402PaymentEvent,
+  FacilitatorVerifyResult,
+} from "./x402/index.js";
+
+// ─── VelocityTracker ──────────────────────────────────────────────────────
+export { VelocityTracker } from "./velocity-tracker.js";
+export type { VelocityConfig, SpendStatus } from "./velocity-tracker.js";
+
+// ─── Intent-Drift Detection ──────────────────────────────────────────────
+export { detectIntentDrift, enforceIntentDrift } from "./intent-drift.js";
+export type {
+  DriftViolationType,
+  DriftViolation,
+  DriftCheckResult,
+  DriftConfig,
+} from "./intent-drift.js";
 
 // NOTE: compat.ts is intentionally NOT exported.
 // It is for internal use only when bridging T2 protocol SDKs.

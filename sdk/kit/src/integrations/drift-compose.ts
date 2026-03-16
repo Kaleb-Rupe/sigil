@@ -9,7 +9,11 @@
  */
 
 import type { Instruction } from "@solana/kit";
-import type { ProtocolContext, ProtocolComposeResult } from "./protocol-handler.js";
+import type {
+  ProtocolContext,
+  ProtocolComposeResult,
+} from "./protocol-handler.js";
+import { createRequireField } from "./compose-errors.js";
 import { toKitInstruction } from "../compat.js";
 
 // ─── Precision Constants ────────────────────────────────────────────────────
@@ -63,12 +67,25 @@ async function getDriftSdk(): Promise<any> {
 
 // ─── DriftClient Cache ──────────────────────────────────────────────────────
 
-let _cachedClient: any = null;
+/** Per-context cache keyed on `agent:network` to avoid cross-agent contamination. */
+const _clientCache = new Map<string, any>();
+const MAX_CACHED_CLIENTS = 50;
 
-async function getOrCreateDriftClient(
-  ctx: ProtocolContext,
-): Promise<any> {
-  if (_cachedClient) return _cachedClient;
+/** Clear all cached DriftClients. Call on shutdown or between test runs. */
+export function clearDriftClientCache(): void {
+  _clientCache.clear();
+}
+
+async function getOrCreateDriftClient(ctx: ProtocolContext): Promise<any> {
+  const cacheKey = `${ctx.agent}:${ctx.network}`;
+  const cached = _clientCache.get(cacheKey);
+  if (cached) return cached;
+
+  // Evict oldest entry if at capacity
+  if (_clientCache.size >= MAX_CACHED_CLIENTS) {
+    const oldest = _clientCache.keys().next().value;
+    if (oldest !== undefined) _clientCache.delete(oldest);
+  }
 
   const sdk = await getDriftSdk();
 
@@ -84,9 +101,10 @@ async function getOrCreateDriftClient(
     );
   }
 
-  const endpoint = ctx.network === "devnet"
-    ? "https://api.devnet.solana.com"
-    : "https://api.mainnet-beta.solana.com";
+  const endpoint =
+    ctx.network === "devnet"
+      ? "https://api.devnet.solana.com"
+      : "https://api.mainnet-beta.solana.com";
 
   const connection = new Connection(endpoint);
   const env = ctx.network === "devnet" ? "devnet" : "mainnet-beta";
@@ -110,7 +128,7 @@ async function getOrCreateDriftClient(
   });
 
   await client.subscribe();
-  _cachedClient = client;
+  _clientCache.set(cacheKey, client);
   return client;
 }
 
@@ -118,11 +136,16 @@ async function getOrCreateDriftClient(
 
 function buildDriftOrderType(sdk: any, type: string): any {
   switch (type) {
-    case "market": return sdk.OrderType.MARKET;
-    case "limit": return sdk.OrderType.LIMIT;
-    case "triggerMarket": return sdk.OrderType.TRIGGER_MARKET;
-    case "triggerLimit": return sdk.OrderType.TRIGGER_LIMIT;
-    default: throw new Error(`Unknown Drift order type: ${type}`);
+    case "market":
+      return sdk.OrderType.MARKET;
+    case "limit":
+      return sdk.OrderType.LIMIT;
+    case "triggerMarket":
+      return sdk.OrderType.TRIGGER_MARKET;
+    case "triggerLimit":
+      return sdk.OrderType.TRIGGER_LIMIT;
+    default:
+      throw new Error(`Unknown Drift order type: ${type}`);
   }
 }
 
@@ -134,13 +157,9 @@ function buildDriftDirection(sdk: any, side: "long" | "short"): any {
 
 // ─── Param Validation ───────────────────────────────────────────────────────
 
-function requireField<T>(params: Record<string, unknown>, field: string): T {
-  const val = params[field];
-  if (val === undefined || val === null) {
-    throw new Error(`Missing required Drift parameter: ${field}`);
-  }
-  return val as T;
-}
+const requireField = createRequireField(
+  (field) => new Error(`Missing required Drift parameter: ${field}`),
+);
 
 function parseAmountParams(params: Record<string, unknown>): DriftAmountParams {
   return {
@@ -246,7 +265,13 @@ async function composeDriftCancelOrder(
 
 // ─── Dispatcher ─────────────────────────────────────────────────────────────
 
-const SUPPORTED_ACTIONS = ["deposit", "withdraw", "placePerpOrder", "placeSpotOrder", "cancelOrder"];
+const SUPPORTED_ACTIONS = [
+  "deposit",
+  "withdraw",
+  "placePerpOrder",
+  "placeSpotOrder",
+  "cancelOrder",
+];
 
 /**
  * Dispatch a Drift action to the correct compose function.

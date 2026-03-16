@@ -28,7 +28,10 @@ const ALL_INTENT_TYPES: IntentActionType[] = Object.keys(
 ) as IntentActionType[];
 
 function expectValid(result: ValidationResult): void {
-  expect(result.valid, `Expected valid but got errors: ${JSON.stringify(result.errors)}`).to.be.true;
+  expect(
+    result.valid,
+    `Expected valid but got errors: ${JSON.stringify(result.errors)}`,
+  ).to.be.true;
   expect(result.errors).to.have.length(0);
 }
 
@@ -49,9 +52,9 @@ describe("intents", () => {
   });
 
   describe("ACTION_TYPE_MAP", () => {
-    it("has entries for all 32 IntentAction types", () => {
-      // 21 base + 5 drift + 4 kamino + 1 protocol + 1 passthrough = 32
-      expect(ALL_INTENT_TYPES.length).to.equal(32);
+    it("has entries for all 35 IntentAction types", () => {
+      // 21 base + 5 drift + 7 kamino + 1 protocol + 1 passthrough = 35
+      expect(ALL_INTENT_TYPES.length).to.equal(35);
     });
 
     it("every entry has an ActionType enum value and isSpending boolean", () => {
@@ -166,12 +169,21 @@ describe("intents", () => {
         },
         {
           type: "openPosition",
-          params: { market: "SOL-PERP", side: "long", collateral: "100", leverage: 5 },
+          params: {
+            market: "SOL-PERP",
+            side: "long",
+            collateral: "100",
+            leverage: 5,
+          },
         },
         { type: "closePosition", params: { market: "SOL-PERP" } },
         {
           type: "transfer",
-          params: { destination: VALID_ADDRESS, mint: VALID_ADDRESS_2, amount: "500" },
+          params: {
+            destination: VALID_ADDRESS,
+            mint: VALID_ADDRESS_2,
+            amount: "500",
+          },
         },
         { type: "deposit", params: { mint: VALID_ADDRESS, amount: "1000" } },
         { type: "withdraw", params: { mint: VALID_ADDRESS, amount: "1000" } },
@@ -194,7 +206,11 @@ describe("intents", () => {
         },
         {
           type: "removeCollateral",
-          params: { market: "SOL-PERP", side: "long", collateralDeltaUsd: "10" },
+          params: {
+            market: "SOL-PERP",
+            side: "long",
+            collateralDeltaUsd: "10",
+          },
         },
         {
           type: "placeTriggerOrder",
@@ -219,7 +235,12 @@ describe("intents", () => {
         },
         {
           type: "cancelTriggerOrder",
-          params: { market: "SOL-PERP", side: "long", orderId: "abc", isStopLoss: true },
+          params: {
+            market: "SOL-PERP",
+            side: "long",
+            orderId: "abc",
+            isStopLoss: true,
+          },
         },
         {
           type: "placeLimitOrder",
@@ -260,7 +281,11 @@ describe("intents", () => {
         },
         {
           type: "closeAndSwapPosition",
-          params: { market: "SOL-PERP", side: "short", outputMint: VALID_ADDRESS },
+          params: {
+            market: "SOL-PERP",
+            side: "short",
+            outputMint: VALID_ADDRESS,
+          },
         },
         {
           type: "createEscrow",
@@ -308,19 +333,47 @@ describe("intents", () => {
         { type: "driftCancelOrder", params: { orderId: 42 } },
         {
           type: "kaminoDeposit",
-          params: { tokenMint: "USDC", amount: "1000", obligation: VALID_ADDRESS },
+          params: {
+            tokenMint: "USDC",
+            amount: "1000",
+            obligation: VALID_ADDRESS,
+          },
         },
         {
           type: "kaminoBorrow",
-          params: { tokenMint: "USDC", amount: "500", obligation: VALID_ADDRESS },
+          params: {
+            tokenMint: "USDC",
+            amount: "500",
+            obligation: VALID_ADDRESS,
+          },
         },
         {
           type: "kaminoRepay",
-          params: { tokenMint: "USDC", amount: "500", obligation: VALID_ADDRESS },
+          params: {
+            tokenMint: "USDC",
+            amount: "500",
+            obligation: VALID_ADDRESS,
+          },
         },
         {
           type: "kaminoWithdraw",
-          params: { tokenMint: "USDC", amount: "1000", obligation: VALID_ADDRESS },
+          params: {
+            tokenMint: "USDC",
+            amount: "1000",
+            obligation: VALID_ADDRESS,
+          },
+        },
+        {
+          type: "kaminoVaultDeposit",
+          params: { kvault: VALID_ADDRESS, amount: "1000" },
+        },
+        {
+          type: "kaminoVaultWithdraw",
+          params: { kvault: VALID_ADDRESS, amount: "1000" },
+        },
+        {
+          type: "kaminoMultiply",
+          params: { depositToken: "USDC", borrowToken: "SOL", amount: "1000" },
         },
         {
           type: "protocol",
@@ -352,8 +405,10 @@ describe("intents", () => {
       for (const action of testActions) {
         const summary = summarizeAction(action);
         expect(summary, `Empty summary for ${action.type}`).to.be.a("string");
-        expect(summary.length, `Summary too short for ${action.type}`).to.be
-          .greaterThan(0);
+        expect(
+          summary.length,
+          `Summary too short for ${action.type}`,
+        ).to.be.greaterThan(0);
       }
     });
 
@@ -753,7 +808,11 @@ describe("intent-validator", () => {
       expectValid(
         validateIntentInput({
           type: "kaminoDeposit",
-          params: { tokenMint: "USDC", amount: "1000", obligation: VALID_ADDRESS },
+          params: {
+            tokenMint: "USDC",
+            amount: "1000",
+            obligation: VALID_ADDRESS,
+          },
         }),
       );
     });
@@ -905,7 +964,9 @@ describe("intent-validator", () => {
         expect(err.code).to.equal("INTENT_VALIDATION_FAILED");
         expect(err.category).to.equal("INPUT_VALIDATION");
         expect(err.retryable).to.be.false;
-        expect(err.recovery_actions).to.be.an("array").with.length.greaterThan(0);
+        expect(err.recovery_actions)
+          .to.be.an("array")
+          .with.length.greaterThan(0);
         expect(err.context).to.have.property("field");
         expect(err.context).to.have.property("received");
       }

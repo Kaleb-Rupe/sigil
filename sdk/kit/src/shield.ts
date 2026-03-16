@@ -7,7 +7,8 @@
  * Kit differences from web3.js version:
  *   - Works at Instruction[] level, not Transaction level
  *   - Uses analyzeInstructions() from inspector instead of analyzeTransaction()
- *   - No ALT resolution needed (pre-compilation analysis)
+ *   - Pre-compilation analysis (analyzeInstructions) needs no ALT resolution
+ *   - ShieldedSigner (post-compilation) requires AltCache for ALT-compressed accounts
  *   - Address (string) instead of PublicKey throughout
  */
 
@@ -18,7 +19,12 @@ import type {
   TransactionSigner,
 } from "@solana/kit";
 import { getBase64EncodedWireTransaction } from "@solana/kit";
-import { analyzeInstructions, type InspectableInstruction, type InstructionAnalysis } from "./inspector.js";
+import {
+  analyzeInstructions,
+  type InspectableInstruction,
+  type InstructionAnalysis,
+  type TokenTransferInfo,
+} from "./inspector.js";
 import {
   resolvePolicies,
   type ShieldPolicies,
@@ -30,6 +36,12 @@ import { PHALNX_PROGRAM_ADDRESS } from "./generated/programs/phalnx.js";
 import { VALIDATE_AND_AUTHORIZE_DISCRIMINATOR } from "./generated/instructions/validateAndAuthorize.js";
 import { FINALIZE_SESSION_DISCRIMINATOR } from "./generated/instructions/finalizeSession.js";
 import { ACTION_TYPE_MAP, type IntentAction } from "./intents.js";
+import type { AltCache } from "./alt-loader.js";
+import {
+  resolveVaultState,
+  type ResolvedVaultState,
+} from "./state-resolver.js";
+import { isStablecoinMint, type Network } from "./types.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -40,10 +52,15 @@ export interface PolicyViolation {
 }
 
 export class ShieldDeniedError extends Error {
-  constructor(public readonly violations: PolicyViolation[]) {
+  public code?: number;
+  constructor(
+    public readonly violations: PolicyViolation[],
+    code?: number,
+  ) {
     const msgs = violations.map((v) => v.message).join("; ");
     super(`Shield denied: ${msgs}`);
     this.name = "ShieldDeniedError";
+    this.code = code;
   }
 }
 
@@ -68,6 +85,18 @@ export interface SpendingSummary {
     windowMs: number;
   };
   isPaused: boolean;
+  /** On-chain spending state. Undefined when not synced. */
+  onChain?: {
+    globalSpent24h: bigint;
+    globalCap: bigint;
+    globalRemaining: bigint;
+    agentSpent24h: bigint | null;
+    agentCap: bigint | null;
+    agentRemaining: bigint | null;
+    maxTransactionUsd: bigint;
+    localAdditions: bigint;
+    syncedAt: bigint;
+  };
 }
 
 // ─── Shield State ───────────────────────────────────────────────────────────
@@ -85,16 +114,35 @@ interface TxEntry {
 interface Checkpoint {
   spendEntries: SpendEntry[];
   txEntries: TxEntry[];
+  resolvedState: ResolvedVaultState | null;
+  localUsdAdditions: bigint;
+  network: Network | null;
+  enforceUsed: boolean;
 }
 
 export class ShieldState {
   private spendEntries: SpendEntry[] = [];
   private txEntries: TxEntry[] = [];
 
+  // On-chain sync state
+  private _resolvedState: ResolvedVaultState | null = null;
+  private _localUsdAdditions = 0n;
+  private _network: Network | null = null;
+
+  // S-7: Mutual exclusivity tracking
+  private _enforceUsed = false;
+
   getSpendInWindow(mint: string, windowMs: number): bigint {
     const cutoff = Date.now() - windowMs;
     return this.spendEntries
       .filter((e) => e.mint === mint && e.timestamp >= cutoff)
+      .reduce((sum, e) => sum + e.amount, 0n);
+  }
+
+  getTotalSpendInWindow(windowMs: number): bigint {
+    const cutoff = Date.now() - windowMs;
+    return this.spendEntries
+      .filter((e) => e.timestamp >= cutoff)
       .reduce((sum, e) => sum + e.amount, 0n);
   }
 
@@ -111,21 +159,101 @@ export class ShieldState {
     this.txEntries.push({ timestamp: Date.now() });
   }
 
+  /** Sync spending baseline from on-chain state. Resets local additions. */
+  syncFromOnChain(state: ResolvedVaultState, network?: Network): void {
+    this._resolvedState = state;
+    this._localUsdAdditions = 0n;
+    if (network !== undefined) {
+      this._network = network;
+    }
+  }
+
+  /** Record local USD spend (optimistic addition on top of on-chain baseline). */
+  recordUsdSpend(amount: bigint): void {
+    this._localUsdAdditions += amount;
+  }
+
+  /** Effective 24h global spend: on-chain baseline + local additions. */
+  getEffectiveGlobalSpent24h(): bigint {
+    if (!this._resolvedState) return this._localUsdAdditions;
+    return this._resolvedState.globalBudget.spent24h + this._localUsdAdditions;
+  }
+
+  /** Effective 24h remaining against on-chain cap. Returns null if not synced. */
+  getEffectiveGlobalRemaining(): bigint | null {
+    if (!this._resolvedState) return null;
+    const cap = this._resolvedState.globalBudget.cap;
+    const spent = this.getEffectiveGlobalSpent24h();
+    return spent < cap ? cap - spent : 0n;
+  }
+
+  /** Resolved on-chain state, or null if never synced. */
+  get resolvedState(): ResolvedVaultState | null {
+    return this._resolvedState;
+  }
+
+  /** Local USD additions since last sync. */
+  get localUsdAdditions(): bigint {
+    return this._localUsdAdditions;
+  }
+
+  /** Network configured during sync. Null if never synced with network. */
+  get network(): Network | null {
+    return this._network;
+  }
+
+  /** Effective 24h agent spend: on-chain baseline + local additions. Null if no agent budget. */
+  getEffectiveAgentSpent24h(): bigint | null {
+    if (!this._resolvedState?.agentBudget) return null;
+    return this._resolvedState.agentBudget.spent24h + this._localUsdAdditions;
+  }
+
+  /** Effective 24h remaining against agent cap. Null if no agent budget or not synced. */
+  getEffectiveAgentRemaining(): bigint | null {
+    if (!this._resolvedState?.agentBudget) return null;
+    const cap = this._resolvedState.agentBudget.cap;
+    const spent =
+      this._resolvedState.agentBudget.spent24h + this._localUsdAdditions;
+    return spent < cap ? cap - spent : 0n;
+  }
+
+  /** S-7: Whether enforce() has been called on this state. */
+  get enforceUsed(): boolean {
+    return this._enforceUsed;
+  }
+
+  /** S-7: Mark that enforce() was used. */
+  markEnforceUsed(): void {
+    this._enforceUsed = true;
+  }
+
   checkpoint(): Checkpoint {
     return {
       spendEntries: [...this.spendEntries],
       txEntries: [...this.txEntries],
+      resolvedState: this._resolvedState,
+      localUsdAdditions: this._localUsdAdditions,
+      network: this._network,
+      enforceUsed: this._enforceUsed,
     };
   }
 
   rollback(cp: Checkpoint): void {
     this.spendEntries = [...cp.spendEntries];
     this.txEntries = [...cp.txEntries];
+    this._resolvedState = cp.resolvedState;
+    this._localUsdAdditions = cp.localUsdAdditions;
+    this._network = cp.network;
+    this._enforceUsed = cp.enforceUsed;
   }
 
   reset(): void {
     this.spendEntries = [];
     this.txEntries = [];
+    this._resolvedState = null;
+    this._localUsdAdditions = 0n;
+    this._network = null;
+    this._enforceUsed = false;
   }
 }
 
@@ -133,12 +261,14 @@ export class ShieldState {
 
 /**
  * Evaluate a set of instructions against resolved policies.
+ * When state has on-chain sync, also checks vault/agent caps (requires network).
  */
 export function evaluateInstructions(
   instructions: InspectableInstruction[],
   signerAddress: Address,
   resolved: ResolvedPolicies,
   state: ShieldState,
+  network?: Network,
 ): { violations: PolicyViolation[]; analysis: InstructionAnalysis } {
   const violations: PolicyViolation[] = [];
   const analysis = analyzeInstructions(instructions, signerAddress);
@@ -173,7 +303,8 @@ export function evaluateInstructions(
         violations.push({
           rule: "spend_limit",
           message: `Spend limit exceeded for ${limit.mint}: ${currentSpend + txSpend} > ${limit.amount}`,
-          suggestion: "Reduce the transaction amount or wait for the rolling window to reset",
+          suggestion:
+            "Reduce the transaction amount or wait for the rolling window to reset",
         });
       }
     }
@@ -181,7 +312,9 @@ export function evaluateInstructions(
 
   // 3. Rate limit check
   if (resolved.rateLimit) {
-    const count = state.getTransactionCountInWindow(resolved.rateLimit.windowMs);
+    const count = state.getTransactionCountInWindow(
+      resolved.rateLimit.windowMs,
+    );
     if (count >= resolved.rateLimit.maxTransactions) {
       violations.push({
         rule: "rate_limit",
@@ -216,6 +349,50 @@ export function evaluateInstructions(
     }
   }
 
+  // 5. On-chain vault/agent cap check (when synced)
+  const effectiveNetwork = network ?? state.network;
+  if (state.resolvedState && effectiveNetwork) {
+    const rs = state.resolvedState;
+    const stablecoinUsdAmount = computeStablecoinUsd(
+      analysis.tokenTransfers,
+      signerAddress,
+      effectiveNetwork,
+    );
+
+    if (stablecoinUsdAmount > 0n) {
+      // Transaction size
+      if (stablecoinUsdAmount > rs.maxTransactionUsd) {
+        violations.push({
+          rule: "on_chain_tx_size",
+          message: `Transaction ${stablecoinUsdAmount} exceeds max ${rs.maxTransactionUsd}`,
+          suggestion: "Reduce the transaction amount",
+        });
+      }
+
+      // Global vault cap
+      const effectiveGlobalSpent = state.getEffectiveGlobalSpent24h();
+      if (effectiveGlobalSpent + stablecoinUsdAmount > rs.globalBudget.cap) {
+        violations.push({
+          rule: "on_chain_vault_cap",
+          message: `Would exceed on-chain daily cap: ${effectiveGlobalSpent + stablecoinUsdAmount} > ${rs.globalBudget.cap}`,
+          suggestion: "Reduce amount or wait for the 24h window to roll",
+        });
+      }
+
+      // Per-agent cap
+      const effectiveAgentSpent = state.getEffectiveAgentSpent24h();
+      if (effectiveAgentSpent !== null && rs.agentBudget) {
+        if (effectiveAgentSpent + stablecoinUsdAmount > rs.agentBudget.cap) {
+          violations.push({
+            rule: "on_chain_agent_cap",
+            message: `Would exceed agent spend limit: ${effectiveAgentSpent + stablecoinUsdAmount} > ${rs.agentBudget.cap}`,
+            suggestion: "Reduce amount or wait",
+          });
+        }
+      }
+    }
+  }
+
   return { violations, analysis };
 }
 
@@ -225,6 +402,26 @@ const SYSTEM_PROGRAMS = new Set<string>([
   "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
 ]);
 
+/**
+ * Sum USD value of outgoing stablecoin transfers only.
+ * Plain Transfer instructions have mint=null — skip those.
+ * On-chain uses stablecoin identity: USDC/USDT amount / 10^6 = USD.
+ */
+function computeStablecoinUsd(
+  transfers: TokenTransferInfo[],
+  signerAddress: Address,
+  network: Network,
+): bigint {
+  return transfers
+    .filter(
+      (t) =>
+        t.authority === signerAddress &&
+        t.mint !== null &&
+        isStablecoinMint(t.mint, network),
+    )
+    .reduce((sum, t) => sum + t.amount, 0n);
+}
+
 // ─── Shield Function ────────────────────────────────────────────────────────
 
 export interface ShieldOptions {
@@ -233,6 +430,15 @@ export interface ShieldOptions {
   onPolicyUpdate?: (policies: ShieldPolicies) => void;
   onPause?: () => void;
   onResume?: () => void;
+  /** Enable on-chain spending baseline sync via StateResolver. */
+  onChainSync?: {
+    rpc: Rpc<SolanaRpcApi>;
+    vaultAddress: Address;
+    agentAddress: Address;
+    network: Network;
+  };
+  /** S-2: Warn when resolved state is older than this many seconds (default: 300). */
+  stalenessWarnThresholdSec?: number;
 }
 
 export interface ShieldedContext {
@@ -243,10 +449,7 @@ export interface ShieldedContext {
   ): ShieldCheckResult;
 
   /** Check and record — throws ShieldDeniedError if denied */
-  enforce(
-    instructions: InspectableInstruction[],
-    signerAddress: Address,
-  ): void;
+  enforce(instructions: InspectableInstruction[], signerAddress: Address): void;
 
   /** Current resolved policies */
   readonly resolvedPolicies: ResolvedPolicies;
@@ -269,6 +472,14 @@ export interface ShieldedContext {
   /** Get spending summary */
   getSpendingSummary(): SpendingSummary;
 
+  /** Sync spending state from on-chain SpendTracker via StateResolver.
+   *  Requires onChainSync config in ShieldOptions.
+   *  Updates baseline and resets local additions. */
+  sync(): Promise<void>;
+
+  /** Whether on-chain sync is configured. */
+  readonly hasOnChainSync: boolean;
+
   /** Internal state (for testing) */
   readonly state: ShieldState;
 }
@@ -288,6 +499,16 @@ export function shield(
   let resolved = resolvePolicies(policies);
   const state = new ShieldState();
   let paused = false;
+  const syncConfig = options?.onChainSync;
+  const stalenessThreshold = options?.stalenessWarnThresholdSec ?? 300;
+
+  // S-1: Warn when no onChainSync — spend tracking is ephemeral
+  if (!syncConfig) {
+    console.warn(
+      "[Shield] No onChainSync configured — spend tracking is client-side only " +
+        "and will reset on process restart.",
+    );
+  }
 
   return {
     check(
@@ -300,18 +521,23 @@ export function shield(
           violations: [
             {
               rule: "paused",
-              message: "Shield is paused — all operations blocked until resume()",
+              message:
+                "Shield is paused — all operations blocked until resume()",
               suggestion: "Call resume() to re-enable",
             },
           ],
         };
       }
 
+      // S-2: Staleness warning
+      _warnIfStale(state, stalenessThreshold);
+
       const { violations } = evaluateInstructions(
         instructions,
         signerAddress,
         resolved,
         state,
+        syncConfig?.network,
       );
 
       return { allowed: violations.length === 0, violations };
@@ -333,11 +559,15 @@ export function shield(
         throw error;
       }
 
+      // S-2: Staleness warning
+      _warnIfStale(state, stalenessThreshold);
+
       const { violations, analysis } = evaluateInstructions(
         instructions,
         signerAddress,
         resolved,
         state,
+        syncConfig?.network,
       );
 
       if (violations.length > 0) {
@@ -353,6 +583,22 @@ export function shield(
         }
       }
       state.recordTransaction();
+
+      // Record aggregate stablecoin USD for on-chain cap tracking
+      if (state.resolvedState && syncConfig) {
+        const stablecoinUsd = computeStablecoinUsd(
+          analysis.tokenTransfers,
+          signerAddress,
+          syncConfig.network,
+        );
+        if (stablecoinUsd > 0n) {
+          state.recordUsdSpend(stablecoinUsd);
+        }
+      }
+
+      // S-7: Mark that enforce() was used
+      state.markEnforceUsed();
+
       options?.onApproved?.();
     },
 
@@ -384,23 +630,39 @@ export function shield(
     },
 
     getSpendingSummary(): SpendingSummary {
-      const tokens = (resolved.spendLimits ?? []).map(
-        (limit: SpendLimit) => {
-          const windowMs = limit.windowMs ?? 86_400_000;
-          const spent = state.getSpendInWindow(limit.mint, windowMs);
-          const remaining = limit.amount > spent ? limit.amount - spent : 0n;
-          return {
-            mint: limit.mint as Address,
-            spent,
-            limit: limit.amount,
-            remaining,
-            windowMs,
-          };
-        },
-      );
+      const tokens = (resolved.spendLimits ?? []).map((limit: SpendLimit) => {
+        const windowMs = limit.windowMs ?? 86_400_000;
+        const spent = state.getSpendInWindow(limit.mint, windowMs);
+        const remaining = limit.amount > spent ? limit.amount - spent : 0n;
+        return {
+          mint: limit.mint as Address,
+          spent,
+          limit: limit.amount,
+          remaining,
+          windowMs,
+        };
+      });
 
-      const rl = resolved.rateLimit ?? { maxTransactions: 60, windowMs: 3_600_000 };
+      const rl = resolved.rateLimit ?? {
+        maxTransactions: 60,
+        windowMs: 3_600_000,
+      };
       const txCount = state.getTransactionCountInWindow(rl.windowMs);
+
+      const rs = state.resolvedState;
+      const onChain = rs
+        ? {
+            globalSpent24h: state.getEffectiveGlobalSpent24h(),
+            globalCap: rs.globalBudget.cap,
+            globalRemaining: state.getEffectiveGlobalRemaining() ?? 0n,
+            agentSpent24h: state.getEffectiveAgentSpent24h(),
+            agentCap: rs.agentBudget?.cap ?? null,
+            agentRemaining: state.getEffectiveAgentRemaining(),
+            maxTransactionUsd: rs.maxTransactionUsd,
+            localAdditions: state.localUsdAdditions,
+            syncedAt: rs.resolvedAtTimestamp,
+          }
+        : undefined;
 
       return {
         tokens,
@@ -411,7 +673,26 @@ export function shield(
           windowMs: rl.windowMs,
         },
         isPaused: paused,
+        onChain,
       };
+    },
+
+    async sync(): Promise<void> {
+      if (!syncConfig) {
+        throw new Error(
+          "Cannot sync: onChainSync not configured in ShieldOptions",
+        );
+      }
+      const resolved = await resolveVaultState(
+        syncConfig.rpc,
+        syncConfig.vaultAddress,
+        syncConfig.agentAddress,
+      );
+      state.syncFromOnChain(resolved, syncConfig.network);
+    },
+
+    get hasOnChainSync(): boolean {
+      return syncConfig !== undefined;
     },
 
     get state(): ShieldState {
@@ -445,6 +726,11 @@ export interface ShieldedSignerOptions {
     maxTxPerHour?: number;
     maxUsdPerHour?: bigint;
   };
+  /** AltCache for resolving ALT-compressed accounts in compiled transactions.
+   *  Populated during compose, read synchronously during sign. */
+  altCache?: AltCache;
+  /** S-4: Session binding severity. 'hard' throws on incomplete binding, 'soft' warns. Default: 'hard'. */
+  sessionBindingSeverity?: "soft" | "hard";
 }
 
 /**
@@ -474,7 +760,10 @@ export function createShieldedSigner(
       txs: readonly any[],
     ): Promise<readonly any[]> {
       for (const tx of txs) {
-        const instructions = extractInstructionsFromCompiled(tx);
+        const instructions = _extractInstructionsFromCompiled(
+          tx,
+          options?.altCache,
+        );
 
         // Property 1: Intent-TX correspondence (SOFT)
         if (options?.intentContext) {
@@ -483,7 +772,12 @@ export function createShieldedSigner(
 
         // Property 2: Velocity ceiling (HARD)
         if (options?.velocityThresholds) {
-          checkVelocityCeiling(shieldCtx.state, instructions, baseSigner.address, options.velocityThresholds);
+          checkVelocityCeiling(
+            shieldCtx.state,
+            instructions,
+            baseSigner.address,
+            options.velocityThresholds,
+          );
         }
 
         // Property 3: Simulation liveness (HARD)
@@ -507,7 +801,8 @@ export function createShieldedSigner(
               {
                 rule: "simulation",
                 message: `Simulation failed: ${result.error?.message ?? "unknown error"}`,
-                suggestion: result.error?.suggestion ?? "Check transaction validity",
+                suggestion:
+                  result.error?.suggestion ?? "Check transaction validity",
               },
             ]);
           }
@@ -519,9 +814,21 @@ export function createShieldedSigner(
           throw new ShieldDeniedError(checkResult.violations);
         }
 
-        // Property 5: Session binding (SOFT)
+        // Property 5: Session binding (severity controlled by S-4)
         if (options?.sessionContext) {
-          checkSessionBinding(tx, PHALNX_PROGRAM_ADDRESS);
+          checkSessionBinding(
+            tx,
+            PHALNX_PROGRAM_ADDRESS,
+            options?.sessionBindingSeverity ?? "hard",
+          );
+        }
+
+        // S-7: Warn about double-counting risk if enforce() was already used
+        if (shieldCtx.state.enforceUsed) {
+          console.warn(
+            "[ShieldedSigner] enforce() was already called on this ShieldState — " +
+              "using ShieldedSigner after enforce() may double-count spending",
+          );
         }
 
         // All checks passed — record spend and transaction in shared state
@@ -532,6 +839,18 @@ export function createShieldedSigner(
           }
         }
         shieldCtx.state.recordTransaction();
+
+        // Record aggregate stablecoin USD for on-chain cap tracking
+        if (shieldCtx.state.resolvedState && shieldCtx.state.network) {
+          const stablecoinUsd = computeStablecoinUsd(
+            analysis.tokenTransfers,
+            baseSigner.address,
+            shieldCtx.state.network,
+          );
+          if (stablecoinUsd > 0n) {
+            shieldCtx.state.recordUsdSpend(stablecoinUsd);
+          }
+        }
       }
 
       // Delegate to base signer
@@ -552,21 +871,78 @@ export function createShieldedSigner(
   } as TransactionSigner;
 }
 
-// ─── Internal Helpers (not exported) ────────────────────────────────────────
+// ─── Internal Helpers ────────────────────────────────────────────────────────
 
 /**
  * Extract InspectableInstruction[] from a compiled transaction object.
  * Resolves program addresses from staticAccounts[programAddressIndex].
+ * When ALTs are used, resolves ALT-compressed account indices via AltCache.
+ *
+ * Exported as _extractInstructionsFromCompiled for direct testing.
  */
-function extractInstructionsFromCompiled(tx: any): InspectableInstruction[] {
+export function _extractInstructionsFromCompiled(
+  tx: any,
+  altCache?: AltCache,
+): InspectableInstruction[] {
   const msg = tx.compiledMessage;
   if (!msg?.staticAccounts?.length || !msg?.instructions?.length) {
     return [];
   }
+
+  // Build combined account table: static + ALT-resolved
+  let accountTable: Address[] = [...msg.staticAccounts];
+
+  if (msg.addressTableLookups?.length && altCache) {
+    // Two-pass ordering: Solana compiled messages order ALL writables from
+    // ALL lookups first, then ALL readonlys from ALL lookups.
+    // Pass 1: ALL writables from ALL lookups (in lookup order)
+    for (const lookup of msg.addressTableLookups) {
+      const resolved = altCache.getCachedAddresses(
+        lookup.lookupTableAddress as Address,
+      );
+      if (resolved) {
+        for (const idx of lookup.writableIndexes ?? []) {
+          // S-3: Bounds check before pushing ALT-resolved address
+          if (idx < resolved.length) {
+            accountTable.push(resolved[idx]);
+          } else {
+            console.warn(
+              `[Shield] ALT index ${idx} out of bounds (${resolved.length} entries)`,
+            );
+            accountTable.push("11111111111111111111111111111111" as Address);
+          }
+        }
+      }
+    }
+    // Pass 2: ALL readonlys from ALL lookups
+    for (const lookup of msg.addressTableLookups) {
+      const resolved = altCache.getCachedAddresses(
+        lookup.lookupTableAddress as Address,
+      );
+      if (resolved) {
+        for (const idx of lookup.readonlyIndexes ?? []) {
+          // S-3: Bounds check before pushing ALT-resolved address
+          if (idx < resolved.length) {
+            accountTable.push(resolved[idx]);
+          } else {
+            console.warn(
+              `[Shield] ALT index ${idx} out of bounds (${resolved.length} entries)`,
+            );
+            accountTable.push("11111111111111111111111111111111" as Address);
+          }
+        }
+      }
+    }
+  } else if (msg.addressTableLookups?.length) {
+    console.warn(
+      "[ShieldedSigner] ALT-compressed accounts cannot be resolved without AltCache",
+    );
+  }
+
   return msg.instructions.map((ix: any) => ({
-    programAddress: msg.staticAccounts[ix.programAddressIndex] as Address,
+    programAddress: accountTable[ix.programAddressIndex] as Address,
     accounts: (ix.accountIndices ?? []).map((i: number) => ({
-      address: msg.staticAccounts[i] as Address,
+      address: accountTable[i] as Address,
     })),
     data: ix.data ? new Uint8Array(ix.data) : new Uint8Array(),
   }));
@@ -596,14 +972,15 @@ function checkVelocityCeiling(
 
   if (thresholds.maxUsdPerHour !== undefined) {
     const analysis = analyzeInstructions(instructions, signerAddress);
-    const currentSpend = state.getSpendInWindow("", 3_600_000);
+    const currentSpend = state.getTotalSpendInWindow(3_600_000);
     const projectedSpend = currentSpend + analysis.estimatedValue;
     if (projectedSpend > thresholds.maxUsdPerHour) {
       throw new ShieldDeniedError([
         {
           rule: "velocity_ceiling",
           message: `Hourly USD spend ${projectedSpend} exceeds ceiling ${thresholds.maxUsdPerHour}`,
-          suggestion: "Reduce transaction amounts or wait for the window to reset",
+          suggestion:
+            "Reduce transaction amounts or wait for the window to reset",
         },
       ]);
     }
@@ -611,12 +988,22 @@ function checkVelocityCeiling(
 }
 
 /**
- * Property 5: Check session binding (validate+finalize sandwich). SOFT — warns.
+ * Property 5: Check session binding (validate+finalize sandwich).
+ * S-4: severity controls behavior — 'hard' throws, 'soft' warns.
  */
-function checkSessionBinding(tx: any, programAddress: Address): void {
+function checkSessionBinding(
+  tx: any,
+  programAddress: Address,
+  severity: "soft" | "hard" = "hard",
+): void {
   const msg = tx.compiledMessage;
   if (!msg?.staticAccounts?.length || !msg?.instructions?.length) {
-    console.warn("[ShieldedSigner] Cannot verify session binding: no compiled message");
+    const message =
+      "[ShieldedSigner] Cannot verify session binding: no compiled message";
+    if (severity === "hard") {
+      throw new ShieldDeniedError([{ rule: "session_binding", message }]);
+    }
+    console.warn(message);
     return;
   }
 
@@ -625,7 +1012,12 @@ function checkSessionBinding(tx: any, programAddress: Address): void {
   );
 
   if (phalnxIxs.length === 0) {
-    console.warn("[ShieldedSigner] No Phalnx instructions found in transaction");
+    const message =
+      "[ShieldedSigner] No Phalnx instructions found in transaction";
+    if (severity === "hard") {
+      throw new ShieldDeniedError([{ rule: "session_binding", message }]);
+    }
+    console.warn(message);
     return;
   }
 
@@ -642,9 +1034,11 @@ function checkSessionBinding(tx: any, programAddress: Address): void {
     matchesDiscriminator(lastData, FINALIZE_SESSION_DISCRIMINATOR);
 
   if (!hasValidate || !hasFinalize) {
-    console.warn(
-      `[ShieldedSigner] Session binding incomplete: validate=${!!hasValidate}, finalize=${!!hasFinalize}`,
-    );
+    const message = `[ShieldedSigner] Session binding incomplete: validate=${!!hasValidate}, finalize=${!!hasFinalize}`;
+    if (severity === "hard") {
+      throw new ShieldDeniedError([{ rule: "session_binding", message }]);
+    }
+    console.warn(message);
   }
 }
 
@@ -672,11 +1066,30 @@ function checkIntentCorrespondence(
 }
 
 /**
+ * S-2: Warn when resolved state is stale (older than threshold).
+ */
+function _warnIfStale(state: ShieldState, thresholdSec: number): void {
+  if (!state.resolvedState) return;
+  const age =
+    Math.floor(Date.now() / 1000) -
+    Number(state.resolvedState.resolvedAtTimestamp);
+  if (age > thresholdSec) {
+    console.warn(
+      `[Shield] Resolved state is ${age}s old (threshold: ${thresholdSec}s) — call sync() for fresh data`,
+    );
+  }
+}
+
+/**
  * Compare first N bytes of data against a discriminator.
  */
 function matchesDiscriminator(
-  data: Uint8Array | { readonly [index: number]: number; readonly length: number },
-  disc: Uint8Array | { readonly [index: number]: number; readonly length: number },
+  data:
+    | Uint8Array
+    | { readonly [index: number]: number; readonly length: number },
+  disc:
+    | Uint8Array
+    | { readonly [index: number]: number; readonly length: number },
 ): boolean {
   if (data.length < disc.length) return false;
   for (let i = 0; i < disc.length; i++) {

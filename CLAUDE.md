@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**Read docs/PROJECT.md for full specification. Read docs/INSTRUCTIONS.md for all coding rules and guardrails. Read docs/TASKS.md for build progress.**
+**Read docs/PROJECT.md for full specification. Read docs/INSTRUCTIONS.md for all coding rules and guardrails. Read docs/ROADMAP.md for priorities and build progress.**
 
 ## Working Methodology
 
@@ -78,7 +78,7 @@ Load a skill only when you need specific API specs, integration patterns, or sec
 pnpm workspace with changesets for versioning. All packages publish to npm with OIDC provenance.
 
 ```
-pnpm-workspace.yaml → sdk/*, sdk/custody/*, plugins/*, packages/*, apps/*
+pnpm-workspace.yaml → sdk/*, sdk/custody/*, packages/*, apps/*
 ```
 
 ### Release Workflow
@@ -215,13 +215,13 @@ MCP server maps all 77 codes to human-readable suggestions in `packages/mcp/src/
 
 ## Current State
 
-Phases 1–5, A, B, C, D, E, F, F.5, G, G.3, H, I, J.1, K, Option C complete. 29 instructions, 9 PDA types, ~2,242 tests passing. See MEMORY.md for details.
+Phases 1–5, A, B, C, D, E, F, F.5, G, G.3, H, I, J.1, K, Option C complete. Kit-native SDK Phases 0-5 complete. SAK & ElizaOS plugins removed. On-chain program feature-complete and frozen. See `docs/ROADMAP.md` for priorities and `scripts/test-counts.json` for current test counts.
 
 ---
 
 ## Testing
 
-~2,242 tests across 18 suites (1839 CI + 20 Surfpool + 69 devnet).
+Test counts are in `scripts/test-counts.json` (run `node scripts/update-test-counts.js` to refresh).
 
 | Tier | Tool | Speed | When to use |
 |------|------|-------|-------------|

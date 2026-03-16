@@ -5,8 +5,8 @@
  * Every error includes a category, retryability flag, and
  * recovery actions that tell the agent exactly what to do next.
  *
- * Maps all 77 on-chain error codes (6000-6076) plus 16 SDK
- * error codes (7000-7015) to AgentError with machine-readable metadata.
+ * Maps all 77 on-chain error codes (6000-6076) plus 34 SDK
+ * error codes (7000-7033) to AgentError with machine-readable metadata.
  *
  * Zero dependency on @solana/web3.js or @coral-xyz/anchor.
  * Uses bigint instead of BN for context values.
@@ -1184,7 +1184,7 @@ export const ON_CHAIN_ERROR_MAP: Record<number, ErrorMapping> = {
 };
 
 // ---------------------------------------------------------------------------
-// SDK error codes (7000-7015) — numeric to match agent error code pattern
+// SDK error codes (7000-7033) — numeric to match agent error code pattern
 // ---------------------------------------------------------------------------
 
 const SDK_ERROR_CODES: Record<number, string> = {
@@ -1204,6 +1204,24 @@ const SDK_ERROR_CODES: Record<number, string> = {
   7013: "SLIPPAGE_EXCEEDED",
   7014: "TEE_VERIFICATION_FAILED",
   7015: "SHIELD_DENIED",
+  7016: "SIMULATION_TIMEOUT",
+  7017: "BLOCKHASH_EXPIRED",
+  7018: "CODAMA_DECODE_FAILED",
+  7019: "CODAMA_VERSION_MISMATCH",
+  7020: "COMPAT_BRIDGE_FAILED",
+  7021: "INTENT_DRIFT_DETECTED",
+  7022: "VELOCITY_EXCEEDED",
+  7023: "AGENT_DEFENSE_TRIGGERED",
+  7024: "X402_PARSE_ERROR",
+  7025: "X402_PAYMENT_DENIED",
+  7026: "X402_UNSUPPORTED",
+  7027: "X402_DESTINATION_BLOCKED",
+  7028: "X402_REPLAY_DETECTED",
+  7029: "X402_AMOUNT_SUSPICIOUS",
+  7030: "X402_FACILITATOR_UNTRUSTED",
+  7031: "X402_CONNECTION_REQUIRED",
+  7032: "X402_SETTLEMENT_FAILED",
+  7033: "TX_SIZE_OVERFLOW",
 };
 
 const SDK_ERRORS: Record<string, ErrorMapping> = {
@@ -1424,7 +1442,250 @@ const SDK_ERRORS: Record<string, ErrorMapping> = {
     recovery_actions: [
       {
         action: "check_policy",
-        description: "Review shield policies to understand why the transaction was denied",
+        description:
+          "Review shield policies to understand why the transaction was denied",
+      },
+    ],
+  },
+  SIMULATION_TIMEOUT: {
+    name: "SimulationTimeout",
+    message: "Transaction simulation RPC call timed out",
+    category: "TRANSIENT",
+    retryable: true,
+    retry_after_ms: 5_000,
+    recovery_actions: [
+      {
+        action: "retry",
+        description: "Retry with a different RPC endpoint or increased timeout",
+      },
+    ],
+  },
+  BLOCKHASH_EXPIRED: {
+    name: "BlockhashExpired",
+    message: "Blockhash expired before transaction could be sent",
+    category: "TRANSIENT",
+    retryable: true,
+    retry_after_ms: 1_000,
+    recovery_actions: [
+      {
+        action: "retry",
+        description: "Fetch a fresh blockhash and rebuild the transaction",
+      },
+    ],
+  },
+  CODAMA_DECODE_FAILED: {
+    name: "CodamaDecodeFailed",
+    message: "Codama-generated codec failed to decode instruction data",
+    category: "FATAL",
+    retryable: false,
+    recovery_actions: [
+      {
+        action: "check_idl",
+        description: "Verify the IDL matches the deployed program version",
+      },
+    ],
+  },
+  CODAMA_VERSION_MISMATCH: {
+    name: "CodamaVersionMismatch",
+    message: "IDL hash mismatch — generated code may be stale",
+    category: "FATAL",
+    retryable: false,
+    recovery_actions: [
+      {
+        action: "regenerate",
+        description: "Regenerate Codama clients from the latest IDL",
+      },
+    ],
+  },
+  COMPAT_BRIDGE_FAILED: {
+    name: "CompatBridgeFailed",
+    message: "web3.js compatibility bridge encountered an error",
+    category: "FATAL",
+    retryable: false,
+    recovery_actions: [
+      {
+        action: "check_compat",
+        description: "Check that the compat bridge input types are correct",
+      },
+    ],
+  },
+  INTENT_DRIFT_DETECTED: {
+    name: "IntentDriftDetected",
+    message: "Transaction diverges from the declared intent",
+    category: "POLICY_VIOLATION",
+    retryable: false,
+    recovery_actions: [
+      {
+        action: "review_transaction",
+        description:
+          "The composed transaction does not match the stated intent — review instructions",
+      },
+      {
+        action: "rebuild",
+        description: "Rebuild the transaction from a fresh intent",
+      },
+    ],
+  },
+  VELOCITY_EXCEEDED: {
+    name: "VelocityExceeded",
+    message: "Transaction velocity threshold breached",
+    category: "RATE_LIMIT",
+    retryable: true,
+    retry_after_ms: 30_000,
+    recovery_actions: [
+      {
+        action: "wait",
+        description:
+          "Wait for the cooldown period before submitting more transactions",
+      },
+    ],
+  },
+  AGENT_DEFENSE_TRIGGERED: {
+    name: "AgentDefenseTriggered",
+    message: "Pre-sign gate blocked a suspicious transaction",
+    category: "POLICY_VIOLATION",
+    retryable: false,
+    recovery_actions: [
+      {
+        action: "review_transaction",
+        description:
+          "The transaction triggered agent defense — review for manipulation",
+      },
+      {
+        action: "escalate_to_human",
+        description: "Escalate to vault owner for manual review",
+      },
+    ],
+  },
+  X402_PARSE_ERROR: {
+    name: "X402ParseError",
+    message: "Malformed x402 PAYMENT-REQUIRED header",
+    category: "INPUT_VALIDATION",
+    retryable: false,
+    recovery_actions: [
+      {
+        action: "check_server",
+        description:
+          "The API server returned an invalid x402 header — contact the provider",
+      },
+    ],
+  },
+  X402_PAYMENT_DENIED: {
+    name: "X402PaymentDenied",
+    message: "x402 payment blocked by shield policy",
+    category: "POLICY_VIOLATION",
+    retryable: false,
+    recovery_actions: [
+      {
+        action: "check_policy",
+        description: "Review shield spending limits and x402 configuration",
+      },
+    ],
+  },
+  X402_UNSUPPORTED: {
+    name: "X402Unsupported",
+    message: "No compatible Solana payment option in x402 response",
+    category: "INPUT_VALIDATION",
+    retryable: false,
+    recovery_actions: [
+      {
+        action: "check_accepts",
+        description:
+          "The API does not accept any Solana-compatible payment — try a different endpoint",
+      },
+    ],
+  },
+  X402_DESTINATION_BLOCKED: {
+    name: "X402DestinationBlocked",
+    message: "x402 payTo address not in destination allowlist",
+    category: "POLICY_VIOLATION",
+    retryable: false,
+    recovery_actions: [
+      {
+        action: "check_allowlist",
+        description:
+          "Add the payTo address to X402Config.allowedDestinations if trusted",
+      },
+    ],
+  },
+  X402_REPLAY_DETECTED: {
+    name: "X402ReplayDetected",
+    message: "Duplicate x402 payment detected within replay window",
+    category: "POLICY_VIOLATION",
+    retryable: false,
+    recovery_actions: [
+      {
+        action: "wait",
+        description:
+          "A payment for this resource was already made — wait for the nonce window to expire",
+      },
+    ],
+  },
+  X402_AMOUNT_SUSPICIOUS: {
+    name: "X402AmountSuspicious",
+    message: "x402 payment amount exceeds sanity threshold",
+    category: "POLICY_VIOLATION",
+    retryable: false,
+    recovery_actions: [
+      {
+        action: "review_amount",
+        description:
+          "The requested amount is suspiciously high — verify with the API provider",
+      },
+    ],
+  },
+  X402_FACILITATOR_UNTRUSTED: {
+    name: "X402FacilitatorUntrusted",
+    message: "x402 settlement response validation failed",
+    category: "POLICY_VIOLATION",
+    retryable: false,
+    recovery_actions: [
+      {
+        action: "check_settlement",
+        description: "Verify the settlement transaction on-chain",
+      },
+    ],
+  },
+  X402_CONNECTION_REQUIRED: {
+    name: "X402ConnectionRequired",
+    message: "RPC connection required for x402 payment but not provided",
+    category: "INPUT_VALIDATION",
+    retryable: false,
+    recovery_actions: [
+      {
+        action: "provide_rpc",
+        description:
+          "Pass an RPC connection in ShieldedFetchOptions or X402Config",
+      },
+    ],
+  },
+  X402_SETTLEMENT_FAILED: {
+    name: "X402SettlementFailed",
+    message: "x402 settlement retries exhausted",
+    category: "TRANSIENT",
+    retryable: true,
+    retry_after_ms: 5_000,
+    recovery_actions: [
+      {
+        action: "retry",
+        description:
+          "Retry the x402 payment — the facilitator may be temporarily unavailable",
+      },
+    ],
+  },
+  TX_SIZE_OVERFLOW: {
+    name: "TxSizeOverflow",
+    message: "Transaction exceeds Solana's 1,232-byte wire size limit",
+    category: "INPUT_VALIDATION",
+    retryable: false,
+    recovery_actions: [
+      {
+        action: "use_alt",
+        description: "Enable address lookup tables to compress the transaction",
+      },
+      {
+        action: "simplify_route",
+        description: "Use a simpler swap route with fewer hops or accounts",
       },
     ],
   },
@@ -1439,7 +1700,7 @@ const SDK_ERRORS: Record<string, ErrorMapping> = {
  *
  * Handles:
  * - On-chain Anchor errors (code 6000-6076)
- * - SDK errors (code 7000-7015)
+ * - SDK errors (code 7000-7033)
  * - Network/RPC errors (from message patterns)
  * - Unknown errors (wrapped as FATAL)
  *
@@ -1484,7 +1745,7 @@ export function toAgentError(
     };
   }
 
-  // 3. SDK numeric error code (7000-7015) from Error with code property
+  // 3. SDK numeric error code (7000-7032) from Error with code property
   const sdkNumericCode = extractSdkCode(error);
   if (sdkNumericCode !== null) {
     const sdkName = SDK_ERROR_CODES[sdkNumericCode];
@@ -1714,7 +1975,7 @@ function extractSdkCode(error: unknown): number | null {
   if (!error || typeof error !== "object") return null;
   const e = error as Record<string, unknown>;
 
-  if (typeof e.code === "number" && e.code >= 7000 && e.code <= 7015)
+  if (typeof e.code === "number" && e.code >= 7000 && e.code <= 7033)
     return e.code;
 
   return null;
