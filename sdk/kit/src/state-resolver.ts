@@ -345,60 +345,33 @@ export async function resolveVaultState(
     remaining: globalRemaining,
   };
 
-  // 6. Agent budget
+  // 6. Agent budgets — single pass builds both agentBudget and allAgentBudgets
   let agentBudget: EffectiveBudget | null = null;
-  // Kit Address is a branded string — === is correct (always normalized base58)
-  const agentEntry = decodedVault.data.agents.find((a) => a.pubkey === agent);
-
-  if (agentEntry && agentEntry.spendingLimitUsd > 0n) {
-    const agentCap = agentEntry.spendingLimitUsd;
-
-    if (overlay) {
-      // Find the agent's entry in the overlay
-      const overlayEntry = overlay.entries.find((e) =>
-        bytesMatchAddress(e.agent, agent),
-      );
-
-      if (overlayEntry) {
-        const agentSpent = getAgentRolling24hUsd(overlayEntry, timestamp);
-        agentBudget = {
-          spent24h: agentSpent,
-          cap: agentCap,
-          remaining: agentCap > agentSpent ? agentCap - agentSpent : 0n,
-        };
-      } else {
-        // Agent has a limit but no overlay entry yet (no spend recorded)
-        agentBudget = { spent24h: 0n, cap: agentCap, remaining: agentCap };
-      }
-    } else {
-      // Overlay not initialized — agent hasn't spent anything
-      agentBudget = { spent24h: 0n, cap: agentCap, remaining: agentCap };
-    }
-  }
-
-  // 6b. All agent budgets
   const allAgentBudgets = new Map<Address, EffectiveBudget>();
   for (const entry of decodedVault.data.agents) {
     if (entry.spendingLimitUsd <= 0n) continue;
     const entryAddr = entry.pubkey;
     const cap = entry.spendingLimitUsd;
 
+    let budget: EffectiveBudget;
     if (overlay) {
       const overlayEntry = overlay.entries.find((e) =>
         bytesMatchAddress(e.agent, entryAddr),
       );
       if (overlayEntry) {
         const spent = getAgentRolling24hUsd(overlayEntry, timestamp);
-        allAgentBudgets.set(entryAddr, {
-          spent24h: spent,
-          cap,
-          remaining: cap > spent ? cap - spent : 0n,
-        });
+        budget = { spent24h: spent, cap, remaining: cap > spent ? cap - spent : 0n };
       } else {
-        allAgentBudgets.set(entryAddr, { spent24h: 0n, cap, remaining: cap });
+        budget = { spent24h: 0n, cap, remaining: cap };
       }
     } else {
-      allAgentBudgets.set(entryAddr, { spent24h: 0n, cap, remaining: cap });
+      budget = { spent24h: 0n, cap, remaining: cap };
+    }
+
+    allAgentBudgets.set(entryAddr, budget);
+    // Kit Address is a branded string — === is correct (always normalized base58)
+    if (entryAddr === agent) {
+      agentBudget = budget;
     }
   }
 

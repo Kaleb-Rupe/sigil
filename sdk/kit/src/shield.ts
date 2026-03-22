@@ -908,41 +908,32 @@ export function _extractInstructionsFromCompiled(
   let accountTable: Address[] = [...msg.staticAccounts];
 
   if (msg.addressTableLookups?.length && altCache) {
+    // S-3: Resolve ALT index with bounds check, accumulating warnings on OOB
+    const resolveAltIndex = (idx: number, resolved: Address[]): Address => {
+      if (idx < resolved.length) return resolved[idx];
+      warnings?.push(
+        `ALT index ${idx} out of bounds (table has ${resolved.length} entries) — account substituted with system program for analysis`,
+      );
+      return "11111111111111111111111111111111" as Address;
+    };
+
     // Two-pass ordering: Solana compiled messages order ALL writables from
     // ALL lookups first, then ALL readonlys from ALL lookups.
     // Pass 1: ALL writables from ALL lookups (in lookup order)
     for (const lookup of msg.addressTableLookups) {
-      const resolved = altCache.getCachedAddresses(
-        lookup.lookupTableAddress as Address,
-      );
+      const resolved = altCache.getCachedAddresses(lookup.lookupTableAddress as Address);
       if (resolved) {
         for (const idx of lookup.writableIndexes ?? []) {
-          // S-3: Bounds check before pushing ALT-resolved address
-          if (idx < resolved.length) {
-            accountTable.push(resolved[idx]);
-          } else {
-            const msg_ = `ALT index ${idx} out of bounds (table has ${resolved.length} entries) — account substituted with system program for analysis`;
-            warnings?.push(msg_);
-            accountTable.push("11111111111111111111111111111111" as Address);
-          }
+          accountTable.push(resolveAltIndex(idx, resolved));
         }
       }
     }
     // Pass 2: ALL readonlys from ALL lookups
     for (const lookup of msg.addressTableLookups) {
-      const resolved = altCache.getCachedAddresses(
-        lookup.lookupTableAddress as Address,
-      );
+      const resolved = altCache.getCachedAddresses(lookup.lookupTableAddress as Address);
       if (resolved) {
         for (const idx of lookup.readonlyIndexes ?? []) {
-          // S-3: Bounds check before pushing ALT-resolved address
-          if (idx < resolved.length) {
-            accountTable.push(resolved[idx]);
-          } else {
-            const msg_ = `ALT index ${idx} out of bounds (table has ${resolved.length} entries) — account substituted with system program for analysis`;
-            warnings?.push(msg_);
-            accountTable.push("11111111111111111111111111111111" as Address);
-          }
+          accountTable.push(resolveAltIndex(idx, resolved));
         }
       }
     }
