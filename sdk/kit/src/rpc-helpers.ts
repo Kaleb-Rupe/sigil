@@ -5,7 +5,13 @@
  * - sendAndConfirmTransaction: Send + poll getSignatureStatuses
  */
 
-import type { Rpc, SolanaRpcApi, Commitment } from "@solana/kit";
+import type { Rpc, SolanaRpcApi, Commitment, Base64EncodedWireTransaction } from "@solana/kit";
+
+/** Typed shape of a getSignatureStatuses value entry. */
+interface SignatureStatusValue {
+  err: unknown;
+  confirmationStatus: string;
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -81,7 +87,7 @@ export class BlockhashCache {
  */
 export async function sendAndConfirmTransaction(
   rpc: Rpc<SolanaRpcApi>,
-  encodedTransaction: string,
+  encodedTransaction: Base64EncodedWireTransaction,
   options?: SendAndConfirmOptions,
 ): Promise<string> {
   const timeoutMs = options?.timeoutMs ?? 30_000;
@@ -91,12 +97,12 @@ export async function sendAndConfirmTransaction(
   // Send the transaction
   const signature = await rpc
     .sendTransaction(
-      encodedTransaction as any,
+      encodedTransaction,
       {
-        encoding: "base64",
+        encoding: "base64" as const,
         skipPreflight: false,
         preflightCommitment: commitment,
-      } as any,
+      },
     )
     .send();
 
@@ -106,10 +112,10 @@ export async function sendAndConfirmTransaction(
 
   while (Date.now() < deadline) {
     const statusResult = await rpc
-      .getSignatureStatuses([signature] as any)
+      .getSignatureStatuses([signature])
       .send();
 
-    const statuses = (statusResult as any).value;
+    const statuses = (statusResult as unknown as { value: readonly (SignatureStatusValue | null)[] }).value;
     if (statuses && statuses[0]) {
       const status = statuses[0];
 

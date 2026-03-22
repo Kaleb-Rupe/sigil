@@ -176,6 +176,7 @@ export type { ResolvedToken } from "./tokens.js";
 export {
   resolvePolicies,
   toCoreAnalysis,
+  validateSpendLimitMints,
   DEFAULT_POLICIES,
   parseSpendLimit,
 } from "./policies.js";

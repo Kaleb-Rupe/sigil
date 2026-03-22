@@ -180,10 +180,17 @@ export function permissionsToStrings(permissions: bigint): string[] {
   return result;
 }
 
-/** Parse an action type enum object to its string key */
+/**
+ * Parse an action type to its string key.
+ * Accepts either a numeric ActionType enum value or an Anchor-style { Swap: {} } object.
+ */
 export function parseActionType(
-  actionType: Record<string, unknown>,
+  actionType: number | Record<string, unknown>,
 ): string | undefined {
+  if (typeof actionType === "number") {
+    const entries = Object.entries(ACTION_PERMISSION_MAP);
+    return entries[actionType]?.[0];
+  }
   return Object.keys(actionType)[0];
 }
 

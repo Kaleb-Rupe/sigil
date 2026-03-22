@@ -4,6 +4,7 @@
 
 import type { Address } from "@solana/kit";
 import * as Core from "@phalnx/core";
+import { isStablecoinMint, type Network } from "./types.js";
 
 // Re-export core types that don't need Solana adaptation
 export type { RateLimitConfig, PolicyCheckResult } from "@phalnx/core";
@@ -132,4 +133,25 @@ export function toCoreAnalysis(
     })),
     estimatedValueLamports: analysis.estimatedValueLamports,
   };
+}
+
+/**
+ * Validate that spend limit mints are recognized stablecoins.
+ * Returns warnings for unrecognized mints (does not throw).
+ */
+export function validateSpendLimitMints(
+  resolved: ResolvedPolicies,
+  network: Network,
+): string[] {
+  const warnings: string[] = [];
+  if (!resolved.spendLimits) return warnings;
+  for (const limit of resolved.spendLimits) {
+    if (!isStablecoinMint(limit.mint as Address, network)) {
+      warnings.push(
+        `Spend limit mint ${limit.mint} is not a recognized stablecoin on ${network}. ` +
+          `On-chain enforcement uses stablecoin-only USD tracking.`,
+      );
+    }
+  }
+  return warnings;
 }
