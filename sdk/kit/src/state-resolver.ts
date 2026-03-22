@@ -41,11 +41,11 @@ import {
   type SpendTracker,
 } from "./generated/accounts/spendTracker.js";
 import {
-  decodeEscrowDeposit,
+  getEscrowDepositDecoder,
   type EscrowDeposit,
 } from "./generated/accounts/escrowDeposit.js";
 import {
-  decodeSessionAuthority,
+  getSessionAuthorityDecoder,
   type SessionAuthority,
 } from "./generated/accounts/sessionAuthority.js";
 import {
@@ -622,19 +622,15 @@ export async function findEscrowsByVault(
       })
       .send();
 
-    // Collect addresses, then batch-fetch proper encoded accounts for decoding
-    const addresses = (accounts as { pubkey: Address }[]).map((a) => a.pubkey);
-    if (addresses.length === 0) return [];
-
-    const encoded = await fetchEncodedAccounts(rpc, addresses);
-    const results: (EscrowDeposit & { address: Address })[] = [];
-    for (let i = 0; i < encoded.length; i++) {
-      const decoded = decodeEscrowDeposit(encoded[i]);
-      if (decoded.exists) {
-        results.push({ ...decoded.data, address: addresses[i] });
-      }
-    }
-    return results;
+    // Decode directly from GPA response (avoids double RPC)
+    const decoder = getEscrowDepositDecoder();
+    return (accounts as { pubkey: Address; account: { data: [string, string] } }[]).map(
+      (entry) => {
+        const raw = base64ToUint8(entry.account.data[0]);
+        const data = decoder.decode(raw);
+        return { ...data, address: entry.pubkey };
+      },
+    );
   } catch (err) {
     if (!isGpaUnsupportedError(err)) throw err;
     return []; // GPA not supported — return empty
@@ -667,19 +663,15 @@ export async function findSessionsByVault(
       })
       .send();
 
-    // Collect addresses, then batch-fetch proper encoded accounts for decoding
-    const addresses = (accounts as { pubkey: Address }[]).map((a) => a.pubkey);
-    if (addresses.length === 0) return [];
-
-    const encoded = await fetchEncodedAccounts(rpc, addresses);
-    const results: (SessionAuthority & { address: Address })[] = [];
-    for (let i = 0; i < encoded.length; i++) {
-      const decoded = decodeSessionAuthority(encoded[i]);
-      if (decoded.exists) {
-        results.push({ ...decoded.data, address: addresses[i] });
-      }
-    }
-    return results;
+    // Decode directly from GPA response (avoids double RPC)
+    const decoder = getSessionAuthorityDecoder();
+    return (accounts as { pubkey: Address; account: { data: [string, string] } }[]).map(
+      (entry) => {
+        const raw = base64ToUint8(entry.account.data[0]);
+        const data = decoder.decode(raw);
+        return { ...data, address: entry.pubkey };
+      },
+    );
   } catch (err) {
     if (!isGpaUnsupportedError(err)) throw err;
     return []; // GPA not supported — return empty
