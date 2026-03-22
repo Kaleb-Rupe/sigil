@@ -52,8 +52,6 @@ export interface ExecuteTransactionParams {
   computeUnits?: number;
   /** Optional: priority fee in microLamports per CU */
   priorityFeeMicroLamports?: number;
-  /** Skip simulation (default: false — simulation is fail-closed) */
-  skipSimulation?: boolean;
   /** Resolved address lookup tables for transaction compression */
   addressLookupTables?: AddressesByLookupTableAddress;
 }
@@ -74,6 +72,12 @@ export interface TransactionExecutorOptions {
   blockhashCacheTtlMs?: number;
   /** Send+confirm options */
   confirmOptions?: SendAndConfirmOptions;
+  /**
+   * Skip simulation (default: false — simulation is fail-closed).
+   * WARNING: This bypasses the pre-sign safety gate. Only use in test environments.
+   * Moved from per-call params to constructor-only to prevent accidental bypass.
+   */
+  skipSimulation?: boolean;
 }
 
 // ─── TransactionExecutor ────────────────────────────────────────────────────
@@ -83,6 +87,7 @@ export class TransactionExecutor {
   readonly agent: TransactionSigner;
   private readonly blockhashCache: BlockhashCache;
   private readonly confirmOptions: SendAndConfirmOptions;
+  private readonly _skipSimulation: boolean;
   private altCache?: AltCache;
 
   constructor(
@@ -94,6 +99,7 @@ export class TransactionExecutor {
     this.agent = agent;
     this.blockhashCache = new BlockhashCache(options?.blockhashCacheTtlMs);
     this.confirmOptions = options?.confirmOptions ?? {};
+    this._skipSimulation = options?.skipSimulation ?? false;
   }
 
   /**
@@ -201,13 +207,22 @@ export class TransactionExecutor {
   ): Promise<{ signature: string; logs?: string[] }> {
     // Sign using Kit's TransactionSigner interface.
     // TransactionSigner is a union type — use the available signing method.
-    const signer = this.agent as any;
+    const signer = this.agent as TransactionSigner & {
+      modifyAndSignTransactions?: (...args: unknown[]) => Promise<unknown[]>;
+      signTransactions?: (...args: unknown[]) => Promise<unknown[]>;
+    };
     const signFn = signer.modifyAndSignTransactions ?? signer.signTransactions;
-    if (!signFn) {
-      throw new Error("Agent signer does not implement a signing method");
+    if (typeof signFn !== "function") {
+      throw new Error("Agent signer does not implement signTransactions or modifyAndSignTransactions");
     }
-    const [signedTx] = await signFn.call(signer, [compiledTx]);
-    const wireBase64 = getBase64EncodedWireTransaction(signedTx as any);
+    const results = await signFn.call(signer, [compiledTx]);
+    if (!Array.isArray(results) || results.length === 0) {
+      throw new Error("signTransactions returned invalid result: expected non-empty array");
+    }
+    const [signedTx] = results;
+    const wireBase64 = getBase64EncodedWireTransaction(
+      signedTx as Parameters<typeof getBase64EncodedWireTransaction>[0]
+    );
 
     const signature = await sendAndConfirmTransaction(
       this.rpc,
@@ -234,7 +249,7 @@ export class TransactionExecutor {
     let simLogs: string[] | undefined;
     let unitsConsumed: number | undefined;
 
-    if (!params.skipSimulation) {
+    if (!this._skipSimulation) {
       const { simulation, recomposedTx } = await this.simulate(
         params,
         compiledTx,

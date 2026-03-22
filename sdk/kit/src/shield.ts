@@ -1,9 +1,18 @@
 /**
- * Shield — Kit-native Client-Side Policy Enforcement
+ * Shield — Kit-native Client-Side Policy Enforcement (Defense-in-Depth)
  *
  * Wraps instruction signing with spending limits, rate limits,
  * program allowlists, and custom checks.
  *
+ * IMPORTANT: Shield is a CLIENT-SIDE advisory layer, NOT a security boundary.
+ * The on-chain program (validate_and_authorize + finalize_session) provides the
+ * hard enforcement of spending caps, permissions, and protocol allowlists.
+ * Shield reduces blast radius by catching violations before signing, but callers
+ * CAN bypass Shield by using the underlying TransactionSigner directly.
+ * This is by design — Shield prevents accidents, on-chain prevents catastrophe.
+ *
+ * State (spending counters, velocity limits) is in-memory and resets on process
+ * restart. Use syncFromOnChain() to re-sync with the authoritative on-chain state.
  */
 
 import type {
@@ -34,7 +43,7 @@ import {
   resolveVaultState,
   type ResolvedVaultState,
 } from "./state-resolver.js";
-import { isStablecoinMint, type Network } from "./types.js";
+import { isStablecoinMint, validateNetwork, type Network } from "./types.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -60,6 +69,8 @@ export class ShieldDeniedError extends Error {
 export interface ShieldCheckResult {
   allowed: boolean;
   violations: PolicyViolation[];
+  /** Non-fatal warnings (e.g., ALT index out of bounds during analysis). */
+  warnings?: string[];
 }
 
 export interface SpendingSummary {
@@ -263,6 +274,7 @@ export function evaluateInstructions(
   state: ShieldState,
   network?: Network,
 ): { violations: PolicyViolation[]; analysis: InstructionAnalysis } {
+  if (network) validateNetwork(network);
   const violations: PolicyViolation[] = [];
   const analysis = analyzeInstructions(instructions, signerAddress);
 
@@ -493,6 +505,7 @@ export function shield(
   const state = new ShieldState();
   let paused = false;
   const syncConfig = options?.onChainSync;
+  if (syncConfig) validateNetwork(syncConfig.network);
   const stalenessThreshold = options?.stalenessWarnThresholdSec ?? 300;
 
   // S-1: Warn when no onChainSync — spend tracking is ephemeral
@@ -837,14 +850,17 @@ export function createShieldedSigner(
       }
 
       // Delegate to base signer
-      const signer = baseSigner as any;
+      const signer = baseSigner as TransactionSigner & {
+        modifyAndSignTransactions?: (...args: unknown[]) => Promise<readonly unknown[]>;
+        signTransactions?: (...args: unknown[]) => Promise<readonly unknown[]>;
+      };
       if (signer.modifyAndSignTransactions) {
         return signer.modifyAndSignTransactions(txs);
       } else if (signer.signTransactions) {
         const sigs = await signer.signTransactions(txs);
         return txs.map((tx: any, i: number) => ({
           ...tx,
-          signatures: { ...tx.signatures, ...sigs[i] },
+          signatures: { ...tx.signatures, ...(sigs[i] as Record<string, unknown>) },
         }));
       }
       throw new Error(
@@ -866,6 +882,7 @@ export function createShieldedSigner(
 export function _extractInstructionsFromCompiled(
   tx: any,
   altCache?: AltCache,
+  warnings?: string[],
 ): InspectableInstruction[] {
   const msg = tx.compiledMessage;
   if (!msg?.staticAccounts?.length || !msg?.instructions?.length) {
@@ -889,9 +906,8 @@ export function _extractInstructionsFromCompiled(
           if (idx < resolved.length) {
             accountTable.push(resolved[idx]);
           } else {
-            console.warn(
-              `[Shield] ALT index ${idx} out of bounds (${resolved.length} entries)`,
-            );
+            const msg_ = `ALT index ${idx} out of bounds (table has ${resolved.length} entries) — account substituted with system program for analysis`;
+            warnings?.push(msg_);
             accountTable.push("11111111111111111111111111111111" as Address);
           }
         }
@@ -908,9 +924,8 @@ export function _extractInstructionsFromCompiled(
           if (idx < resolved.length) {
             accountTable.push(resolved[idx]);
           } else {
-            console.warn(
-              `[Shield] ALT index ${idx} out of bounds (${resolved.length} entries)`,
-            );
+            const msg_ = `ALT index ${idx} out of bounds (table has ${resolved.length} entries) — account substituted with system program for analysis`;
+            warnings?.push(msg_);
             accountTable.push("11111111111111111111111111111111" as Address);
           }
         }

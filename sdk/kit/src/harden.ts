@@ -25,7 +25,7 @@ import {
 } from "./resolve-accounts.js";
 import { fetchMaybeAgentVault } from "./generated/accounts/agentVault.js";
 import { PHALNX_PROGRAM_ADDRESS } from "./generated/programs/phalnx.js";
-import type { Network } from "./types.js";
+import { validateNetwork, type Network } from "./types.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -206,7 +206,8 @@ export async function findNextVaultId(
  * - getUpdatePolicyInstructionAsync()
  */
 export async function harden(options: HardenOptions): Promise<HardenResult> {
-  const { rpc, owner, agent } = options;
+  const { rpc, network, owner, agent } = options;
+  validateNetwork(network);
 
   // Validate owner ≠ agent
   if (owner.address === agent.address) {

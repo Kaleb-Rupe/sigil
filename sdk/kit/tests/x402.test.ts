@@ -127,11 +127,18 @@ describe("x402/codec", () => {
   });
 
   it("accepts very large amount string without precision loss (BUG-15)", () => {
-    const largeAmount = "99999999999999999999"; // > Number.MAX_SAFE_INTEGER
+    const largeAmount = "18446744073709551615"; // u64::MAX — > Number.MAX_SAFE_INTEGER
     const pr = makePaymentRequired({ amount: largeAmount });
     const encoded = encodeHeader(pr);
     const decoded = decodePaymentRequiredHeader(encoded);
     expect(decoded.accepts[0].amount).to.equal(largeAmount);
+  });
+
+  it("rejects amount exceeding u64 max", () => {
+    const overflowAmount = "99999999999999999999"; // > u64::MAX
+    const pr = makePaymentRequired({ amount: overflowAmount });
+    const encoded = encodeHeader(pr);
+    expect(() => decodePaymentRequiredHeader(encoded)).to.throw("exceeds u64 max");
   });
 
   it("validates required fields in accepts entries", () => {
@@ -445,30 +452,33 @@ describe("x402/nonce-tracker", () => {
     tracker = new NonceTracker();
   });
 
-  it("first payment is not a duplicate", () => {
+  it("first payment is not a duplicate", async () => {
     expect(
-      tracker.isDuplicate("https://api.com", TRUSTED_PAYTO, "1000"),
+      await tracker.isDuplicate("https://api.com", TRUSTED_PAYTO, "1000"),
     ).to.equal(false);
   });
 
-  it("second identical payment is a duplicate", () => {
-    tracker.record("https://api.com", TRUSTED_PAYTO, "1000");
+  it("second identical payment is a duplicate", async () => {
+    await tracker.record("https://api.com", TRUSTED_PAYTO, "1000");
     expect(
-      tracker.isDuplicate("https://api.com", TRUSTED_PAYTO, "1000"),
+      await tracker.isDuplicate("https://api.com", TRUSTED_PAYTO, "1000"),
     ).to.equal(true);
   });
 
-  it("throws X402ReplayError on duplicate via checkOrThrow", () => {
-    tracker.record("https://api.com", TRUSTED_PAYTO, "1000");
-    expect(() =>
-      tracker.checkOrThrow("https://api.com", TRUSTED_PAYTO, "1000"),
-    ).to.throw(X402ReplayError);
+  it("throws X402ReplayError on duplicate via checkOrThrow", async () => {
+    await tracker.record("https://api.com", TRUSTED_PAYTO, "1000");
+    try {
+      await tracker.checkOrThrow("https://api.com", TRUSTED_PAYTO, "1000");
+      expect.fail("Should have thrown");
+    } catch (e) {
+      expect(e).to.be.instanceOf(X402ReplayError);
+    }
   });
 
-  it("different URL is not a duplicate", () => {
-    tracker.record("https://api.com/a", TRUSTED_PAYTO, "1000");
+  it("different URL is not a duplicate", async () => {
+    await tracker.record("https://api.com/a", TRUSTED_PAYTO, "1000");
     expect(
-      tracker.isDuplicate("https://api.com/b", TRUSTED_PAYTO, "1000"),
+      await tracker.isDuplicate("https://api.com/b", TRUSTED_PAYTO, "1000"),
     ).to.equal(false);
   });
 
@@ -505,13 +515,13 @@ describe("x402/nonce-tracker", () => {
     expect(key1).to.equal(key2);
   });
 
-  it("trailing slash + query normalized → same key detects replay", () => {
-    tracker.record("https://api.com/data", TRUSTED_PAYTO, "1000");
+  it("trailing slash + query normalized → same key detects replay", async () => {
+    await tracker.record("https://api.com/data", TRUSTED_PAYTO, "1000");
     expect(
-      tracker.isDuplicate("https://api.com/data/", TRUSTED_PAYTO, "1000"),
+      await tracker.isDuplicate("https://api.com/data/", TRUSTED_PAYTO, "1000"),
     ).to.equal(true);
     expect(
-      tracker.isDuplicate("https://api.com/data?ts=456", TRUSTED_PAYTO, "1000"),
+      await tracker.isDuplicate("https://api.com/data?ts=456", TRUSTED_PAYTO, "1000"),
     ).to.equal(true);
   });
 });
@@ -663,12 +673,15 @@ describe("x402/security", () => {
     );
   });
 
-  it("blocks replay of same payment", () => {
+  it("blocks replay of same payment", async () => {
     const tracker = new NonceTracker();
-    tracker.record("https://api.com", TRUSTED_PAYTO, "1000");
-    expect(() =>
-      tracker.checkOrThrow("https://api.com", TRUSTED_PAYTO, "1000"),
-    ).to.throw(X402ReplayError);
+    await tracker.record("https://api.com", TRUSTED_PAYTO, "1000");
+    try {
+      await tracker.checkOrThrow("https://api.com", TRUSTED_PAYTO, "1000");
+      expect.fail("Should have thrown");
+    } catch (e) {
+      expect(e).to.be.instanceOf(X402ReplayError);
+    }
   });
 
   it("rejects zero-amount payment", () => {

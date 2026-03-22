@@ -47,6 +47,8 @@ export {
   parseActionType,
   isSpendingAction,
   getPositionEffect,
+  validateNetwork,
+  toInstruction,
   // Permission builder
   PermissionBuilder,
   // Types
@@ -67,11 +69,13 @@ export {
   getAgentRolling24hUsd,
   getProtocolSpend,
   bytesToAddress,
+  findVaultsByOwner,
 } from "./state-resolver.js";
 export type {
   EffectiveBudget,
   ProtocolBudget,
   ResolvedVaultState,
+  DiscoveredVault,
 } from "./state-resolver.js";
 
 // ─── PDA Resolution ───────────────────────────────────────────────────────────
@@ -109,8 +113,18 @@ export {
 export type { ComposeTransactionParams } from "./composer.js";
 
 // ─── Event Parser ─────────────────────────────────────────────────────────────
-export { parsePhalnxEvents, filterEvents, getEventNames } from "./events.js";
-export type { PhalnxEvent, PhalnxEventName } from "./events.js";
+export {
+  parsePhalnxEvents,
+  filterEvents,
+  getEventNames,
+  decodePhalnxEvent,
+  parseAndDecodePhalnxEvents,
+} from "./events.js";
+export type {
+  PhalnxEvent,
+  PhalnxEventName,
+  DecodedPhalnxEvent,
+} from "./events.js";
 
 // ─── Priority Fees ────────────────────────────────────────────────────────────
 export {
@@ -238,6 +252,7 @@ export type {
   InspectableInstruction,
   TokenTransferInfo,
   InstructionAnalysis,
+  DangerousTokenOperation,
 } from "./inspector.js";
 
 // ─── Shield ─────────────────────────────────────────────────────────────────
@@ -256,6 +271,14 @@ export type {
   ShieldedContext,
   ShieldedSignerOptions,
 } from "./shield.js";
+
+// ─── Wrap ──────────────────────────────────────────────────────────────────
+export { wrap, PhalnxClient } from "./wrap.js";
+export type { WrapParams, WrapResult } from "./wrap.js";
+
+// ─── Create Vault ──────────────────────────────────────────────────────────
+export { createVault } from "./create-vault.js";
+export type { CreateVaultOptions, CreateVaultResult } from "./create-vault.js";
 
 // ─── Harden / withVault ─────────────────────────────────────────────────────
 export {
