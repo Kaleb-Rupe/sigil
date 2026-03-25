@@ -2560,4 +2560,282 @@ describe("surfpool-integration", function () {
       );
     });
   });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Suite 11: Spending cap rolling window (time travel)
+  // ═══════════════════════════════════════════════════════════════════════════
+  describe("11. spending cap rolling window", () => {
+    let capSetup: VaultSetupResult;
+    let destWallet: Keypair;
+    let destUsdcAta: PublicKey;
+
+    before(async () => {
+      destWallet = await createWallet(env.connection, "capDest", 2);
+      destUsdcAta = await fundWithTokens(
+        env.connection,
+        destWallet.publicKey,
+        DEVNET_USDC_MINT,
+        0,
+      );
+
+      capSetup = await setupVaultWithAgent(env, program, {
+        dailyCap: new BN(100_000_000), // 100 USDC daily cap
+        maxTxSize: new BN(100_000_000),
+        vaultFunding: 5_000_000_000, // 5000 USDC
+        allowedDestinations: [destWallet.publicKey],
+      });
+    });
+
+    after(async () => {
+      // Reset clock to prevent leakage to subsequent suites
+      await timeTravel(env.connection, {
+        absoluteTimestamp: Date.now(),
+      });
+    });
+
+    it("agent_transfer within daily cap succeeds", async () => {
+      const transferIx = await program.methods
+        .agentTransfer(new BN(50_000_000)) // 50 USDC
+        .accounts({
+          agent: capSetup.agent.publicKey,
+          vault: capSetup.vaultPda,
+          policy: capSetup.policyPda,
+          tracker: capSetup.trackerPda,
+          agentSpendOverlay: capSetup.overlayPda,
+          vaultTokenAccount: capSetup.vaultUsdcAta,
+          tokenMintAccount: DEVNET_USDC_MINT,
+          destinationTokenAccount: destUsdcAta,
+          feeDestinationTokenAccount: null,
+          protocolTreasuryTokenAccount: capSetup.protocolTreasuryAta,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        } as any)
+        .instruction();
+
+      const result = await sendVersionedTx(
+        env.connection,
+        [transferIx],
+        capSetup.agent,
+      );
+      expect(result.signature).to.be.a("string");
+    });
+
+    it("agent_transfer exceeding daily cap fails", async () => {
+      // Already spent 50, cap is 100, try 60 (total 110 > 100)
+      const transferIx = await program.methods
+        .agentTransfer(new BN(60_000_000)) // 60 USDC
+        .accounts({
+          agent: capSetup.agent.publicKey,
+          vault: capSetup.vaultPda,
+          policy: capSetup.policyPda,
+          tracker: capSetup.trackerPda,
+          agentSpendOverlay: capSetup.overlayPda,
+          vaultTokenAccount: capSetup.vaultUsdcAta,
+          tokenMintAccount: DEVNET_USDC_MINT,
+          destinationTokenAccount: destUsdcAta,
+          feeDestinationTokenAccount: null,
+          protocolTreasuryTokenAccount: capSetup.protocolTreasuryAta,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        } as any)
+        .instruction();
+
+      await expectTxError(
+        env.connection,
+        [transferIx],
+        capSetup.agent,
+        "SpendingCapExceeded",
+      );
+    });
+
+    it("time travel 24h resets rolling cap", async () => {
+      // Get current Surfnet clock and advance 24h + buffer
+      const clock = await getClock(env.connection);
+      await timeTravel(env.connection, {
+        absoluteTimestamp: (clock.timestamp + 86_400 + 60) * 1000,
+      });
+
+      // After 24h, the rolling window resets — 50 USDC should succeed again
+      const transferIx = await program.methods
+        .agentTransfer(new BN(50_000_000))
+        .accounts({
+          agent: capSetup.agent.publicKey,
+          vault: capSetup.vaultPda,
+          policy: capSetup.policyPda,
+          tracker: capSetup.trackerPda,
+          agentSpendOverlay: capSetup.overlayPda,
+          vaultTokenAccount: capSetup.vaultUsdcAta,
+          tokenMintAccount: DEVNET_USDC_MINT,
+          destinationTokenAccount: destUsdcAta,
+          feeDestinationTokenAccount: null,
+          protocolTreasuryTokenAccount: capSetup.protocolTreasuryAta,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        } as any)
+        .instruction();
+
+      const result = await sendVersionedTx(
+        env.connection,
+        [transferIx],
+        capSetup.agent,
+      );
+      expect(result.signature).to.be.a("string");
+    });
+
+    it("sequential transfers accumulate toward cap", async () => {
+      // Fresh vault for clean accumulation test
+      const dest2 = await createWallet(env.connection, "capDest2", 2);
+      const dest2Ata = await fundWithTokens(
+        env.connection,
+        dest2.publicKey,
+        DEVNET_USDC_MINT,
+        0,
+      );
+      const seqSetup = await setupVaultWithAgent(env, program, {
+        dailyCap: new BN(100_000_000),
+        maxTxSize: new BN(100_000_000),
+        vaultFunding: 5_000_000_000,
+        allowedDestinations: [dest2.publicKey],
+      });
+
+      // Transfer 30 + 30 + 30 = 90 (under 100 cap)
+      for (let i = 0; i < 3; i++) {
+        const ix = await program.methods
+          .agentTransfer(new BN(30_000_000))
+          .accounts({
+            agent: seqSetup.agent.publicKey,
+            vault: seqSetup.vaultPda,
+            policy: seqSetup.policyPda,
+            tracker: seqSetup.trackerPda,
+            agentSpendOverlay: seqSetup.overlayPda,
+            vaultTokenAccount: seqSetup.vaultUsdcAta,
+            tokenMintAccount: DEVNET_USDC_MINT,
+            destinationTokenAccount: dest2Ata,
+            feeDestinationTokenAccount: null,
+            protocolTreasuryTokenAccount: seqSetup.protocolTreasuryAta,
+            tokenProgram: TOKEN_PROGRAM_ID,
+          } as any)
+          .instruction();
+
+        await sendVersionedTx(env.connection, [ix], seqSetup.agent);
+      }
+
+      // 4th transfer of 15 would be 105 > 100 — should fail
+      const overIx = await program.methods
+        .agentTransfer(new BN(15_000_000))
+        .accounts({
+          agent: seqSetup.agent.publicKey,
+          vault: seqSetup.vaultPda,
+          policy: seqSetup.policyPda,
+          tracker: seqSetup.trackerPda,
+          agentSpendOverlay: seqSetup.overlayPda,
+          vaultTokenAccount: seqSetup.vaultUsdcAta,
+          tokenMintAccount: DEVNET_USDC_MINT,
+          destinationTokenAccount: dest2Ata,
+          feeDestinationTokenAccount: null,
+          protocolTreasuryTokenAccount: seqSetup.protocolTreasuryAta,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        } as any)
+        .instruction();
+
+      await expectTxError(
+        env.connection,
+        [overIx],
+        seqSetup.agent,
+        "SpendingCapExceeded",
+      );
+    });
+
+    it("per-agent spending limit enforced independently", async () => {
+      const dest3 = await createWallet(env.connection, "capDest3", 2);
+      const dest3Ata = await fundWithTokens(
+        env.connection,
+        dest3.publicKey,
+        DEVNET_USDC_MINT,
+        0,
+      );
+      const limitSetup = await setupVaultWithAgent(env, program, {
+        dailyCap: new BN(500_000_000), // 500 USDC vault cap
+        agentSpendingLimit: new BN(50_000_000), // 50 USDC per-agent limit
+        vaultFunding: 5_000_000_000,
+        allowedDestinations: [dest3.publicKey],
+      });
+
+      // Transfer 40 USDC — under per-agent limit
+      const okIx = await program.methods
+        .agentTransfer(new BN(40_000_000))
+        .accounts({
+          agent: limitSetup.agent.publicKey,
+          vault: limitSetup.vaultPda,
+          policy: limitSetup.policyPda,
+          tracker: limitSetup.trackerPda,
+          agentSpendOverlay: limitSetup.overlayPda,
+          vaultTokenAccount: limitSetup.vaultUsdcAta,
+          tokenMintAccount: DEVNET_USDC_MINT,
+          destinationTokenAccount: dest3Ata,
+          feeDestinationTokenAccount: null,
+          protocolTreasuryTokenAccount: limitSetup.protocolTreasuryAta,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        } as any)
+        .instruction();
+      await sendVersionedTx(env.connection, [okIx], limitSetup.agent);
+
+      // Transfer 20 USDC — total 60 > 50 per-agent limit
+      const overIx = await program.methods
+        .agentTransfer(new BN(20_000_000))
+        .accounts({
+          agent: limitSetup.agent.publicKey,
+          vault: limitSetup.vaultPda,
+          policy: limitSetup.policyPda,
+          tracker: limitSetup.trackerPda,
+          agentSpendOverlay: limitSetup.overlayPda,
+          vaultTokenAccount: limitSetup.vaultUsdcAta,
+          tokenMintAccount: DEVNET_USDC_MINT,
+          destinationTokenAccount: dest3Ata,
+          feeDestinationTokenAccount: null,
+          protocolTreasuryTokenAccount: limitSetup.protocolTreasuryAta,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        } as any)
+        .instruction();
+
+      await expectTxError(
+        env.connection,
+        [overIx],
+        limitSetup.agent,
+        "AgentSpendLimitExceeded",
+      );
+    });
+
+    it("register 11th agent fails with MaxAgentsReached", async () => {
+      const maxSetup = await setupVaultWithAgent(env, program);
+
+      // Register agents 2-10 (agent 1 already registered by setup)
+      for (let i = 2; i <= 10; i++) {
+        const extra = await createWallet(env.connection, `maxAgent${i}`, 2);
+        await program.methods
+          .registerAgent(extra.publicKey, FULL_PERMISSIONS, new BN(0))
+          .accounts({
+            owner: env.payer.publicKey,
+            vault: maxSetup.vaultPda,
+            agentSpendOverlay: maxSetup.overlayPda,
+          } as any)
+          .rpc();
+      }
+
+      // 11th agent should fail
+      const eleventh = await createWallet(env.connection, "agent11", 2);
+      try {
+        await program.methods
+          .registerAgent(eleventh.publicKey, FULL_PERMISSIONS, new BN(0))
+          .accounts({
+            owner: env.payer.publicKey,
+            vault: maxSetup.vaultPda,
+            agentSpendOverlay: maxSetup.overlayPda,
+          } as any)
+          .rpc();
+        expect.fail("Should have thrown MaxAgentsReached");
+      } catch (err: any) {
+        if (err.name === "AssertionError") throw err;
+        const errStr = err.message || JSON.stringify(err);
+        expect(errStr).to.include("MaxAgentsReached");
+      }
+    });
+  });
 });
