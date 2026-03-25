@@ -49,6 +49,7 @@ import {
   derivePDAs,
   deriveSessionPda,
   deriveOverlayPda,
+  deriveEscrowPda,
   nextVaultId,
   surfnetRpc,
   ensureMintExists,
@@ -2836,6 +2837,424 @@ describe("surfpool-integration", function () {
         const errStr = err.message || JSON.stringify(err);
         expect(errStr).to.include("MaxAgentsReached");
       }
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Suite 12: Escrow lifecycle with timeout (time travel)
+  // ═══════════════════════════════════════════════════════════════════════════
+  describe("12. escrow lifecycle with timeout", () => {
+    let srcSetup: VaultSetupResult;
+    let dstOwner: Keypair;
+    let dstSetup: VaultSetupResult;
+    let escrowCounter = 0;
+
+    function nextEscrowId(): BN {
+      return new BN(80_000 + escrowCounter++);
+    }
+
+    before(async () => {
+      // Source vault
+      srcSetup = await setupVaultWithAgent(env, program, {
+        vaultFunding: 5_000_000_000, // 5000 USDC
+      });
+
+      // Destination vault (different owner)
+      dstOwner = await createWallet(env.connection, "dstOwner", 100);
+      dstSetup = await setupVaultWithAgent(env, program, {
+        owner: dstOwner,
+        vaultFunding: 1_000_000_000,
+      });
+    });
+
+    it("create_escrow locks funds in escrow ATA", async () => {
+      const escrowId = nextEscrowId();
+      const clock = await getClock(env.connection);
+      const expiresAt = clock.timestamp + 3600; // 1 hour from now
+
+      const { escrowPda, escrowUsdcAta } = deriveEscrowPda(
+        srcSetup.vaultPda,
+        dstSetup.vaultPda,
+        escrowId,
+        program.programId,
+      );
+
+      // Fee destination ATA for source vault
+      const feeDestAta = getAssociatedTokenAddressSync(
+        DEVNET_USDC_MINT,
+        srcSetup.feeDestination.publicKey,
+        false,
+      );
+      await fundWithTokens(
+        env.connection,
+        srcSetup.feeDestination.publicKey,
+        DEVNET_USDC_MINT,
+        0,
+      );
+
+      const createIx = await program.methods
+        .createEscrow(
+          escrowId,
+          new BN(100_000_000), // 100 USDC
+          new BN(expiresAt),
+          Array(32).fill(0), // no condition
+        )
+        .accounts({
+          agent: srcSetup.agent.publicKey,
+          sourceVault: srcSetup.vaultPda,
+          policy: srcSetup.policyPda,
+          tracker: srcSetup.trackerPda,
+          agentSpendOverlay: srcSetup.overlayPda,
+          destinationVault: dstSetup.vaultPda,
+          escrow: escrowPda,
+          sourceVaultAta: srcSetup.vaultUsdcAta,
+          escrowAta: escrowUsdcAta,
+          protocolTreasuryAta: srcSetup.protocolTreasuryAta,
+          feeDestinationAta: feeDestAta,
+          tokenMint: DEVNET_USDC_MINT,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        } as any)
+        .instruction();
+
+      await sendVersionedTx(env.connection, [createIx], srcSetup.agent);
+
+      // Verify escrow exists
+      const escrow = await program.account.escrowDeposit.fetch(escrowPda);
+      expect(escrow.amount.toNumber()).to.equal(100_000_000);
+    });
+
+    it("settle_escrow before expiry succeeds", async () => {
+      const escrowId = nextEscrowId();
+      const clock = await getClock(env.connection);
+      const expiresAt = clock.timestamp + 3600;
+
+      const { escrowPda, escrowUsdcAta } = deriveEscrowPda(
+        srcSetup.vaultPda,
+        dstSetup.vaultPda,
+        escrowId,
+        program.programId,
+      );
+      const feeDestAta = getAssociatedTokenAddressSync(
+        DEVNET_USDC_MINT,
+        srcSetup.feeDestination.publicKey,
+        false,
+      );
+
+      // Create escrow
+      const createIx = await program.methods
+        .createEscrow(
+          escrowId,
+          new BN(50_000_000), // 50 USDC
+          new BN(expiresAt),
+          Array(32).fill(0),
+        )
+        .accounts({
+          agent: srcSetup.agent.publicKey,
+          sourceVault: srcSetup.vaultPda,
+          policy: srcSetup.policyPda,
+          tracker: srcSetup.trackerPda,
+          agentSpendOverlay: srcSetup.overlayPda,
+          destinationVault: dstSetup.vaultPda,
+          escrow: escrowPda,
+          sourceVaultAta: srcSetup.vaultUsdcAta,
+          escrowAta: escrowUsdcAta,
+          protocolTreasuryAta: srcSetup.protocolTreasuryAta,
+          feeDestinationAta: feeDestAta,
+          tokenMint: DEVNET_USDC_MINT,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        } as any)
+        .instruction();
+      await sendVersionedTx(env.connection, [createIx], srcSetup.agent);
+
+      // Settle (before expiry)
+      const settleIx = await program.methods
+        .settleEscrow(Buffer.from([]))
+        .accounts({
+          destinationAgent: dstSetup.agent.publicKey,
+          destinationVault: dstSetup.vaultPda,
+          sourceVault: srcSetup.vaultPda,
+          escrow: escrowPda,
+          escrowAta: escrowUsdcAta,
+          destinationVaultAta: dstSetup.vaultUsdcAta,
+          rentDestination: env.payer.publicKey,
+          tokenMint: DEVNET_USDC_MINT,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        } as any)
+        .instruction();
+
+      await sendVersionedTx(env.connection, [settleIx], dstSetup.agent);
+
+      const escrow = await program.account.escrowDeposit.fetch(escrowPda);
+      expect(escrow.status).to.have.property("settled");
+    });
+
+    it("settle after expiry fails with EscrowExpired", async () => {
+      const escrowId = nextEscrowId();
+      const clock = await getClock(env.connection);
+      const expiresAt = clock.timestamp + 10; // expires in 10 seconds
+
+      const { escrowPda, escrowUsdcAta } = deriveEscrowPda(
+        srcSetup.vaultPda,
+        dstSetup.vaultPda,
+        escrowId,
+        program.programId,
+      );
+      const feeDestAta = getAssociatedTokenAddressSync(
+        DEVNET_USDC_MINT,
+        srcSetup.feeDestination.publicKey,
+        false,
+      );
+
+      // Create escrow with short expiry
+      const createIx = await program.methods
+        .createEscrow(
+          escrowId,
+          new BN(30_000_000),
+          new BN(expiresAt),
+          Array(32).fill(0),
+        )
+        .accounts({
+          agent: srcSetup.agent.publicKey,
+          sourceVault: srcSetup.vaultPda,
+          policy: srcSetup.policyPda,
+          tracker: srcSetup.trackerPda,
+          agentSpendOverlay: srcSetup.overlayPda,
+          destinationVault: dstSetup.vaultPda,
+          escrow: escrowPda,
+          sourceVaultAta: srcSetup.vaultUsdcAta,
+          escrowAta: escrowUsdcAta,
+          protocolTreasuryAta: srcSetup.protocolTreasuryAta,
+          feeDestinationAta: feeDestAta,
+          tokenMint: DEVNET_USDC_MINT,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        } as any)
+        .instruction();
+      await sendVersionedTx(env.connection, [createIx], srcSetup.agent);
+
+      // Time travel past expiry (Surfnet uses ms, on-chain uses seconds)
+      await timeTravel(env.connection, {
+        absoluteTimestamp: (expiresAt + 60) * 1000,
+      });
+
+      // Settle should fail — expired
+      const settleIx = await program.methods
+        .settleEscrow(Buffer.from([]))
+        .accounts({
+          destinationAgent: dstSetup.agent.publicKey,
+          destinationVault: dstSetup.vaultPda,
+          sourceVault: srcSetup.vaultPda,
+          escrow: escrowPda,
+          escrowAta: escrowUsdcAta,
+          destinationVaultAta: dstSetup.vaultUsdcAta,
+          rentDestination: env.payer.publicKey,
+          tokenMint: DEVNET_USDC_MINT,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        } as any)
+        .instruction();
+
+      await expectTxError(
+        env.connection,
+        [settleIx],
+        dstSetup.agent,
+        "EscrowExpired",
+      );
+    });
+
+    it("refund after expiry succeeds", async () => {
+      // The escrow from previous test is expired — refund it
+      const escrowId = new BN(80_000 + escrowCounter - 1); // reuse last escrow
+      const { escrowPda, escrowUsdcAta } = deriveEscrowPda(
+        srcSetup.vaultPda,
+        dstSetup.vaultPda,
+        escrowId,
+        program.programId,
+      );
+
+      const refundIx = await program.methods
+        .refundEscrow()
+        .accounts({
+          sourceSigner: srcSetup.agent.publicKey,
+          sourceVault: srcSetup.vaultPda,
+          escrow: escrowPda,
+          escrowAta: escrowUsdcAta,
+          sourceVaultAta: srcSetup.vaultUsdcAta,
+          rentDestination: env.payer.publicKey,
+          tokenMint: DEVNET_USDC_MINT,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        } as any)
+        .instruction();
+
+      await sendVersionedTx(env.connection, [refundIx], srcSetup.agent);
+
+      const escrow = await program.account.escrowDeposit.fetch(escrowPda);
+      expect(escrow.status).to.have.property("refunded");
+    });
+
+    it("close_settled_escrow reclaims rent", async () => {
+      // Use the settled escrow from test 2 (escrowCounter - 2)
+      const settledEscrowId = new BN(80_000 + 1); // second escrow created
+
+      const { escrowPda } = deriveEscrowPda(
+        srcSetup.vaultPda,
+        dstSetup.vaultPda,
+        settledEscrowId,
+        program.programId,
+      );
+
+      const closeIx = await program.methods
+        .closeSettledEscrow(settledEscrowId)
+        .accounts({
+          signer: env.payer.publicKey,
+          sourceVault: srcSetup.vaultPda,
+          destinationVaultKey: dstSetup.vaultPda,
+          escrow: escrowPda,
+        } as any)
+        .instruction();
+
+      await sendVersionedTx(env.connection, [closeIx], env.payer);
+
+      // Escrow PDA should no longer exist
+      try {
+        await program.account.escrowDeposit.fetch(escrowPda);
+        expect.fail("Escrow should be closed");
+      } catch (err: any) {
+        if (err.name === "AssertionError") throw err;
+        const errStr = err.message || JSON.stringify(err);
+        expect(errStr).to.satisfy(
+          (s: string) =>
+            s.includes("Account does not exist") ||
+            s.includes("Could not find"),
+        );
+      }
+    });
+
+    it("double-settle escrow fails", async () => {
+      // Create and settle a new escrow
+      const escrowId = nextEscrowId();
+      const clock = await getClock(env.connection);
+      const expiresAt = clock.timestamp + 7200;
+
+      const { escrowPda, escrowUsdcAta } = deriveEscrowPda(
+        srcSetup.vaultPda,
+        dstSetup.vaultPda,
+        escrowId,
+        program.programId,
+      );
+      const feeDestAta = getAssociatedTokenAddressSync(
+        DEVNET_USDC_MINT,
+        srcSetup.feeDestination.publicKey,
+        false,
+      );
+
+      const createIx = await program.methods
+        .createEscrow(
+          escrowId,
+          new BN(20_000_000),
+          new BN(expiresAt),
+          Array(32).fill(0),
+        )
+        .accounts({
+          agent: srcSetup.agent.publicKey,
+          sourceVault: srcSetup.vaultPda,
+          policy: srcSetup.policyPda,
+          tracker: srcSetup.trackerPda,
+          agentSpendOverlay: srcSetup.overlayPda,
+          destinationVault: dstSetup.vaultPda,
+          escrow: escrowPda,
+          sourceVaultAta: srcSetup.vaultUsdcAta,
+          escrowAta: escrowUsdcAta,
+          protocolTreasuryAta: srcSetup.protocolTreasuryAta,
+          feeDestinationAta: feeDestAta,
+          tokenMint: DEVNET_USDC_MINT,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        } as any)
+        .instruction();
+      await sendVersionedTx(env.connection, [createIx], srcSetup.agent);
+
+      // First settle
+      const settleIx = await program.methods
+        .settleEscrow(Buffer.from([]))
+        .accounts({
+          destinationAgent: dstSetup.agent.publicKey,
+          destinationVault: dstSetup.vaultPda,
+          sourceVault: srcSetup.vaultPda,
+          escrow: escrowPda,
+          escrowAta: escrowUsdcAta,
+          destinationVaultAta: dstSetup.vaultUsdcAta,
+          rentDestination: env.payer.publicKey,
+          tokenMint: DEVNET_USDC_MINT,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        } as any)
+        .instruction();
+      await sendVersionedTx(env.connection, [settleIx], dstSetup.agent);
+
+      // Second settle should fail — already settled
+      await expectTxError(
+        env.connection,
+        [settleIx],
+        dstSetup.agent,
+        "EscrowNotActive",
+      );
+    });
+
+    it("self-escrow (source == dest) fails", async () => {
+      const escrowId = nextEscrowId();
+      const clock = await getClock(env.connection);
+      const expiresAt = clock.timestamp + 3600;
+
+      // Derive escrow with same vault as both source and dest
+      const { escrowPda, escrowUsdcAta } = deriveEscrowPda(
+        srcSetup.vaultPda,
+        srcSetup.vaultPda, // same vault!
+        escrowId,
+        program.programId,
+      );
+      const feeDestAta = getAssociatedTokenAddressSync(
+        DEVNET_USDC_MINT,
+        srcSetup.feeDestination.publicKey,
+        false,
+      );
+
+      const createIx = await program.methods
+        .createEscrow(
+          escrowId,
+          new BN(10_000_000),
+          new BN(expiresAt),
+          Array(32).fill(0),
+        )
+        .accounts({
+          agent: srcSetup.agent.publicKey,
+          sourceVault: srcSetup.vaultPda,
+          policy: srcSetup.policyPda,
+          tracker: srcSetup.trackerPda,
+          agentSpendOverlay: srcSetup.overlayPda,
+          destinationVault: srcSetup.vaultPda, // same!
+          escrow: escrowPda,
+          sourceVaultAta: srcSetup.vaultUsdcAta,
+          escrowAta: escrowUsdcAta,
+          protocolTreasuryAta: srcSetup.protocolTreasuryAta,
+          feeDestinationAta: feeDestAta,
+          tokenMint: DEVNET_USDC_MINT,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        } as any)
+        .instruction();
+
+      await expectTxError(
+        env.connection,
+        [createIx],
+        srcSetup.agent,
+        "InvalidEscrowVault",
+      );
     });
   });
 });
