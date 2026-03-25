@@ -291,19 +291,20 @@ export async function getVaultActivity(
     try {
       const tx = await rpc
         .getTransaction(sigInfo.signature, {
+          encoding: "json",
           maxSupportedTransactionVersion: 0,
         })
         .send();
 
       if (!tx?.meta?.logMessages) continue;
 
-      const decoded = parseAndDecodePhalnxEvents(tx.meta.logMessages);
+      const decoded = parseAndDecodePhalnxEvents([...tx.meta.logMessages]);
       for (const event of decoded) {
         items.push(
           buildActivityItem(
             event,
             sigInfo.signature,
-            sigInfo.blockTime ?? 0,
+            Number(sigInfo.blockTime ?? 0),
             network,
           ),
         );
@@ -363,7 +364,8 @@ function resolveTokenSafe(
 /** Format token amount for display — delegates to formatting.ts with 2-decimal truncation. */
 function formatTokenDisplay(
   amount: bigint,
-  token: { symbol: string; decimals: number },
+  token: { symbol: string; decimals: number } | null,
 ): string {
+  if (!token) return formatUsd(amount);
   return formatTokenAmount(amount, token.decimals, token.symbol, 2);
 }

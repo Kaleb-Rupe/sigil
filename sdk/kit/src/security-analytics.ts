@@ -10,7 +10,7 @@
  */
 
 import type { Address } from "@solana/kit";
-import type { ResolvedVaultState } from "./state-resolver.js";
+import type { ResolvedVaultState, ResolvedVaultStateForOwner } from "./state-resolver.js";
 import type { DecodedPhalnxEvent } from "./events.js";
 import { VaultStatus } from "./generated/types/vaultStatus.js";
 import { getSpendingVelocity } from "./spending-analytics.js";
@@ -214,9 +214,9 @@ export function getSecurityPosture(state: ResolvedVaultState): SecurityPosture {
  * Returns active alerts sorted by severity (critical first).
  */
 export function evaluateAlertConditions(
-  state: ResolvedVaultState,
+  state: ResolvedVaultState | ResolvedVaultStateForOwner,
   vaultAddress: Address,
-  previousState?: ResolvedVaultState,
+  previousState?: ResolvedVaultState | ResolvedVaultStateForOwner,
 ): Alert[] {
   const alerts: Alert[] = [];
   const { vault, globalBudget } = state;

@@ -98,7 +98,7 @@ export const PHALNX_ERROR__UNAUTHORIZED_TOKEN_TRANSFER = 0x1797; // 6039
 export const PHALNX_ERROR__SLIPPAGE_BPS_TOO_HIGH = 0x1798; // 6040
 /** ProtocolMismatch: DeFi instruction program does not match declared target_protocol */
 export const PHALNX_ERROR__PROTOCOL_MISMATCH = 0x1799; // 6041
-/** TooManyDeFiInstructions: Non-stablecoin swap allows exactly one DeFi instruction */
+/** TooManyDeFiInstructions: Spending allows at most one DeFi instruction */
 export const PHALNX_ERROR__TOO_MANY_DE_FI_INSTRUCTIONS = 0x179a; // 6042
 /** MaxAgentsReached: Maximum agents per vault reached (limit: 10) */
 export const PHALNX_ERROR__MAX_AGENTS_REACHED = 0x179b; // 6043
@@ -290,7 +290,7 @@ if (process.env.NODE_ENV !== "production") {
     [PHALNX_ERROR__TIMELOCK_ACTIVE]: `Vault has timelock active — use queue_policy_update instead`,
     [PHALNX_ERROR__TIMELOCK_NOT_EXPIRED]: `Timelock period has not expired yet`,
     [PHALNX_ERROR__TOO_MANY_ALLOWED_PROTOCOLS]: `Policy configuration invalid: too many allowed protocols`,
-    [PHALNX_ERROR__TOO_MANY_DE_FI_INSTRUCTIONS]: `Non-stablecoin swap allows exactly one DeFi instruction`,
+    [PHALNX_ERROR__TOO_MANY_DE_FI_INSTRUCTIONS]: `Spending allows at most one DeFi instruction`,
     [PHALNX_ERROR__TOO_MANY_DESTINATIONS]: `Too many destinations (max 10)`,
     [PHALNX_ERROR__TOO_MANY_POSITIONS]: `Maximum concurrent open positions reached`,
     [PHALNX_ERROR__TRANSACTION_TOO_LARGE]: `Transaction exceeds maximum single transaction size`,

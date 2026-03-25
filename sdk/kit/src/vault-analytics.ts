@@ -9,7 +9,7 @@
  */
 
 import type { Address, Rpc, SolanaRpcApi } from "@solana/kit";
-import type { ResolvedVaultState } from "./state-resolver.js";
+import type { ResolvedVaultState, ResolvedVaultStateForOwner } from "./state-resolver.js";
 import { VaultStatus } from "./generated/types/vaultStatus.js";
 import {
   resolveVaultStateForOwner,
@@ -89,7 +89,7 @@ export interface VaultSummary {
   pnl: VaultPnL;
   tokenBalances: TokenBalance[];
   totalValueUsd: bigint;
-  state: ResolvedVaultState;
+  state: ResolvedVaultStateForOwner;
   stats: VaultStats;
 }
 
@@ -101,7 +101,7 @@ export interface VaultSummary {
  * Derives isHealthy, capUtilization, capResetsIn, security checks from
  * already-resolved vault state. The dashboard vault card renders this directly.
  */
-export function getVaultHealth(state: ResolvedVaultState, nowUnix: bigint): VaultHealth {
+export function getVaultHealth(state: ResolvedVaultState | ResolvedVaultStateForOwner, nowUnix: bigint): VaultHealth {
   const { vault, policy, tracker, globalBudget, constraints } = state;
 
   // VaultStatus is a numeric enum (Active=0, Frozen=1, Closed=2).
