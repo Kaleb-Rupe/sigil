@@ -55,7 +55,7 @@
     },
     {
       "name": "Surfpool integration tests (local Surfnet)",
-      "count": 20,
+      "count": 60,
       "surfpool": true,
       "claudePattern": "tests/surfpool-integration.ts` (ts-mocha + Surfnet, %d tests)"
     },
