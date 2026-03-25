@@ -1937,7 +1937,7 @@ describe("surfpool-integration", function () {
         env.connection,
         [reactivateIx],
         setup.agent,
-        "2006", // Anchor ConstraintHasOne error code
+        "2006", // Anchor ConstraintHasOne — framework error, not in PHALNX_ERROR_NAMES
       );
 
       // Unfreeze for subsequent tests (must succeed or cascade fails)
@@ -2025,7 +2025,7 @@ describe("surfpool-integration", function () {
         env.connection,
         [validateIx, finalizeIx],
         setup.agent,
-        "6067", // AgentPaused — Surfnet may not include error name in logs
+        "AgentPaused",
       );
     });
 
@@ -2855,12 +2855,14 @@ describe("surfpool-integration", function () {
       return new BN(80_000 + escrowCounter++);
     }
 
-    // Get on-chain unix timestamp (seconds) — more reliable than getClock()
-    // after time travel, since getBlockTime may not reflect Surfnet clock
+    // Get on-chain unix timestamp in SECONDS. After time travel, Surfnet's
+    // getBlockTime may return milliseconds instead of seconds. We detect
+    // this by checking the magnitude (> 10^12 = milliseconds).
     async function getOnChainTimestamp(): Promise<number> {
       const clock = await getClock(env.connection);
-      if (clock.timestamp > 0) return clock.timestamp;
-      // Fallback: use real-world time (valid since Surfnet advances forward)
+      let ts = clock.timestamp;
+      if (ts > 1_000_000_000_000) ts = Math.floor(ts / 1000);
+      if (ts > 0) return ts;
       return Math.floor(Date.now() / 1000);
     }
 
@@ -3641,14 +3643,18 @@ describe("surfpool-integration", function () {
         } as any)
         .rpc();
 
-      // Time travel past 60s timelock
-      const currentTs = Math.floor(Date.now() / 1000);
+      // Time travel past 60s timelock — use getClock to get Surfnet's actual
+      // time (may be far ahead after Suite 11's 24h travel), then add buffer
+      const travelClock = await getClock(env.connection);
+      let travelTs = travelClock.timestamp;
+      if (travelTs > 1_000_000_000_000) travelTs = Math.floor(travelTs / 1000);
+      if (travelTs <= 0) travelTs = Math.floor(Date.now() / 1000);
       await timeTravel(env.connection, {
-        absoluteTimestamp: (currentTs + 86400 + 300) * 1000, // well past timelock
+        absoluteTimestamp: (travelTs + 300) * 1000, // 5 min past current Surfnet time
       });
 
-      // Apply
-      await program.methods
+      // Apply — use sendVersionedTx for better error reporting
+      const applyIx = await program.methods
         .applyConstraintsUpdate()
         .accounts({
           owner: env.payer.publicKey,
@@ -3656,7 +3662,8 @@ describe("surfpool-integration", function () {
           constraints: cPda,
           pendingConstraints: pcPda,
         } as any)
-        .rpc();
+        .instruction();
+      await sendVersionedTx(env.connection, [applyIx], env.payer);
 
       const constraints =
         await program.account.instructionConstraints.fetch(cPda);

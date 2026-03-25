@@ -449,6 +449,102 @@ export async function getProfilesByTag(
   ]);
 }
 
+// ─── Anchor error code → name lookup ─────────────────────────────────────────
+
+/**
+ * Phalnx custom error codes (6000-6070) mapped to Anchor error names.
+ * Source of truth: programs/phalnx/src/errors.rs
+ * Surfnet does NOT return program logs for failed TXs via getTransaction(),
+ * so we must decode the numeric error code to include the name in errors.
+ */
+const PHALNX_ERROR_NAMES: Record<number, string> = {
+  6000: "VaultNotActive",
+  6001: "UnauthorizedAgent",
+  6002: "UnauthorizedOwner",
+  6003: "UnsupportedToken",
+  6004: "ProtocolNotAllowed",
+  6005: "TransactionTooLarge",
+  6006: "SpendingCapExceeded",
+  6007: "LeverageTooHigh",
+  6008: "TooManyPositions",
+  6009: "PositionOpeningDisallowed",
+  6010: "SessionNotAuthorized",
+  6011: "InvalidSession",
+  6012: "OpenPositionsExist",
+  6013: "TooManyAllowedProtocols",
+  6014: "AgentAlreadyRegistered",
+  6015: "NoAgentRegistered",
+  6016: "VaultNotFrozen",
+  6017: "VaultAlreadyClosed",
+  6018: "InsufficientBalance",
+  6019: "DeveloperFeeTooHigh",
+  6020: "InvalidFeeDestination",
+  6021: "InvalidProtocolTreasury",
+  6022: "InvalidAgentKey",
+  6023: "AgentIsOwner",
+  6024: "Overflow",
+  6025: "InvalidTokenAccount",
+  6026: "TimelockNotExpired",
+  6027: "TimelockActive",
+  6028: "NoTimelockConfigured",
+  6029: "DestinationNotAllowed",
+  6030: "TooManyDestinations",
+  6031: "InvalidProtocolMode",
+  6032: "InvalidNonSpendingAmount",
+  6033: "NoPositionsToClose",
+  6034: "CpiCallNotAllowed",
+  6035: "MissingFinalizeInstruction",
+  6036: "NonTrackedSwapMustReturnStablecoin",
+  6037: "SwapSlippageExceeded",
+  6038: "InvalidJupiterInstruction",
+  6039: "UnauthorizedTokenTransfer",
+  6040: "SlippageBpsTooHigh",
+  6041: "ProtocolMismatch",
+  6042: "TooManyDeFiInstructions",
+  6043: "MaxAgentsReached",
+  6044: "InsufficientPermissions",
+  6045: "InvalidPermissions",
+  6046: "EscrowNotActive",
+  6047: "EscrowExpired",
+  6048: "EscrowNotExpired",
+  6049: "InvalidEscrowVault",
+  6050: "EscrowConditionsNotMet",
+  6051: "EscrowDurationExceeded",
+  6052: "InvalidConstraintConfig",
+  6053: "ConstraintViolated",
+  6054: "InvalidConstraintsPda",
+  6055: "InvalidPendingConstraintsPda",
+  6056: "AgentSpendLimitExceeded",
+  6057: "OverlaySlotExhausted",
+  6058: "AgentSlotNotFound",
+  6059: "UnauthorizedTokenApproval",
+  6060: "InvalidSessionExpiry",
+  6061: "UnconstrainedProgramBlocked",
+  6062: "ProtocolCapExceeded",
+  6063: "ProtocolCapsMismatch",
+  6064: "ActiveEscrowsExist",
+  6065: "ConstraintsNotClosed",
+  6066: "PendingPolicyExists",
+  6067: "AgentPaused",
+  6068: "AgentAlreadyPaused",
+  6069: "AgentNotPaused",
+  6070: "UnauthorizedPostFinalizeInstruction",
+};
+
+/**
+ * Extract custom error code from Solana transaction error and resolve to name.
+ */
+function resolveErrorName(err: any): string {
+  const errJson = JSON.stringify(err);
+  const match = errJson.match(/"Custom":(\d+)/);
+  if (match) {
+    const code = parseInt(match[1], 10);
+    const name = PHALNX_ERROR_NAMES[code];
+    if (name) return `${name} (${code})`;
+  }
+  return "";
+}
+
 // ─── Composed transaction helper ────────────────────────────────────────────
 
 export interface VersionedTxResult {
@@ -460,6 +556,10 @@ export interface VersionedTxResult {
 /**
  * Build, sign, and send a versioned transaction — mirrors litesvm-setup API.
  * Returns the signature and logs.
+ *
+ * Error handling: Surfnet does not return program logs for failed TXs via
+ * getTransaction(). We decode the error code from confirmation.value.err
+ * and include the Anchor error name in the thrown error message.
  */
 export async function sendVersionedTx(
   connection: Connection,
@@ -495,8 +595,9 @@ export async function sendVersionedTx(
       commitment: "confirmed",
     });
     const logs = txDetails?.meta?.logMessages ?? [];
+    const errorName = resolveErrorName(confirmation.value.err);
     throw new Error(
-      `Transaction failed: ${JSON.stringify(confirmation.value.err)} Logs: ${logs.join(" ")}`,
+      `Transaction failed: ${errorName} ${JSON.stringify(confirmation.value.err)} Logs: ${logs.join(" ")}`,
     );
   }
 
