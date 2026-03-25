@@ -2214,4 +2214,350 @@ describe("surfpool-integration", function () {
         .rpc();
     });
   });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Suite 10: Multi-agent permissions
+  // ═══════════════════════════════════════════════════════════════════════════
+  describe("10. multi-agent permissions", () => {
+    // Permission bits: 0=Swap, 4=Deposit, 7=Transfer, 9=ClosePosition
+    const SWAP_ONLY = new BN(1); // bit 0
+    const NO_SWAP = new BN(((1n << 21n) - 1n) ^ 1n); // all bits except 0
+    const TRANSFER_ONLY = new BN(1 << 7); // bit 7
+    const ZERO_PERMISSIONS = new BN(0);
+
+    let swapSetup: VaultSetupResult;
+    let noSwapSetup: VaultSetupResult;
+
+    before(async () => {
+      // Vault with swap-only agent
+      swapSetup = await setupVaultWithAgent(env, program, {
+        agentPermissions: SWAP_ONLY,
+      });
+      // Vault with no-swap agent
+      noSwapSetup = await setupVaultWithAgent(env, program, {
+        agentPermissions: NO_SWAP,
+      });
+    });
+
+    it("agent with swap permission can execute swap", async () => {
+      const sessionPda = deriveSessionPda(
+        swapSetup.vaultPda,
+        swapSetup.agent.publicKey,
+        DEVNET_USDC_MINT,
+        program.programId,
+      );
+
+      const validateIx = await program.methods
+        .validateAndAuthorize(
+          { swap: {} },
+          DEVNET_USDC_MINT,
+          new BN(5_000_000),
+          program.programId,
+          null,
+        )
+        .accountsPartial({
+          agent: swapSetup.agent.publicKey,
+          vault: swapSetup.vaultPda,
+          policy: swapSetup.policyPda,
+          tracker: swapSetup.trackerPda,
+          session: sessionPda,
+          vaultTokenAccount: swapSetup.vaultUsdcAta,
+          tokenMintAccount: DEVNET_USDC_MINT,
+          protocolTreasuryTokenAccount: swapSetup.protocolTreasuryAta,
+          feeDestinationTokenAccount: null,
+          outputStablecoinAccount: null,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+          agentSpendOverlay: swapSetup.overlayPda,
+          instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+        })
+        .instruction();
+
+      const finalizeIx = await program.methods
+        .finalizeSession(true)
+        .accountsPartial({
+          payer: swapSetup.agent.publicKey,
+          vault: swapSetup.vaultPda,
+          session: sessionPda,
+          sessionRentRecipient: swapSetup.agent.publicKey,
+          policy: swapSetup.policyPda,
+          tracker: swapSetup.trackerPda,
+          vaultTokenAccount: swapSetup.vaultUsdcAta,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+          agentSpendOverlay: swapSetup.overlayPda,
+          instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+          outputStablecoinAccount: null,
+        })
+        .instruction();
+
+      const result = await sendVersionedTx(
+        env.connection,
+        [validateIx, finalizeIx],
+        swapSetup.agent,
+      );
+      expect(result.signature).to.be.a("string");
+    });
+
+    it("agent without swap permission gets InsufficientPermissions", async () => {
+      const sessionPda = deriveSessionPda(
+        noSwapSetup.vaultPda,
+        noSwapSetup.agent.publicKey,
+        DEVNET_USDC_MINT,
+        program.programId,
+      );
+
+      const validateIx = await program.methods
+        .validateAndAuthorize(
+          { swap: {} },
+          DEVNET_USDC_MINT,
+          new BN(5_000_000),
+          program.programId,
+          null,
+        )
+        .accountsPartial({
+          agent: noSwapSetup.agent.publicKey,
+          vault: noSwapSetup.vaultPda,
+          policy: noSwapSetup.policyPda,
+          tracker: noSwapSetup.trackerPda,
+          session: sessionPda,
+          vaultTokenAccount: noSwapSetup.vaultUsdcAta,
+          tokenMintAccount: DEVNET_USDC_MINT,
+          protocolTreasuryTokenAccount: noSwapSetup.protocolTreasuryAta,
+          feeDestinationTokenAccount: null,
+          outputStablecoinAccount: null,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+          agentSpendOverlay: noSwapSetup.overlayPda,
+          instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+        })
+        .instruction();
+
+      const finalizeIx = await program.methods
+        .finalizeSession(true)
+        .accountsPartial({
+          payer: noSwapSetup.agent.publicKey,
+          vault: noSwapSetup.vaultPda,
+          session: sessionPda,
+          sessionRentRecipient: noSwapSetup.agent.publicKey,
+          policy: noSwapSetup.policyPda,
+          tracker: noSwapSetup.trackerPda,
+          vaultTokenAccount: noSwapSetup.vaultUsdcAta,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+          agentSpendOverlay: noSwapSetup.overlayPda,
+          instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+          outputStablecoinAccount: null,
+        })
+        .instruction();
+
+      await expectTxError(
+        env.connection,
+        [validateIx, finalizeIx],
+        noSwapSetup.agent,
+        "InsufficientPermissions",
+      );
+    });
+
+    it("update_agent_permissions changes bitmask", async () => {
+      // Give swap-only agent full permissions
+      await program.methods
+        .updateAgentPermissions(
+          swapSetup.agent.publicKey,
+          FULL_PERMISSIONS,
+          new BN(0),
+        )
+        .accounts({
+          owner: env.payer.publicKey,
+          vault: swapSetup.vaultPda,
+          policy: swapSetup.policyPda,
+          agentSpendOverlay: swapSetup.overlayPda,
+        } as any)
+        .rpc();
+
+      const vault = await program.account.agentVault.fetch(swapSetup.vaultPda);
+      const agentEntry = vault.agents.find(
+        (a: any) =>
+          a.pubkey.toString() === swapSetup.agent.publicKey.toString(),
+      );
+      expect(agentEntry.permissions.toNumber()).to.equal(
+        FULL_PERMISSIONS.toNumber(),
+      );
+    });
+
+    it("two agents with different permissions operate independently", async () => {
+      // Register agent2 with transfer-only on the swap vault
+      const agent2 = await createWallet(env.connection, "permAgent2", 10);
+      await program.methods
+        .registerAgent(agent2.publicKey, TRANSFER_ONLY, new BN(0))
+        .accounts({
+          owner: env.payer.publicKey,
+          vault: swapSetup.vaultPda,
+          agentSpendOverlay: swapSetup.overlayPda,
+        } as any)
+        .rpc();
+
+      // agent2 should NOT be able to swap (no bit 0)
+      const sessionPda = deriveSessionPda(
+        swapSetup.vaultPda,
+        agent2.publicKey,
+        DEVNET_USDC_MINT,
+        program.programId,
+      );
+      const validateIx = await program.methods
+        .validateAndAuthorize(
+          { swap: {} },
+          DEVNET_USDC_MINT,
+          new BN(5_000_000),
+          program.programId,
+          null,
+        )
+        .accountsPartial({
+          agent: agent2.publicKey,
+          vault: swapSetup.vaultPda,
+          policy: swapSetup.policyPda,
+          tracker: swapSetup.trackerPda,
+          session: sessionPda,
+          vaultTokenAccount: swapSetup.vaultUsdcAta,
+          tokenMintAccount: DEVNET_USDC_MINT,
+          protocolTreasuryTokenAccount: swapSetup.protocolTreasuryAta,
+          feeDestinationTokenAccount: null,
+          outputStablecoinAccount: null,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+          agentSpendOverlay: swapSetup.overlayPda,
+          instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+        })
+        .instruction();
+
+      const finalizeIx = await program.methods
+        .finalizeSession(true)
+        .accountsPartial({
+          payer: agent2.publicKey,
+          vault: swapSetup.vaultPda,
+          session: sessionPda,
+          sessionRentRecipient: agent2.publicKey,
+          policy: swapSetup.policyPda,
+          tracker: swapSetup.trackerPda,
+          vaultTokenAccount: swapSetup.vaultUsdcAta,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+          agentSpendOverlay: swapSetup.overlayPda,
+          instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+          outputStablecoinAccount: null,
+        })
+        .instruction();
+
+      await expectTxError(
+        env.connection,
+        [validateIx, finalizeIx],
+        agent2,
+        "InsufficientPermissions",
+      );
+    });
+
+    it("agent with transfer permission can agent_transfer", async () => {
+      // Create vault with transfer-only agent + allowed destination
+      const destWallet = await createWallet(env.connection, "permDest", 2);
+      const destUsdcAta = await fundWithTokens(
+        env.connection,
+        destWallet.publicKey,
+        DEVNET_USDC_MINT,
+        0,
+      );
+
+      const transferSetup = await setupVaultWithAgent(env, program, {
+        agentPermissions: TRANSFER_ONLY,
+        allowedDestinations: [destWallet.publicKey],
+      });
+
+      const transferIx = await program.methods
+        .agentTransfer(new BN(5_000_000))
+        .accounts({
+          agent: transferSetup.agent.publicKey,
+          vault: transferSetup.vaultPda,
+          policy: transferSetup.policyPda,
+          tracker: transferSetup.trackerPda,
+          agentSpendOverlay: transferSetup.overlayPda,
+          vaultTokenAccount: transferSetup.vaultUsdcAta,
+          tokenMintAccount: DEVNET_USDC_MINT,
+          destinationTokenAccount: destUsdcAta,
+          feeDestinationTokenAccount: null,
+          protocolTreasuryTokenAccount: transferSetup.protocolTreasuryAta,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        } as any)
+        .instruction();
+
+      const result = await sendVersionedTx(
+        env.connection,
+        [transferIx],
+        transferSetup.agent,
+      );
+      expect(result.signature).to.be.a("string");
+    });
+
+    it("zero-permission agent fails on any action", async () => {
+      const zeroSetup = await setupVaultWithAgent(env, program, {
+        agentPermissions: ZERO_PERMISSIONS,
+      });
+
+      const sessionPda = deriveSessionPda(
+        zeroSetup.vaultPda,
+        zeroSetup.agent.publicKey,
+        DEVNET_USDC_MINT,
+        program.programId,
+      );
+
+      const validateIx = await program.methods
+        .validateAndAuthorize(
+          { swap: {} },
+          DEVNET_USDC_MINT,
+          new BN(5_000_000),
+          program.programId,
+          null,
+        )
+        .accountsPartial({
+          agent: zeroSetup.agent.publicKey,
+          vault: zeroSetup.vaultPda,
+          policy: zeroSetup.policyPda,
+          tracker: zeroSetup.trackerPda,
+          session: sessionPda,
+          vaultTokenAccount: zeroSetup.vaultUsdcAta,
+          tokenMintAccount: DEVNET_USDC_MINT,
+          protocolTreasuryTokenAccount: zeroSetup.protocolTreasuryAta,
+          feeDestinationTokenAccount: null,
+          outputStablecoinAccount: null,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+          agentSpendOverlay: zeroSetup.overlayPda,
+          instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+        })
+        .instruction();
+
+      const finalizeIx = await program.methods
+        .finalizeSession(true)
+        .accountsPartial({
+          payer: zeroSetup.agent.publicKey,
+          vault: zeroSetup.vaultPda,
+          session: sessionPda,
+          sessionRentRecipient: zeroSetup.agent.publicKey,
+          policy: zeroSetup.policyPda,
+          tracker: zeroSetup.trackerPda,
+          vaultTokenAccount: zeroSetup.vaultUsdcAta,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+          agentSpendOverlay: zeroSetup.overlayPda,
+          instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+          outputStablecoinAccount: null,
+        })
+        .instruction();
+
+      await expectTxError(
+        env.connection,
+        [validateIx, finalizeIx],
+        zeroSetup.agent,
+        "InsufficientPermissions",
+      );
+    });
+  });
 });
