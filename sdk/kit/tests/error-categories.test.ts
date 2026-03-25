@@ -73,7 +73,9 @@ describe("PhalnxErrorCategory", () => {
     const err = toAgentError(new Error("fetch failed: ECONNREFUSED"));
     const cat = categorizeError(err);
     expect(cat.type).to.equal("network");
-    expect(cat.retryable).to.be.true;
+    if (cat.type === "network") {
+      expect(cat.retryable).to.be.true;
+    }
   });
 
   it("categorizes rate limit error as network type", () => {
