@@ -3653,16 +3653,21 @@ describe("surfpool-integration", function () {
         absoluteTimestamp: (travelTs + 300) * 1000, // 5 min past current Surfnet time
       });
 
-      // Apply — use sendVersionedTx for better error reporting
-      const applyIx = await program.methods
-        .applyConstraintsUpdate()
-        .accounts({
-          owner: env.payer.publicKey,
-          vault: tlSetup.vaultPda,
-          constraints: cPda,
-          pendingConstraints: pcPda,
-        } as any)
-        .instruction();
+      // Apply — build instruction manually to bypass Anchor's client-side
+      // account pre-fetching which fails after time travel on Surfnet
+      // (Anchor tries to deserialize pending_constraints and hits Union
+      // encode error on ConstraintOperator enum in the stored entries).
+      const applyDiscriminator = Buffer.from([175, 103, 90, 155, 134, 91, 135, 242]);
+      const applyIx = new anchor.web3.TransactionInstruction({
+        programId: program.programId,
+        keys: [
+          { pubkey: env.payer.publicKey, isSigner: true, isWritable: true },
+          { pubkey: tlSetup.vaultPda, isSigner: false, isWritable: false },
+          { pubkey: cPda, isSigner: false, isWritable: true },
+          { pubkey: pcPda, isSigner: false, isWritable: true },
+        ],
+        data: applyDiscriminator,
+      });
       await sendVersionedTx(env.connection, [applyIx], env.payer);
 
       const constraints =
