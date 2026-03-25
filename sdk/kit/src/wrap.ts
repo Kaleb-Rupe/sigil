@@ -31,16 +31,21 @@ import { getFinalizeSessionInstructionAsync } from "./generated/instructions/fin
 
 import {
   resolveVaultState,
+  resolveVaultStateForOwner,
+  resolveVaultBudget,
   type ResolvedVaultState,
+  type ResolvedVaultStateForOwner,
+  type EffectiveBudget,
+  type ResolvedBudget,
 } from "./state-resolver.js";
 import { getSessionPDA, getAgentOverlayPDA } from "./resolve-accounts.js";
 import {
   composePhalnxTransaction,
   measureTransactionSize,
 } from "./composer.js";
-import { BlockhashCache, type Blockhash } from "./rpc-helpers.js";
-import { AltCache, mergeAltAddresses } from "./alt-loader.js";
-import { getPhalnxAltAddress } from "./alt-config.js";
+import { BlockhashCache, signAndEncode, sendAndConfirmTransaction, type Blockhash, type SendAndConfirmOptions } from "./rpc-helpers.js";
+import { AltCache, mergeAltAddresses, verifyPhalnxAlt } from "./alt-loader.js";
+import { getPhalnxAltAddress, getExpectedAltContents } from "./alt-config.js";
 import { deriveAta } from "./x402/transfer-builder.js";
 import {
   type Network,
@@ -52,8 +57,12 @@ import {
   PROTOCOL_TREASURY,
   USDC_MINT_DEVNET,
   USDC_MINT_MAINNET,
+  USDT_MINT_DEVNET,
+  USDT_MINT_MAINNET,
 } from "./types.js";
 import { isProtocolAllowed } from "./protocol-resolver.js";
+import { getVaultPnL, getVaultTokenBalances, type VaultPnL, type TokenBalance } from "./balance-tracker.js";
+import { createVault, type CreateVaultOptions, type CreateVaultResult } from "./create-vault.js";
 
 // ─── Well-known program addresses to strip ──────────────────────────────────
 
@@ -78,6 +87,11 @@ export interface WrapParams {
   priorityFeeMicroLamports?: number;
   outputStablecoinAccount?: Address;
   blockhash?: Blockhash;
+  /**
+   * Protocol-specific ALT addresses to merge with the Phalnx ALT for tx compression.
+   * Jupiter: extract `addressLookupTableAddresses` from the /swap-instructions response.
+   * These rotate per-route — always pass fresh values from the latest API response.
+   */
   protocolAltAddresses?: Address[];
   addressLookupTables?: AddressesByLookupTableAddress;
   cachedState?: ResolvedVaultState;
@@ -95,6 +109,13 @@ export interface WrapResult {
   txSizeBytes: number;
   /** Block height after which the blockhash expires. Sign and send before this. */
   lastValidBlockHeight: bigint;
+  /** Vault context for downstream drain detection (eliminates double-resolve) */
+  vaultContext?: {
+    vaultAddress: Address;
+    vaultTokenAta: Address;
+    tokenBalance: bigint;
+    knownRecipients: Set<string>;
+  };
 }
 
 // ─── Internal helpers ───────────────────────────────────────────────────────
@@ -173,12 +194,12 @@ export async function wrap(params: WrapParams): Promise<WrapResult> {
     const ageMs = (Date.now() / 1000 - Number(params.cachedState.resolvedAtTimestamp)) * 1000;
     const maxAge = params.maxCacheAgeMs ?? 30_000;
     if (ageMs > maxAge) {
-      state = await resolveVaultState(params.rpc, params.vault, params.agent.address);
+      state = await resolveVaultState(params.rpc, params.vault, params.agent.address, undefined, net);
     } else {
       state = params.cachedState;
     }
   } else {
-    state = await resolveVaultState(params.rpc, params.vault, params.agent.address);
+    state = await resolveVaultState(params.rpc, params.vault, params.agent.address, undefined, net);
   }
 
   // Verify vault is active
@@ -375,12 +396,24 @@ export async function wrap(params: WrapParams): Promise<WrapResult> {
   const blockhash =
     params.blockhash ?? (await blockhashCache.get(params.rpc));
 
-  // Resolve ALTs
+  // Resolve ALTs — Phalnx ALT + protocol ALTs (e.g. Jupiter route-specific)
   let addressLookupTables = params.addressLookupTables;
   if (!addressLookupTables) {
     const phalnxAlt = getPhalnxAltAddress(net);
     const allAlts = mergeAltAddresses(phalnxAlt, params.protocolAltAddresses);
     addressLookupTables = await altCache.resolve(params.rpc, allAlts);
+
+    // Verify Phalnx ALT contents — if stale cache causes mismatch, evict and retry once.
+    // This self-heals after ALT extension without requiring manual cache invalidation.
+    try {
+      verifyPhalnxAlt(addressLookupTables, phalnxAlt, getExpectedAltContents(net));
+    } catch (e) {
+      // Evict stale cache entry and re-resolve from RPC
+      altCache.invalidate();
+      addressLookupTables = await altCache.resolve(params.rpc, allAlts);
+      // Second attempt throws if still mismatched (real corruption, not staleness)
+      verifyPhalnxAlt(addressLookupTables, phalnxAlt, getExpectedAltContents(net));
+    }
   }
 
   const compiledTx = composePhalnxTransaction({
@@ -396,10 +429,35 @@ export async function wrap(params: WrapParams): Promise<WrapResult> {
 
   const { byteLength, withinLimit } = measureTransactionSize(compiledTx);
   if (!withinLimit) {
+    const hasProtocolAlts = params.protocolAltAddresses && params.protocolAltAddresses.length > 0;
     throw new Error(
       `Transaction size ${byteLength} bytes exceeds 1232 byte limit. ` +
-        `Use address lookup tables or reduce instruction count.`,
+        (hasProtocolAlts
+          ? `Even with ${params.protocolAltAddresses!.length} protocol ALT(s), the transaction is too large. Reduce instruction count.`
+          : `Pass protocolAltAddresses from your DeFi API response (e.g. Jupiter swap-instructions addressLookupTableAddresses).`),
     );
+  }
+
+  // Build vaultContext for downstream drain detection
+  const usdcMintForNet = net === "devnet" ? USDC_MINT_DEVNET : USDC_MINT_MAINNET;
+  const usdtMintForNet = net === "devnet" ? USDT_MINT_DEVNET : USDT_MINT_MAINNET;
+  const tokenBalance =
+    params.tokenMint === usdcMintForNet
+      ? state.stablecoinBalances.usdc
+      : params.tokenMint === usdtMintForNet
+        ? state.stablecoinBalances.usdt
+        : 0n;
+
+  // Known recipients: ATA addresses that legitimately receive tokens during Phalnx TXs.
+  // Drain detection compares against token account (ATA) addresses in balance deltas,
+  // so we must add ATAs here — NOT wallet addresses (which would never match).
+  const knownRecipients = new Set<string>();
+  knownRecipients.add(vaultTokenAccount); // vault's own token ATA
+  if (protocolTreasuryTokenAccount) {
+    knownRecipients.add(protocolTreasuryTokenAccount);
+  }
+  if (feeDestinationTokenAccount) {
+    knownRecipients.add(feeDestinationTokenAccount);
   }
 
   return {
@@ -409,38 +467,188 @@ export async function wrap(params: WrapParams): Promise<WrapResult> {
     warnings,
     txSizeBytes: byteLength,
     lastValidBlockHeight: blockhash.lastValidBlockHeight,
+    vaultContext: {
+      vaultAddress: params.vault,
+      vaultTokenAta: vaultTokenAccount,
+      tokenBalance,
+      knownRecipients,
+    },
   };
+}
+
+// ─── PhalnxClient Types ──────────────────────────────────────────────────
+
+export interface PhalnxClientConfig {
+  rpc: Rpc<SolanaRpcApi>;
+  vault: Address;
+  agent: TransactionSigner;
+  network: "devnet" | "mainnet";
+  blockhashTtlMs?: number;
+}
+
+/**
+ * Options for `client.wrap()`.
+ *
+ * Note: `blockhash` is intentionally omitted — PhalnxClient manages its own
+ * BlockhashCache instance, which is what `invalidateCaches()` actually clears.
+ * Use the standalone `wrap()` function if you need to supply a custom blockhash.
+ */
+export interface ClientWrapOpts {
+  tokenMint: Address;
+  amount: bigint;
+  actionType?: ActionType;
+  targetProtocol?: Address;
+  leverageBps?: number;
+  computeUnits?: number;
+  priorityFeeMicroLamports?: number;
+  outputStablecoinAccount?: Address;
+  protocolAltAddresses?: Address[];
+  addressLookupTables?: AddressesByLookupTableAddress;
+  cachedState?: ResolvedVaultState;
+  maxCacheAgeMs?: number;
+  additionalAtaReplacements?: Map<Address, Address>;
+}
+
+export interface ExecuteResult {
+  signature: string;
+  wrapResult: WrapResult;
 }
 
 // ─── PhalnxClient ─────────────────────────────────────────────────────────
 
 /**
- * Production-grade client that owns cache instances.
+ * Primary SDK entry point — stateful client that owns context and caches.
  *
  * Recommended over standalone wrap() for production use:
- * - One client per vault/agent avoids module-level singleton contamination
+ * - Holds vault, agent, network, and RPC — no state carrying between calls
  * - Blockhash and ALT caches are isolated per client instance
+ * - invalidateCaches() clears instance caches that are actually used
+ * - Convenience methods delegate to existing stateless functions
  */
 export class PhalnxClient {
   private readonly blockhashCacheInstance: BlockhashCache;
   private readonly altCacheInstance: AltCache;
   readonly rpc: Rpc<SolanaRpcApi>;
+  readonly vault: Address;
+  readonly agent: TransactionSigner;
+  readonly network: "devnet" | "mainnet";
 
-  constructor(rpc: Rpc<SolanaRpcApi>, options?: { blockhashTtlMs?: number }) {
-    this.rpc = rpc;
-    this.blockhashCacheInstance = new BlockhashCache(options?.blockhashTtlMs);
+  constructor(config: PhalnxClientConfig) {
+    if (!config.rpc) throw new Error("PhalnxClientConfig.rpc is required");
+    if (!config.vault) throw new Error("PhalnxClientConfig.vault is required");
+    if (!config.agent) throw new Error("PhalnxClientConfig.agent is required");
+    if (!config.network) throw new Error("PhalnxClientConfig.network is required");
+
+    this.rpc = config.rpc;
+    this.vault = config.vault;
+    this.agent = config.agent;
+    this.network = config.network;
+    this.blockhashCacheInstance = new BlockhashCache(config.blockhashTtlMs);
     this.altCacheInstance = new AltCache();
   }
 
-  async wrap(params: Omit<WrapParams, "rpc">): Promise<WrapResult> {
+  /**
+   * Wrap DeFi instructions with Phalnx security.
+   *
+   * Pre-resolves blockhash and ALTs from instance caches, then delegates
+   * to the standalone wrap() function. This ensures invalidateCaches()
+   * actually clears caches that are read (N-2 fix).
+   */
+  async wrap(instructions: Instruction[], opts: ClientWrapOpts): Promise<WrapResult> {
+    // Parallelize blockhash + ALT resolution (both independent RPC calls)
+    const altPromise = opts.addressLookupTables
+      ? Promise.resolve(opts.addressLookupTables)
+      : this.altCacheInstance.resolve(
+          this.rpc,
+          mergeAltAddresses(
+            getPhalnxAltAddress(normalizeNetwork(this.network)),
+            opts.protocolAltAddresses,
+          ),
+        );
+
+    let [blockhash, addressLookupTables] = await Promise.all([
+      this.blockhashCacheInstance.get(this.rpc),
+      altPromise,
+    ]);
+
+    // Defense-in-depth: verify Phalnx ALT contents even when pre-resolved.
+    // On-chain constraints are the real security boundary, but this catches
+    // stale ALT data or SDK-layer corruption before the transaction is sent.
+    // If stale cache causes mismatch, evict and retry once (self-healing).
+    if (!opts.addressLookupTables) {
+      const net = normalizeNetwork(this.network);
+      const phalnxAlt = getPhalnxAltAddress(net);
+      const expected = getExpectedAltContents(net);
+      try {
+        verifyPhalnxAlt(addressLookupTables, phalnxAlt, expected);
+      } catch {
+        this.altCacheInstance.invalidate();
+        const allAlts = mergeAltAddresses(phalnxAlt, opts.protocolAltAddresses);
+        addressLookupTables = await this.altCacheInstance.resolve(this.rpc, allAlts);
+        verifyPhalnxAlt(addressLookupTables, phalnxAlt, expected);
+      }
+    }
+
     return wrap({
-      ...params,
       rpc: this.rpc,
+      vault: this.vault,
+      agent: this.agent,
+      network: this.network,
+      instructions,
+      ...opts,
+      blockhash,
+      addressLookupTables,
     });
+  }
+
+  /**
+   * Wrap + sign + send + confirm in one call.
+   *
+   * Uses the same signing pattern as TransactionExecutor.signSendConfirm()
+   * (transaction-executor.ts:236-265).
+   */
+  async executeAndConfirm(
+    instructions: Instruction[],
+    opts: ClientWrapOpts & { confirmOptions?: SendAndConfirmOptions },
+  ): Promise<ExecuteResult> {
+    const result = await this.wrap(instructions, opts);
+    const encoded = await signAndEncode(this.agent, result.transaction);
+    const signature = await sendAndConfirmTransaction(
+      this.rpc,
+      encoded,
+      opts.confirmOptions,
+    );
+    return { signature, wrapResult: result };
   }
 
   invalidateCaches(): void {
     this.blockhashCacheInstance.invalidate();
     this.altCacheInstance.invalidate();
+  }
+
+  // ─── Convenience methods (pure delegation) ─────────────────────────────
+
+  private get networkFull(): Network {
+    return this.network === "mainnet" ? "mainnet-beta" : "devnet";
+  }
+
+  async getVaultState(): Promise<ResolvedVaultStateForOwner> {
+    return resolveVaultStateForOwner(this.rpc, this.vault, undefined, this.networkFull);
+  }
+
+  async getAgentBudget(): Promise<ResolvedBudget> {
+    return resolveVaultBudget(this.rpc, this.vault, this.agent.address);
+  }
+
+  async getPnL(): Promise<VaultPnL> {
+    return getVaultPnL(this.rpc, this.vault, this.networkFull);
+  }
+
+  async getTokenBalances(): Promise<TokenBalance[]> {
+    return getVaultTokenBalances(this.rpc, this.vault, this.networkFull);
+  }
+
+  static async createVault(opts: CreateVaultOptions): Promise<CreateVaultResult> {
+    return createVault(opts);
   }
 }

@@ -154,4 +154,21 @@ For production custody, configure Turnkey signing policies to:
 2. Enforce allowlisted program IDs (Phalnx program + configured DeFi protocols)
 3. Set rate limits aligned with on-chain `PolicyConfig` caps
 
+Example Turnkey policy JSON for a Phalnx agent wallet:
+```json
+{
+  "policyName": "phalnx-agent-signing-policy",
+  "effect": "EFFECT_ALLOW",
+  "consensus": "approvers.any(user, user.id == '<AGENT_USER_ID>')",
+  "condition": "solana.tx.instructions.any(ix, ix.program_id == '4ZeVCqnjUgUtFrHHPG7jELUxvJeoVGHhGNgPrhBPwrHL')",
+  "notes": "Allow signing only when the Phalnx program is invoked (validate_and_authorize). Additional constraints: max 100 TX/day, reject if total lamports transferred exceeds policy cap."
+}
+```
+
+Key policy requirements:
+- **Phalnx program must be present**: Every agent TX must include `validate_and_authorize` (Phalnx program ID in at least one instruction)
+- **No raw token transfers**: Block standalone SPL Token transfer/approve instructions not wrapped by Phalnx
+- **Rate limiting**: Align Turnkey's per-wallet rate limit with the vault's `dailySpendingCapUsd`
+- **Emergency**: Configure a separate "freeze" policy that the owner can invoke to block all signing immediately
+
 See `sdk/custody/turnkey/` for the Turnkey adapter implementation and `sdk/kit/src/tee/` for the TEE signing interface.

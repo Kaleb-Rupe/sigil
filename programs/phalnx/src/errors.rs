@@ -132,7 +132,7 @@ pub enum PhalnxError {
     #[msg("DeFi instruction program does not match declared target_protocol")]
     ProtocolMismatch,
 
-    #[msg("Non-stablecoin swap allows exactly one DeFi instruction")]
+    #[msg("Spending allows at most one DeFi instruction")]
     TooManyDeFiInstructions,
 
     // --- Multi-Agent errors ---
@@ -223,4 +223,8 @@ pub enum PhalnxError {
 
     #[msg("Agent is not paused")]
     AgentNotPaused,
+
+    // --- Post-finalize instruction check ---
+    #[msg("Instructions after finalize_session must be ComputeBudget or SystemProgram only")]
+    UnauthorizedPostFinalizeInstruction,
 }

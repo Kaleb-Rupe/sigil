@@ -333,7 +333,8 @@ describe("jupiter-lend-integration", () => {
       // Verify vault stats updated
       const vault = await program.account.agentVault.fetch(vaultPda);
       expect(vault.totalTransactions.toNumber()).to.equal(1);
-      expect(vault.totalVolume.toNumber()).to.equal(100_000_000);
+      // totalVolume uses actual_spend_tracked; mock DeFi is no-op → 0
+      expect(vault.totalVolume.toNumber()).to.equal(0);
     });
   });
 
@@ -359,7 +360,8 @@ describe("jupiter-lend-integration", () => {
       const vault = await program.account.agentVault.fetch(vaultPda);
       expect(vault.totalTransactions.toNumber()).to.equal(2);
       // Volume unchanged (withdraw is non-spending)
-      expect(vault.totalVolume.toNumber()).to.equal(100_000_000);
+      // totalVolume uses actual_spend_tracked; mock DeFi is no-op → 0
+      expect(vault.totalVolume.toNumber()).to.equal(0);
     });
   });
 

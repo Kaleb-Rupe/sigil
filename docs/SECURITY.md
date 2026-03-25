@@ -249,7 +249,7 @@ The program does not perform CPI calls to untrusted programs. All CPI calls are 
 
 ### 8.10 Account Size Limits
 
-`PolicyConfig` has a fixed maximum size of 817 bytes (10 protocols × 32 bytes + 10 destinations × 32 bytes + fields). `SpendTracker` is a zero-copy account of 2,840 bytes (144 epoch buckets + 10 protocol counters). `AgentSpendOverlay` is a zero-copy account of 2,368 bytes (10 agent slots, no shards). `InstructionConstraints` is up to 8,318 bytes (16 constraint entries). All sizes are within Solana's 10MB account limit.
+`PolicyConfig` has a fixed maximum size of 817 bytes (10 protocols × 32 bytes + 10 destinations × 32 bytes + fields). `SpendTracker` is a zero-copy account of 2,840 bytes (144 epoch buckets + 10 protocol counters). `AgentSpendOverlay` is a zero-copy account of 2,528 bytes (10 agent slots, no shards). `InstructionConstraints` is up to 8,318 bytes (16 constraint entries). All sizes are within Solana's 10MB account limit.
 
 ### 8.11 RPC Trust Boundary
 

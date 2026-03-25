@@ -337,7 +337,8 @@ describe("flash-trade-integration", () => {
       const vault = await program.account.agentVault.fetch(vaultPda);
       expect(vault.openPositions).to.equal(1);
       expect(vault.totalTransactions.toNumber()).to.equal(1);
-      expect(vault.totalVolume.toNumber()).to.equal(100_000_000);
+      // totalVolume uses actual_spend_tracked; mock DeFi is no-op → 0
+      expect(vault.totalVolume.toNumber()).to.equal(0);
     });
   });
 
@@ -787,10 +788,11 @@ describe("flash-trade-integration", () => {
         vault.totalTransactions.toNumber(),
         "vault should have recorded multiple transactions",
       ).to.be.greaterThanOrEqual(4); // open + close + increase + decrease (+ extras)
+      // totalVolume uses actual_spend_tracked; all mocks are no-ops → 0
       expect(
         vault.totalVolume.toNumber(),
-        "vault should have recorded total volume",
-      ).to.be.greaterThan(0);
+        "vault totalVolume stays 0 with mock DeFi no-ops",
+      ).to.equal(0);
     });
   });
 

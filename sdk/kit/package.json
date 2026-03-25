@@ -16,6 +16,14 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./testing": {
+      "import": "./dist/testing/index.js",
+      "types": "./dist/testing/index.d.ts"
+    },
+    "./testing/devnet": {
+      "import": "./dist/testing/devnet.js",
+      "types": "./dist/testing/devnet.d.ts"
     }
   },
   "files": [
@@ -35,7 +43,8 @@
     "codama:all": "node codama.mjs --all",
     "pretest": "tsc -p tsconfig.test.json --noEmit",
     "test": "mocha --require tsx tests/*.test.ts --timeout 30000",
-    "test:devnet": "mocha --require tsx tests/devnet/**/*.test.ts --timeout 300000"
+    "test:devnet": "mocha --require tsx tests/devnet/**/*.test.ts --timeout 300000",
+    "test:experimental": "mocha --require tsx tests/experimental/**/*.test.ts --timeout 30000"
   },
   "dependencies": {
     "@phalnx/core": "workspace:*",

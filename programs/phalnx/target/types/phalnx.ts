@@ -1396,6 +1396,10 @@ export type Phalnx = {
           name: "systemProgram";
           address: "11111111111111111111111111111111";
         },
+        {
+          name: "instructionsSysvar";
+          address: "Sysvar1nstructions1111111111111111111111111";
+        },
       ];
       args: [
         {
@@ -3618,7 +3622,7 @@ export type Phalnx = {
     {
       code: 6042;
       name: "tooManyDeFiInstructions";
-      msg: "Non-stablecoin swap allows exactly one DeFi instruction";
+      msg: "Spending allows at most one DeFi instruction";
     },
     {
       code: 6043;
@@ -3754,6 +3758,11 @@ export type Phalnx = {
       code: 6069;
       name: "agentNotPaused";
       msg: "Agent is not paused";
+    },
+    {
+      code: 6070;
+      name: "unauthorizedPostFinalizeInstruction";
+      msg: "Unauthorized instruction after finalize_session scan window";
     },
   ];
   types: [
@@ -4113,7 +4122,7 @@ export type Phalnx = {
         "Supports up to 10 agents (matches MAX_AGENTS_PER_VAULT).",
         "",
         "Size calculation:",
-        "8 (discriminator) + 32 (vault) + 232 × 10 (entries) + 1 (bump) + 7 (padding) = 2,368 bytes",
+        "8 (discriminator) + 32 (vault) + 232 × 10 (entries) + 1 (bump) + 7 (padding) + 80 (lifetime_spend) + 80 (lifetime_tx_count) = 2,528 bytes",
       ];
       serialization: "bytemuck";
       repr: {
@@ -4153,6 +4162,24 @@ export type Phalnx = {
             docs: ["Padding for 8-byte alignment"];
             type: {
               array: ["u8", 7];
+            };
+          },
+          {
+            name: "lifetimeSpend";
+            docs: [
+              "Per-agent cumulative spend in USD base units. Index matches entries[i].",
+            ];
+            type: {
+              array: ["u64", 10];
+            };
+          },
+          {
+            name: "lifetimeTxCount";
+            docs: [
+              "Per-agent cumulative transaction count. Index matches entries[i].",
+            ];
+            type: {
+              array: ["u64", 10];
             };
           },
         ];
@@ -4288,6 +4315,25 @@ export type Phalnx = {
             docs: [
               "Cumulative developer fees collected from this vault (token base units)",
             ];
+            type: "u64";
+          },
+          {
+            name: "totalDepositedUsd";
+            docs: [
+              "Cumulative stablecoin deposits in base units (USDC/USDT, 6 decimals)",
+            ];
+            type: "u64";
+          },
+          {
+            name: "totalWithdrawnUsd";
+            docs: [
+              "Cumulative stablecoin withdrawals in base units (USDC/USDT, 6 decimals)",
+            ];
+            type: "u64";
+          },
+          {
+            name: "totalFailedTransactions";
+            docs: ["Cumulative failed + expired session count"];
             type: "u64";
           },
         ];
@@ -5428,6 +5474,18 @@ export type Phalnx = {
           {
             name: "timestamp";
             type: "i64";
+          },
+          {
+            name: "actualSpendUsd";
+            type: "u64";
+          },
+          {
+            name: "balanceAfterUsd";
+            type: "u64";
+          },
+          {
+            name: "actionType";
+            type: "u8";
           },
         ];
       };

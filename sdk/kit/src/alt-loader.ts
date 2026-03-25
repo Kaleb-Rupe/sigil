@@ -145,3 +145,43 @@ export function mergeAltAddresses(
 
   return merged;
 }
+
+// ─── Phalnx ALT Verification ─────────────────────────────────────────────────
+
+/**
+ * Verify that the Phalnx ALT contains all expected addresses.
+ *
+ * Throws on mismatch for the Phalnx ALT (we control it — mismatch is corruption).
+ * Protocol ALTs (Jupiter, Flash Trade) rotate per-route and are NOT verified here.
+ *
+ * Called after AltCache.resolve() in wrap(). If the Phalnx ALT was not resolved
+ * (RPC failure / graceful degradation), this is a no-op.
+ */
+export function verifyPhalnxAlt(
+  resolved: AddressesByLookupTableAddress,
+  phalnxAltAddress: Address,
+  expectedContents: Address[],
+): void {
+  const altAddresses = resolved[phalnxAltAddress];
+  if (!altAddresses) {
+    // ALT not resolved — graceful degradation (S-4) already handles this.
+    // Transaction will be larger without ALT compression but still works.
+    return;
+  }
+
+  const altSet = new Set(altAddresses.map((a) => a as string));
+  const missing: Address[] = [];
+  for (const expected of expectedContents) {
+    if (!altSet.has(expected as string)) {
+      missing.push(expected);
+    }
+  }
+
+  if (missing.length > 0) {
+    throw new Error(
+      `Phalnx ALT ${phalnxAltAddress} is missing ${missing.length} expected address(es): ` +
+        `${missing.join(", ")}. ` +
+        `ALT may need extension — run scripts/extend-phalnx-alt.ts.`,
+    );
+  }
+}

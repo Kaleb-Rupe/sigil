@@ -74,9 +74,17 @@ import {
   OVERLAY_EPOCH_DURATION,
   OVERLAY_NUM_EPOCHS,
   PHALNX_PROGRAM_ADDRESS,
+  PROTOCOL_TREASURY,
   ROLLING_WINDOW_SECONDS,
   U64_MAX,
+  USDC_MINT_DEVNET,
+  USDC_MINT_MAINNET,
+  USDT_MINT_DEVNET,
+  USDT_MINT_MAINNET,
+  type Network,
 } from "./types.js";
+import { deriveAta } from "./x402/transfer-builder.js";
+import { formatUsd } from "./formatting.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -89,6 +97,18 @@ export interface EffectiveBudget {
 
 export interface ProtocolBudget extends EffectiveBudget {
   protocol: Address;
+}
+
+/** A single epoch data point for spending time-series charts. */
+export interface SpendingEpoch {
+  /** Epoch identifier (unix_timestamp / 600). */
+  epochId: number;
+  /** Unix seconds at start of epoch (epochId * 600). */
+  timestamp: number;
+  /** Raw 6-decimal stablecoin base units. */
+  usdAmount: bigint;
+  /** Pre-formatted display string via formatUsd(), e.g. "$123.45". */
+  usdAmountFormatted: string;
 }
 
 /** Complete resolved vault state from a single batched RPC call. */
@@ -105,6 +125,9 @@ export interface ResolvedVaultState {
   allAgentBudgets: Map<Address, EffectiveBudget>;
   protocolBudgets: ProtocolBudget[];
   maxTransactionUsd: bigint;
+
+  /** Vault stablecoin ATA balances (USDC + USDT). 0n if ATA doesn't exist. */
+  stablecoinBalances: { usdc: bigint; usdt: bigint };
 
   resolvedAtTimestamp: bigint;
 }
@@ -272,37 +295,101 @@ export function getProtocolSpend(
   return 0n; // No counter found
 }
 
+/**
+ * Convert SpendTracker epoch buckets into a chronologically sorted time-series
+ * for dashboard charts (Recharts area charts, tooltips).
+ *
+ * Mirrors getRolling24hUsd() iteration but outputs individual data points
+ * instead of a sum. Zero-amount epochs are skipped (sparse-friendly).
+ * No proportional boundary scaling — raw epoch amounts for chart display.
+ *
+ * @param tracker - SpendTracker account data (null for vaults with no tracker PDA)
+ * @param nowUnix - Current unix timestamp in seconds
+ * @returns Chronologically sorted SpendingEpoch[] (ascending by timestamp)
+ */
+export function getSpendingHistory(
+  tracker: SpendTracker | null,
+  nowUnix: bigint,
+): SpendingEpoch[] {
+  if (!tracker || nowUnix <= 0n) return [];
+
+  const epochDuration = BigInt(EPOCH_DURATION);
+  const numEpochs = BigInt(NUM_EPOCHS);
+  const currentEpoch = nowUnix / epochDuration;
+
+  // Early exit: if no writes in 144+ epochs, all data is expired
+  if (currentEpoch - tracker.lastWriteEpoch > numEpochs) return [];
+
+  const windowStartEpoch = currentEpoch - numEpochs;
+  const result: SpendingEpoch[] = [];
+
+  for (const bucket of tracker.buckets) {
+    if (bucket.usdAmount === 0n) continue;
+    if (bucket.epochId < windowStartEpoch) continue;
+    if (bucket.epochId > currentEpoch) continue;
+
+    result.push({
+      epochId: Number(bucket.epochId),
+      timestamp: Number(bucket.epochId * epochDuration),
+      usdAmount: bucket.usdAmount,
+      usdAmountFormatted: formatUsd(bucket.usdAmount),
+    });
+  }
+
+  // Sort chronologically (circular buffer order ≠ time order)
+  result.sort((a, b) => a.timestamp - b.timestamp);
+
+  return result;
+}
+
 // ─── resolveVaultState ───────────────────────────────────────────────────────
 
 /**
  * Resolve complete vault state from a single batched RPC call.
  *
- * Derives 4 PDAs, fetches all 5 accounts in one getMultipleAccounts,
- * decodes, and pre-computes global/agent/protocol budgets with
- * boundary-corrected rolling 24h math.
+ * Derives 4 PDAs + 2 stablecoin ATAs, fetches all 7 accounts in one
+ * getMultipleAccounts, decodes, and pre-computes global/agent/protocol
+ * budgets with boundary-corrected rolling 24h math.
+ *
+ * @param network - Optional network for stablecoin mint resolution (defaults to "mainnet-beta")
  */
 export async function resolveVaultState(
   rpc: Rpc<SolanaRpcApi>,
   vault: Address,
   agent: Address,
   nowUnix?: bigint,
+  network?: Network,
 ): Promise<ResolvedVaultState> {
-  // 1. Derive PDAs in parallel
-  const [[policyPda], [trackerPda], [overlayPda], [constraintsPda]] =
-    await Promise.all([
-      getPolicyPDA(vault),
-      getTrackerPDA(vault),
-      getAgentOverlayPDA(vault, 0),
-      getConstraintsPDA(vault),
-    ]);
+  const net = network ?? "mainnet-beta";
+  const usdcMint = net === "devnet" ? USDC_MINT_DEVNET : USDC_MINT_MAINNET;
+  const usdtMint = net === "devnet" ? USDT_MINT_DEVNET : USDT_MINT_MAINNET;
 
-  // 2. Single batch fetch (one RPC round-trip)
+  // 1. Derive PDAs + stablecoin ATAs in parallel
+  const [
+    [policyPda],
+    [trackerPda],
+    [overlayPda],
+    [constraintsPda],
+    vaultUsdcAta,
+    vaultUsdtAta,
+  ] = await Promise.all([
+    getPolicyPDA(vault),
+    getTrackerPDA(vault),
+    getAgentOverlayPDA(vault, 0),
+    getConstraintsPDA(vault),
+    deriveAta(vault, usdcMint),
+    deriveAta(vault, usdtMint),
+  ]);
+
+  // 2. Single batch fetch (one RPC round-trip — 7 accounts)
   const encoded = await fetchEncodedAccounts(rpc, [
     vault,
     policyPda,
     trackerPda,
     overlayPda,
     constraintsPda,
+    vaultUsdcAta,
+    vaultUsdtAta,
   ]);
 
   // 3. Decode — vault and policy are required, others are optional
@@ -396,6 +483,37 @@ export async function resolveVaultState(
     }
   }
 
+  // 8. Parse stablecoin ATA balances (fail-open: 0n if ATA doesn't exist)
+  let usdcBalance = 0n;
+  let usdtBalance = 0n;
+  try {
+    const usdcEncoded = encoded[5];
+    if (usdcEncoded.exists) {
+      const usdcData = (usdcEncoded as { data: Uint8Array }).data;
+      if (usdcData && usdcData.length >= 72) {
+        // SPL Token amount at offset 64 (u64 LE)
+        for (let i = 0; i < 8; i++) {
+          usdcBalance |= BigInt(usdcData[64 + i]) << BigInt(i * 8);
+        }
+      }
+    }
+  } catch {
+    // Fail-open: ATA may not exist
+  }
+  try {
+    const usdtEncoded = encoded[6];
+    if (usdtEncoded.exists) {
+      const usdtData = (usdtEncoded as { data: Uint8Array }).data;
+      if (usdtData && usdtData.length >= 72) {
+        for (let i = 0; i < 8; i++) {
+          usdtBalance |= BigInt(usdtData[64 + i]) << BigInt(i * 8);
+        }
+      }
+    }
+  } catch {
+    // Fail-open: ATA may not exist
+  }
+
   return {
     vault: decodedVault.data,
     policy: decodedPolicy.data,
@@ -407,8 +525,139 @@ export async function resolveVaultState(
     allAgentBudgets,
     protocolBudgets,
     maxTransactionUsd: decodedPolicy.data.maxTransactionSizeUsd,
+    stablecoinBalances: { usdc: usdcBalance, usdt: usdtBalance },
     resolvedAtTimestamp: timestamp,
   };
+}
+
+// ─── resolveVaultStateForOwner ────────────────────────────────────────────────
+
+/** Owner-facing vault state — all agents' budgets, no single-agent focus. */
+export type ResolvedVaultStateForOwner = Omit<ResolvedVaultState, "agentBudget">;
+
+/**
+ * Resolve complete vault state for an owner — returns all agents' budgets
+ * without requiring a specific agent address.
+ *
+ * Delegates to resolveVaultState internally. Agents with spendingLimitUsd = 0
+ * are excluded from allAgentBudgets (matching on-chain behavior where
+ * zero-limit agents have no budget to track).
+ *
+ * @param rpc - Kit RPC client
+ * @param vault - Vault PDA address
+ * @param nowUnix - Optional timestamp override (defaults to Date.now())
+ * @param network - Optional network for stablecoin mint resolution
+ */
+export async function resolveVaultStateForOwner(
+  rpc: Rpc<SolanaRpcApi>,
+  vault: Address,
+  nowUnix?: bigint,
+  network?: Network,
+): Promise<ResolvedVaultStateForOwner> {
+  // System program address — guaranteed not a vault agent (can't sign),
+  // so agentBudget is always null in the delegated result.
+  const state = await resolveVaultState(
+    rpc,
+    vault,
+    "11111111111111111111111111111111" as Address,
+    nowUnix,
+    network,
+  );
+  const { agentBudget: _, ...rest } = state;
+  return rest;
+}
+
+// ─── Budget-Only Resolver ────────────────────────────────────────────────────
+
+export interface ResolvedBudget {
+  globalBudget: EffectiveBudget;
+  agentBudget: EffectiveBudget | null;
+}
+
+/**
+ * Resolve only global + agent budgets with minimal RPC overhead.
+ *
+ * Fetches 4 accounts (vault, policy, tracker, overlay) instead of 7,
+ * skipping constraints and 2 stablecoin ATAs. Skips protocol budget
+ * computation and constraints decoding (8.3KB zero-copy).
+ * ~40% cheaper than resolveVaultState() for budget-only queries.
+ */
+export async function resolveVaultBudget(
+  rpc: Rpc<SolanaRpcApi>,
+  vault: Address,
+  agent: Address,
+  nowUnix?: bigint,
+): Promise<ResolvedBudget> {
+  const [
+    [policyPda],
+    [trackerPda],
+    [overlayPda],
+  ] = await Promise.all([
+    getPolicyPDA(vault),
+    getTrackerPDA(vault),
+    getAgentOverlayPDA(vault, 0),
+  ]);
+
+  const encoded = await fetchEncodedAccounts(rpc, [
+    vault,
+    policyPda,
+    trackerPda,
+    overlayPda,
+  ]);
+
+  const decodedVault = decodeAgentVault(encoded[0]);
+  if (!decodedVault.exists) {
+    throw new Error(`Vault account ${vault} does not exist`);
+  }
+
+  const decodedPolicy = decodePolicyConfig(encoded[1]);
+  if (!decodedPolicy.exists) {
+    throw new Error(`PolicyConfig for vault ${vault} does not exist`);
+  }
+
+  const decodedTracker = decodeSpendTracker(encoded[2]);
+  const tracker: SpendTracker | null = decodedTracker.exists
+    ? decodedTracker.data
+    : null;
+
+  const decodedOverlay = decodeAgentSpendOverlay(encoded[3]);
+  const overlay: AgentSpendOverlay | null = decodedOverlay.exists
+    ? decodedOverlay.data
+    : null;
+
+  const timestamp = nowUnix ?? BigInt(Math.floor(Date.now() / 1000));
+
+  // Global budget
+  const globalSpent = tracker ? getRolling24hUsd(tracker, timestamp) : 0n;
+  const globalCap = decodedPolicy.data.dailySpendingCapUsd;
+  const globalRemaining = globalCap > globalSpent ? globalCap - globalSpent : 0n;
+  const globalBudget: EffectiveBudget = {
+    spent24h: globalSpent,
+    cap: globalCap,
+    remaining: globalRemaining,
+  };
+
+  // Agent budget
+  let agentBudget: EffectiveBudget | null = null;
+  const agentEntry = decodedVault.data.agents.find((a) => a.pubkey === agent);
+  if (agentEntry && agentEntry.spendingLimitUsd > 0n) {
+    const cap = agentEntry.spendingLimitUsd;
+    if (overlay) {
+      const overlayEntry = overlay.entries.find((e) =>
+        bytesMatchAddress(e.agent, agent),
+      );
+      if (overlayEntry) {
+        const spent = getAgentRolling24hUsd(overlayEntry, timestamp);
+        agentBudget = { spent24h: spent, cap, remaining: cap > spent ? cap - spent : 0n };
+      } else {
+        agentBudget = { spent24h: 0n, cap, remaining: cap };
+      }
+    } else {
+      agentBudget = { spent24h: 0n, cap, remaining: cap };
+    }
+  }
+
+  return { globalBudget, agentBudget };
 }
 
 // ─── Vault Discovery ────────────────────────────────────────────────────────
@@ -420,7 +669,7 @@ export interface DiscoveredVault {
 }
 
 /** AgentVault account size (bytes) — used for dataSize filter. */
-const AGENT_VAULT_SIZE = 610;
+const AGENT_VAULT_SIZE = 634;
 
 /** Byte offset of the `vault_id` field in AgentVault (after 8 disc + 32 owner). */
 const VAULT_ID_OFFSET = 40;

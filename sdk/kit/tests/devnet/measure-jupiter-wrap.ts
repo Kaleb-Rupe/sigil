@@ -5,13 +5,25 @@
  * wraps them with Phalnx validate+finalize, and reports TX size.
  * Does NOT send — just measures.
  *
- * Run: npx tsx sdk/kit/tests/devnet/measure-jupiter-wrap.ts
+ * Usage:
+ *   npx tsx sdk/kit/tests/devnet/measure-jupiter-wrap.ts
+ *     → Measures WITHOUT ALTs (shows the size problem)
+ *
+ *   npx tsx sdk/kit/tests/devnet/measure-jupiter-wrap.ts --with-alts
+ *     → Measures WITH Phalnx + Jupiter ALTs resolved via RPC
+ *     → Requires SOLANA_RPC_URL or uses public devnet
+ *
+ * Prerequisites:
+ *   Save Jupiter /swap-instructions response to /tmp/jupiter-swap-data.json:
+ *   curl "https://api.jup.ag/swap/v1/swap-instructions" -d '{...}' > /tmp/jupiter-swap-data.json
  */
 
 import { readFileSync } from "node:fs";
 import type { Address, Instruction } from "@solana/kit";
-import { AccountRole } from "@solana/kit";
+import { AccountRole, createSolanaRpc } from "@solana/kit";
 import { wrap } from "../../src/wrap.js";
+import { AltCache, mergeAltAddresses } from "../../src/alt-loader.js";
+import { PHALNX_ALT_DEVNET } from "../../src/alt-config.js";
 import { ActionType } from "../../src/generated/types/actionType.js";
 import { VaultStatus } from "../../src/generated/types/vaultStatus.js";
 import type { ResolvedVaultState } from "../../src/state-resolver.js";
@@ -67,6 +79,9 @@ function mockState(): ResolvedVaultState {
       openPositions: 0,
       activeEscrowCount: 0,
       totalFeesCollected: 0n,
+      totalDepositedUsd: 0n,
+      totalWithdrawnUsd: 0n,
+      totalFailedTransactions: 0n,
     },
     policy: {
       discriminator: new Uint8Array(8),
@@ -97,6 +112,7 @@ function mockState(): ResolvedVaultState {
     allAgentBudgets: new Map(),
     protocolBudgets: [],
     maxTransactionUsd: 10_000_000_000n,
+    stablecoinBalances: { usdc: 0n, usdt: 0n },
     resolvedAtTimestamp: BigInt(Math.floor(Date.now() / 1000)),
   };
 }
@@ -105,7 +121,16 @@ function mockState(): ResolvedVaultState {
 
 async function main() {
   // Load Jupiter swap data
-  const raw = JSON.parse(readFileSync("/tmp/jupiter-swap-data.json", "utf-8"));
+  const dataPath = "/tmp/jupiter-swap-data.json";
+  try {
+    readFileSync(dataPath);
+  } catch {
+    console.error(`Missing: ${dataPath}`);
+    console.error(`Fetch it first: curl -s "https://api.jup.ag/swap/v1/swap-instructions" \\`);
+    console.error(`  -H "Content-Type: application/json" -d '{"..."}' > ${dataPath}`);
+    process.exit(1);
+  }
+  const raw = JSON.parse(readFileSync(dataPath, "utf-8"));
 
   // Convert Jupiter instructions
   const swapIx = toKitInstruction(raw.swapInstruction);
@@ -200,6 +225,60 @@ async function main() {
     console.log("  The Phalnx ALT + Jupiter ALTs combined should bring it under limit.");
   } else {
     console.log("  ✅ Full Jupiter swap fits within 1232 bytes even WITHOUT ALTs.");
+  }
+
+  // ─── WITH ALTs mode: resolve via RPC and measure compressed size ───────
+  if (process.argv.includes("--with-alts")) {
+    console.log();
+    console.log("═══ ALT Compression Mode (--with-alts) ═══");
+
+    const rpcUrl = process.env.SOLANA_RPC_URL ?? "https://api.devnet.solana.com";
+    console.log(`  RPC: ${rpcUrl}`);
+
+    const rpc = createSolanaRpc(rpcUrl);
+    const altCache = new AltCache();
+
+    // Merge Phalnx ALT + Jupiter ALTs
+    const allAlts = mergeAltAddresses(PHALNX_ALT_DEVNET, jupiterAlts);
+    console.log(`  ALTs to resolve: ${allAlts.length} (1 Phalnx + ${jupiterAlts.length} Jupiter)`);
+
+    const resolvedAlts = await altCache.resolve(rpc, allAlts);
+    const resolvedCount = Object.keys(resolvedAlts).length;
+    let totalEntries = 0;
+    for (const entries of Object.values(resolvedAlts)) {
+      totalEntries += entries.length;
+    }
+    console.log(`  Resolved: ${resolvedCount} ALT(s) with ${totalEntries} total entries`);
+    console.log();
+
+    try {
+      const resultWithAlts = await wrap({
+        vault: VAULT,
+        agent: { address: AGENT, signTransactions: async (txs: any) => txs } as any,
+        instructions: allDeFiIxs,
+        rpc: rpc as any,
+        network: "mainnet",
+        tokenMint: USDC_MINT_MAINNET,
+        amount: 100_000_000n,
+        actionType: ActionType.Swap,
+        cachedState: mockState(),
+        blockhash: { blockhash: "GHtXQBpokCiBP6spMNfMW9qLBjfQJhmR4GWzCiQ2ATQA", lastValidBlockHeight: 99999n },
+        addressLookupTables: resolvedAlts,
+      });
+
+      console.log("═══ Wrapped TX Size (WITH Phalnx + Jupiter ALTs) ═══");
+      console.log(`  TX size:      ${resultWithAlts.txSizeBytes} bytes`);
+      console.log(`  Limit:        1232 bytes`);
+      console.log(`  Headroom:     ${1232 - resultWithAlts.txSizeBytes} bytes`);
+      console.log(`  Within limit: ${resultWithAlts.txSizeBytes <= 1232 ? "YES ✅" : "NO ❌"}`);
+      console.log();
+
+      const saved = resultNoAlt.txSizeBytes - resultWithAlts.txSizeBytes;
+      console.log(`  ALTs saved: ${saved} bytes (${((saved / resultNoAlt.txSizeBytes) * 100).toFixed(1)}%)`);
+    } catch (e) {
+      console.log(`  ❌ Failed to compose with ALTs: ${e instanceof Error ? e.message : e}`);
+      console.log("  This may mean the ALTs could not be resolved (wrong network, stale data, etc.)");
+    }
   }
 }
 

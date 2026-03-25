@@ -260,7 +260,8 @@ describe("surfpool-integration", function () {
       // Verify vault stats updated
       const vault = await program.account.agentVault.fetch(vaultPda);
       expect(vault.totalTransactions.toNumber()).to.equal(1);
-      expect(vault.totalVolume.toNumber()).to.equal(50_000_000);
+      // totalVolume uses actual_spend_tracked; mock DeFi is no-op → 0
+      expect(vault.totalVolume.toNumber()).to.equal(0);
     });
   });
 
@@ -680,7 +681,8 @@ describe("surfpool-integration", function () {
 
       const vault = await program.account.agentVault.fetch(vaultPda);
       expect(vault.totalTransactions.toNumber()).to.equal(1);
-      expect(vault.totalVolume.toNumber()).to.equal(25_000_000);
+      // totalVolume uses actual_spend_tracked; no DeFi ix → 0
+      expect(vault.totalVolume.toNumber()).to.equal(0);
     });
 
     it("failed validate reverts entire transaction atomically", async () => {
@@ -809,8 +811,8 @@ describe("surfpool-integration", function () {
 
       const vault = await program.account.agentVault.fetch(vaultPda);
       expect(vault.totalTransactions.toNumber()).to.equal(2);
-      // 25 + 30 = 55 USDC total volume
-      expect(vault.totalVolume.toNumber()).to.equal(55_000_000);
+      // totalVolume uses actual_spend_tracked; no DeFi ix → cumulative 0
+      expect(vault.totalVolume.toNumber()).to.equal(0);
     });
   });
 

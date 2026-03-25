@@ -1,11 +1,13 @@
 /**
- * Kit-native RPC helpers for Phalnx TransactionExecutor.
+ * Kit-native RPC helpers for Phalnx SDK.
  *
  * - BlockhashCache: Caches getLatestBlockhash with configurable TTL
+ * - signAndEncode: Sign a compiled TX + encode to base64 wire format
  * - sendAndConfirmTransaction: Send + poll getSignatureStatuses
  */
 
-import type { Rpc, SolanaRpcApi, Commitment, Base64EncodedWireTransaction } from "@solana/kit";
+import type { Rpc, SolanaRpcApi, Commitment, Base64EncodedWireTransaction, TransactionSigner } from "@solana/kit";
+import { getBase64EncodedWireTransaction } from "@solana/kit";
 
 /** Typed shape of a getSignatureStatuses value entry. */
 interface SignatureStatusValue {
@@ -77,6 +79,40 @@ export class BlockhashCache {
     this.fetchedAt = Date.now();
     return this.cached;
   }
+}
+
+// ─── signAndEncode ───────────────────────────────────────────────────────────
+
+/**
+ * Sign a compiled transaction and encode to base64 wire format.
+ *
+ * Handles Kit's TransactionSigner interface which may expose
+ * `modifyAndSignTransactions` or `signTransactions` (both accept/return arrays).
+ *
+ * @returns Base64-encoded wire transaction ready for sendTransaction RPC.
+ */
+export async function signAndEncode(
+  signer: TransactionSigner,
+  compiledTx: unknown,
+): Promise<Base64EncodedWireTransaction> {
+  const signerTyped = signer as TransactionSigner & {
+    modifyAndSignTransactions?: (...args: unknown[]) => Promise<unknown[]>;
+    signTransactions?: (...args: unknown[]) => Promise<unknown[]>;
+  };
+  const signFn = signerTyped.modifyAndSignTransactions ?? signerTyped.signTransactions;
+  if (typeof signFn !== "function") {
+    throw new Error(
+      "Signer must implement signTransactions() or modifyAndSignTransactions()",
+    );
+  }
+  const results = await signFn.call(signerTyped, [compiledTx]);
+  if (!Array.isArray(results) || results.length === 0) {
+    throw new Error("signTransactions returned invalid result: expected non-empty array");
+  }
+  const [signedTx] = results;
+  return getBase64EncodedWireTransaction(
+    signedTx as Parameters<typeof getBase64EncodedWireTransaction>[0],
+  );
 }
 
 // ─── sendAndConfirmTransaction ──────────────────────────────────────────────

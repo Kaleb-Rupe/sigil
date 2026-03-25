@@ -21,7 +21,7 @@ import {
   ensureStablecoinBalance,
   provisionVault,
   type ProvisionVaultResult,
-} from "../helpers/devnet-setup.js";
+} from "../../src/testing/devnet.js";
 
 import { TransactionExecutor } from "../../src/transaction-executor.js";
 import { getValidateAndAuthorizeInstructionAsync } from "../../src/generated/instructions/validateAndAuthorize.js";
@@ -126,7 +126,7 @@ describe("Kit SDK Devnet — Composed Transaction", function () {
   });
 
   it("TransactionExecutor.executeTransaction() succeeds", async function () {
-    const executor = new TransactionExecutor(rpc, agent);
+    const executor = new TransactionExecutor(rpc, agent, { skipSimulation: true });
     const { validateIx, finalizeIx } = await buildSwapInstructions(
       agent, vault, vaultTokenAta, protocolTreasuryAta, 1_000_000n,
     );
@@ -137,7 +137,6 @@ describe("Kit SDK Devnet — Composed Transaction", function () {
       defiInstructions: [],
       finalizeIx,
       computeUnits: 400_000,
-      skipSimulation: true,
     });
 
     expect(result.signature).to.be.a("string");

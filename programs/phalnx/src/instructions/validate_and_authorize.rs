@@ -6,12 +6,10 @@ use anchor_lang::solana_program::sysvar::instructions::{
 use anchor_spl::token::{self, Approve, Mint, Token, TokenAccount, Transfer};
 
 use crate::errors::PhalnxError;
-use crate::events::{ActionAuthorized, AgentSpendLimitChecked, FeesCollected};
+use crate::events::{ActionAuthorized, FeesCollected};
 use crate::state::*;
 
 use super::integrations::{generic_constraints, jupiter};
-use super::utils::stablecoin_to_usd;
-
 use crate::state::PositionEffect;
 
 #[derive(Accounts)]
@@ -91,8 +89,8 @@ pub struct ValidateAndAuthorize<'info> {
     #[account(mut)]
     pub fee_destination_token_account: Option<Account<'info, TokenAccount>>,
 
-    /// Vault's stablecoin ATA to snapshot (for non-stablecoin input swaps).
-    /// Required when input token is NOT a stablecoin.
+    /// Vault's stablecoin ATA to snapshot (for non-stablecoin input spending).
+    /// Required when input token is NOT a stablecoin (output verification in finalize).
     #[account(mut)]
     pub output_stablecoin_account: Option<Account<'info, TokenAccount>>,
 
@@ -194,94 +192,22 @@ pub fn handler(
     // --- Stablecoin-only spending path ---
     let mut output_mint = Pubkey::default();
     let mut stablecoin_balance_before: u64 = 0;
-    let mut rolling_spend_after_record: u64 = 0;
-    let (usd_amount, protocol_fee, developer_fee) = if is_spending {
-        let token_decimals = ctx.accounts.token_mint_account.decimals;
-
+    let (protocol_fee, developer_fee) = if is_spending {
         if is_stablecoin_input {
-            // Stablecoin input: exact USD tracking (1:1 conversion)
-            let usd_amt = stablecoin_to_usd(amount, token_decimals)?;
+            // Snapshot stablecoin balance BEFORE fees or spending.
+            // Finalize uses this to compute actual spending delta.
+            stablecoin_balance_before = ctx.accounts.vault_token_account.amount;
+            output_mint = token_mint;
 
-            // Single tx USD check
-            require!(
-                usd_amt <= policy.max_transaction_size_usd,
-                PhalnxError::TransactionTooLarge
-            );
-
-            // Rolling 24h USD check
-            let mut tracker = ctx.accounts.tracker.load_mut()?;
-            let rolling_usd = tracker.get_rolling_24h_usd(&clock);
-            let new_total_usd = rolling_usd
-                .checked_add(usd_amt)
-                .ok_or(PhalnxError::Overflow)?;
-
-            require!(
-                new_total_usd <= policy.daily_spending_cap_usd,
-                PhalnxError::SpendingCapExceeded
-            );
-
-            // --- Per-agent cap check via contribution overlay ---
-            let agent_key = ctx.accounts.agent.key();
-            let agent_entry = vault
-                .get_agent(&agent_key)
-                .ok_or(error!(PhalnxError::UnauthorizedAgent))?;
-            let mut overlay = ctx.accounts.agent_spend_overlay.load_mut()?;
-            if let Some(agent_slot) = overlay.find_agent_slot(&agent_key) {
-                if agent_entry.spending_limit_usd > 0 {
-                    let agent_rolling = overlay.get_agent_rolling_24h_usd(&clock, agent_slot);
-                    let new_agent_spend = agent_rolling
-                        .checked_add(usd_amt)
-                        .ok_or(PhalnxError::Overflow)?;
-                    require!(
-                        new_agent_spend <= agent_entry.spending_limit_usd,
-                        PhalnxError::AgentSpendLimitExceeded
-                    );
-                    emit!(AgentSpendLimitChecked {
-                        vault: vault_key,
-                        agent: agent_key,
-                        agent_rolling_spend: agent_rolling,
-                        spending_limit_usd: agent_entry.spending_limit_usd,
-                        amount: usd_amt,
-                        timestamp: clock.unix_timestamp,
-                    });
-                }
-                overlay.record_agent_contribution(&clock, agent_slot, usd_amt)?;
-            } else if agent_entry.spending_limit_usd > 0 {
-                return Err(error!(PhalnxError::AgentSlotNotFound));
-            }
-            drop(overlay);
-
-            // Per-protocol cap check (when enabled)
-            if let Some(proto_cap) = policy.get_protocol_cap(&target_protocol) {
-                if proto_cap > 0 {
-                    let proto_spend = tracker.get_protocol_spend(&clock, &target_protocol);
-                    let new_proto_total = proto_spend
-                        .checked_add(usd_amt)
-                        .ok_or(PhalnxError::Overflow)?;
-                    require!(
-                        new_proto_total <= proto_cap,
-                        PhalnxError::ProtocolCapExceeded
-                    );
-                }
-            }
-
-            // Record spend and capture post-record rolling value (avoids second tracker load)
-            tracker.record_spend(&clock, usd_amt)?;
-
-            // Record per-protocol spend
-            if policy.has_protocol_caps {
-                tracker.record_protocol_spend(&clock, &target_protocol, usd_amt)?;
-            }
-
-            rolling_spend_after_record = tracker.get_rolling_24h_usd(&clock);
-            drop(tracker);
+            // Cap checks and spend recording deferred to finalize_session
+            // where actual stablecoin balance delta is measured (outcome-based).
 
             // Calculate fees (ceiling division — guarantees non-zero fee on any non-zero spending)
             let dev_fee_rate = policy.developer_fee_rate;
             let p_fee = ceil_fee(amount, PROTOCOL_FEE_RATE as u64)?;
             let d_fee = ceil_fee(amount, dev_fee_rate as u64)?;
 
-            (usd_amt, p_fee, d_fee)
+            (p_fee, d_fee)
         } else {
             // Non-stablecoin input: snapshot stablecoin balance, verify at finalize.
             // No cap check or fees here — USD tracked when stablecoin flows in finalize.
@@ -306,11 +232,11 @@ pub fn handler(
             stablecoin_balance_before = stablecoin_acct.amount;
 
             // No fees here — cap check deferred to finalize_session when stablecoin delta is known
-            (0u64, 0u64, 0u64)
+            (0u64, 0u64)
         }
     } else {
         // Non-spending: no fees, no spend tracking
-        (0u64, 0u64, 0u64)
+        (0u64, 0u64)
     };
 
     // Shared across spending and non-spending scan paths
@@ -331,13 +257,15 @@ pub fn handler(
     // 2. Whitelist infrastructure programs (ComputeBudget, SystemProgram)
     // 3. Check all other programs against policy (protocolMode enforcement)
     // 4. Slippage verification on recognized DeFi programs
-    // 5. Single DeFi instruction for non-stablecoin inputs (split-swap prevention)
+    // 5. DeFi instruction count enforcement (round-trip + split-swap prevention)
     if is_spending {
         let mut defi_ix_count: u8 = 0;
         let mut found_finalize = false;
 
         let mut scan_idx = current_idx_usize.saturating_add(1);
-        for _ in 0..20 {
+        // Unbounded scan: terminates at finalize_session (break) or end of tx (Err).
+        // Removes fixed 20-instruction cap to ensure coverage at any transaction size.
+        loop {
             match load_instruction_at_checked(scan_idx, &ix_sysvar) {
                 Ok(ix) => {
                     // Stop at finalize_session
@@ -424,9 +352,12 @@ pub fn handler(
             }
         }
 
-        // 5. Non-stablecoin input: exactly 1 recognized DeFi instruction required.
-        // Prevents split-swap attacks (2+ swaps) and no-swap delegation theft (0 swaps).
-        if !is_stablecoin_input {
+        // 5. Prevent multi-DeFi-instruction attacks in all spending transactions.
+        // Non-stablecoin: exactly 1 DeFi ix (must swap to produce stablecoin output).
+        // Stablecoin: at most 1 DeFi ix (prevents round-trip fee avoidance).
+        if is_stablecoin_input {
+            require!(defi_ix_count <= 1, PhalnxError::TooManyDeFiInstructions);
+        } else {
             require!(defi_ix_count == 1, PhalnxError::TooManyDeFiInstructions);
         }
 
@@ -442,10 +373,9 @@ pub fn handler(
     // would go unverified.
     if !is_spending {
         let mut found_finalize = false;
-        let mut idx = current_idx_usize
-            .checked_add(1)
-            .ok_or(error!(PhalnxError::Overflow))?;
-        for _ in 0..20 {
+        let mut idx = current_idx_usize.saturating_add(1);
+        // Unbounded scan: terminates at finalize_session (break) or end of tx (Err).
+        loop {
             match load_instruction_at_checked(idx, &ix_sysvar) {
                 Ok(ix) => {
                     // Stop at finalize_session
@@ -481,7 +411,7 @@ pub fn handler(
                     if ix.program_id == compute_budget_id
                         || ix.program_id == anchor_lang::solana_program::system_program::ID
                     {
-                        idx = idx.checked_add(1).ok_or(error!(PhalnxError::Overflow))?;
+                        idx = idx.saturating_add(1);
                         continue;
                     }
 
@@ -506,7 +436,7 @@ pub fn handler(
                 }
                 Err(_) => break,
             }
-            idx = idx.checked_add(1).ok_or(error!(PhalnxError::Overflow))?;
+            idx = idx.saturating_add(1);
         }
 
         require!(found_finalize, PhalnxError::MissingFinalizeInstruction);
@@ -675,9 +605,9 @@ pub fn handler(
         action_type,
         token_mint,
         amount,
-        usd_amount,
+        usd_amount: amount, // Declared input amount (USD for stablecoin input, raw for non-stablecoin)
         protocol: target_protocol,
-        rolling_spend_usd_after: rolling_spend_after_record,
+        rolling_spend_usd_after: 0, // DEPRECATED: use SessionFinalized.actual_spend_usd
         daily_cap_usd: policy.daily_spending_cap_usd,
         delegated: is_spending,
         timestamp: clock.unix_timestamp,

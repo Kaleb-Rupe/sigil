@@ -2,7 +2,7 @@
   "suites": [
     {
       "name": "Core vault management & permission engine",
-      "count": 104,
+      "count": 108,
       "onChain": true,
       "claudePattern": "tests/phalnx.ts` (ts-mocha + LiteSVM, no validator needed, %d tests)"
     },
@@ -43,6 +43,12 @@
       "claudePattern": "tests/escrow-integration.ts` (ts-mocha + LiteSVM, %d tests)"
     },
     {
+      "name": "Analytics counters (failed TX + per-agent TX count)",
+      "count": 7,
+      "onChain": true,
+      "claudePattern": "tests/analytics-counters.ts` (ts-mocha + LiteSVM, %d tests)"
+    },
+    {
       "name": "Devnet integration tests (real network)",
       "count": 69,
       "devnet": true
@@ -73,15 +79,27 @@
     },
     {
       "name": "Kit-native SDK (`@phalnx/kit`)",
-      "count": 549,
+      "count": 802,
       "ciStepName": "Kit SDK tests",
-      "claudePattern": "sdk/kit/tests/` (mocha + tsx, %d tests — types, resolve-accounts, composer, events, priority-fees, simulation, tokens, policies, tee-attestation, rpc-helpers, transaction-executor, x402, velocity-tracker, agent-errors, tee, alt-loader, alt-integration, wrap, create-vault, harden, protocol-resolver, shield-presign, custody-adapter, inspector, shield, state-resolver)"
+      "claudePattern": "sdk/kit/tests/` (mocha + tsx, %d tests — types, resolve-accounts, composer, events, priority-fees, simulation, tokens, policies, tee-attestation, rpc-helpers, transaction-executor, x402, velocity-tracker, agent-errors, tee, alt-loader, alt-integration, wrap, create-vault, harden, protocol-resolver, shield-presign, custody-adapter, inspector, shield, state-resolver, formatting, presets, owner-transaction, testing)"
     },
     {
       "name": "Kit SDK devnet tests (`@phalnx/kit` devnet)",
       "count": 9,
       "devnet": true,
       "claudePattern": "sdk/kit/tests/devnet/` (mocha + tsx, %d tests — lifecycle, composed-tx)"
+    },
+    {
+      "name": "SAK plugin (`@phalnx/plugin-solana-agent-kit`)",
+      "count": 6,
+      "ciStepName": "SAK plugin tests",
+      "claudePattern": "packages/plugin-solana-agent-kit/tests/` (mocha + tsx, %d tests)"
+    },
+    {
+      "name": "Rust unit tests (cargo test)",
+      "count": 71,
+      "onChain": true,
+      "claudePattern": "cargo test --manifest-path programs/phalnx/Cargo.toml` (%d tests)"
     }
   ]
 }

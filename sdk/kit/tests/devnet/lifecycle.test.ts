@@ -16,7 +16,7 @@ import {
   provisionVault,
   sendKitTransaction,
   type ProvisionVaultResult,
-} from "../helpers/devnet-setup.js";
+} from "../../src/testing/devnet.js";
 
 import { resolveVaultState } from "../../src/state-resolver.js";
 import { fetchMaybeAgentVault } from "../../src/generated/accounts/agentVault.js";

@@ -154,6 +154,8 @@ export const PHALNX_ERROR__AGENT_PAUSED = 0x17b3; // 6067
 export const PHALNX_ERROR__AGENT_ALREADY_PAUSED = 0x17b4; // 6068
 /** AgentNotPaused: Agent is not paused */
 export const PHALNX_ERROR__AGENT_NOT_PAUSED = 0x17b5; // 6069
+/** UnauthorizedPostFinalizeInstruction: Instructions after finalize_session must be ComputeBudget or SystemProgram only */
+export const PHALNX_ERROR__UNAUTHORIZED_POST_FINALIZE_INSTRUCTION = 0x17b6; // 6070
 
 export type PhalnxError =
   | typeof PHALNX_ERROR__ACTIVE_ESCROWS_EXIST
@@ -219,6 +221,7 @@ export type PhalnxError =
   | typeof PHALNX_ERROR__TRANSACTION_TOO_LARGE
   | typeof PHALNX_ERROR__UNAUTHORIZED_AGENT
   | typeof PHALNX_ERROR__UNAUTHORIZED_OWNER
+  | typeof PHALNX_ERROR__UNAUTHORIZED_POST_FINALIZE_INSTRUCTION
   | typeof PHALNX_ERROR__UNAUTHORIZED_TOKEN_APPROVAL
   | typeof PHALNX_ERROR__UNAUTHORIZED_TOKEN_TRANSFER
   | typeof PHALNX_ERROR__UNCONSTRAINED_PROGRAM_BLOCKED
@@ -293,6 +296,7 @@ if (process.env.NODE_ENV !== "production") {
     [PHALNX_ERROR__TRANSACTION_TOO_LARGE]: `Transaction exceeds maximum single transaction size`,
     [PHALNX_ERROR__UNAUTHORIZED_AGENT]: `Unauthorized: signer is not the registered agent`,
     [PHALNX_ERROR__UNAUTHORIZED_OWNER]: `Unauthorized: signer is not the vault owner`,
+    [PHALNX_ERROR__UNAUTHORIZED_POST_FINALIZE_INSTRUCTION]: `Instructions after finalize_session must be ComputeBudget or SystemProgram only`,
     [PHALNX_ERROR__UNAUTHORIZED_TOKEN_APPROVAL]: `Unauthorized SPL Token Approve between validate and finalize`,
     [PHALNX_ERROR__UNAUTHORIZED_TOKEN_TRANSFER]: `Top-level SPL Token transfer not allowed between validate and finalize`,
     [PHALNX_ERROR__UNCONSTRAINED_PROGRAM_BLOCKED]: `Program has no constraint entry and strict mode is enabled`,

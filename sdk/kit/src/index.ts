@@ -65,9 +65,12 @@ export type { Network, PositionEffect } from "./types.js";
 // ─── State Resolver ──────────────────────────────────────────────────────────
 export {
   resolveVaultState,
+  resolveVaultStateForOwner,
+  resolveVaultBudget,
   getRolling24hUsd,
   getAgentRolling24hUsd,
   getProtocolSpend,
+  getSpendingHistory,
   bytesToAddress,
   findVaultsByOwner,
   findEscrowsByVault,
@@ -78,7 +81,10 @@ export {
 export type {
   EffectiveBudget,
   ProtocolBudget,
+  SpendingEpoch,
   ResolvedVaultState,
+  ResolvedVaultStateForOwner,
+  ResolvedBudget,
   DiscoveredVault,
 } from "./state-resolver.js";
 
@@ -152,12 +158,15 @@ export {
   simulateBeforeSend,
   detectDrainAttempt,
   adjustCU,
+  parseTokenBalance,
   RISK_FLAG_LARGE_OUTFLOW,
   RISK_FLAG_UNKNOWN_RECIPIENT,
   RISK_FLAG_FULL_DRAIN,
   RISK_FLAG_MULTI_OUTPUT,
   RISK_FLAG_SIZE_OVERFLOW,
   RISK_FLAG_ERROR_MAP,
+  DEFAULT_WARNING_PERCENT,
+  DEFAULT_BLOCK_PERCENT,
 } from "./simulation.js";
 export type {
   SimulationOptions,
@@ -166,11 +175,135 @@ export type {
   BalanceDelta,
   RiskFlag,
   DrainDetectionInput,
+  DrainThresholds,
 } from "./simulation.js";
 
 // ─── Token Resolution ─────────────────────────────────────────────────────────
 export { resolveToken, toBaseUnits, fromBaseUnits } from "./tokens.js";
 export type { ResolvedToken } from "./tokens.js";
+
+// ─── Display Formatting ──────────────────────────────────────────────────────
+export {
+  formatUsd,
+  formatUsdCompact,
+  formatUsdSigned,
+  formatPercent,
+  formatPercentSigned,
+  formatDuration,
+  formatRelativeTime,
+  formatTimeUntil,
+  formatAddress,
+  formatTokenAmount,
+  formatTokenAmountCompact,
+} from "./formatting.js";
+
+// ─── Spending Analytics ──────────────────────────────────────────────────────
+export {
+  getSpendingVelocity,
+  getSpendingBreakdown,
+  getAgentSpendingHistory,
+} from "./spending-analytics.js";
+export type {
+  SpendingVelocity,
+  SpendingBreakdown,
+} from "./spending-analytics.js";
+
+// ─── Event Analytics ─────────────────────────────────────────────────────────
+export {
+  categorizeEvent,
+  describeEvent,
+  buildActivityItem,
+  getVaultActivity,
+} from "./event-analytics.js";
+export type {
+  EventCategory,
+  VaultActivityItem,
+} from "./event-analytics.js";
+
+// ─── Security Analytics ──────────────────────────────────────────────────────
+export {
+  getSecurityPosture,
+  evaluateAlertConditions,
+  getAuditTrail,
+} from "./security-analytics.js";
+export type {
+  SecurityPosture,
+  SecurityCheck,
+  Alert,
+  AuditEntry,
+} from "./security-analytics.js";
+
+// ─── Agent Analytics ─────────────────────────────────────────────────────────
+export {
+  getAgentProfile,
+  getAgentLeaderboard,
+  getAgentComparison,
+  getAgentErrorBreakdown,
+} from "./agent-analytics.js";
+export type {
+  AgentProfile,
+  AgentRanking,
+  AgentComparisonData,
+  AgentErrorBreakdown,
+} from "./agent-analytics.js";
+
+// ─── Portfolio Analytics ─────────────────────────────────────────────────────
+export {
+  getPortfolioOverview,
+  aggregatePortfolio,
+  getCrossVaultAgentRanking,
+  getPortfolioTimeSeries,
+} from "./portfolio-analytics.js";
+export type {
+  PortfolioOverview,
+  CrossVaultAgentRanking,
+  PortfolioTimeSeries,
+} from "./portfolio-analytics.js";
+
+// ─── Protocol Analytics ──────────────────────────────────────────────────────
+export {
+  getProtocolBreakdown,
+  getProtocolUsageAcrossVaults,
+} from "./protocol-analytics.js";
+export type {
+  ProtocolBreakdownItem,
+  PlatformProtocolUsage,
+} from "./protocol-analytics.js";
+
+// ─── Advanced Analytics ──────────────────────────────────────────────────────
+export {
+  getSlippageEfficiency,
+  getCapVelocity,
+  getSessionDeviationRate,
+  getIdleCapitalDuration,
+  getPermissionEscalationLatency,
+  getInstructionCoverageRatio,
+  getPermissionUtilizationRate,
+} from "./advanced-analytics.js";
+export type {
+  SlippageReport,
+  CapVelocityReport,
+  DeviationReport,
+  IdleCapitalReport,
+  EscalationReport,
+  CoverageReport,
+  PermissionUtilization,
+} from "./advanced-analytics.js";
+
+// ─── Protocol Names ──────────────────────────────────────────────────────────
+export { resolveProtocolName, PROTOCOL_NAMES } from "./protocol-names.js";
+
+// ─── Vault Analytics ─────────────────────────────────────────────────────────
+export {
+  getVaultHealth,
+  getVaultSummary,
+} from "./vault-analytics.js";
+export type {
+  VaultHealth,
+  VaultSummary,
+  VaultStats,
+  VaultSecurityCheck,
+} from "./vault-analytics.js";
 
 // ─── Policy Engine ────────────────────────────────────────────────────────────
 export {
@@ -233,11 +366,13 @@ export {
   isAgentError,
   getAllOnChainErrorCodes,
   getAllSdkErrorCodes,
+  categorizeError,
 } from "./agent-errors.js";
 export type {
   ErrorCategory,
   RecoveryAction,
   AgentError,
+  PhalnxErrorCategory,
 } from "./agent-errors.js";
 
 // ─── Protocol Resolver ───────────────────────────────────────────────────────
@@ -278,12 +413,28 @@ export type {
 } from "./shield.js";
 
 // ─── Wrap ──────────────────────────────────────────────────────────────────
-export { wrap, PhalnxClient } from "./wrap.js";
-export type { WrapParams, WrapResult } from "./wrap.js";
+export { wrap, PhalnxClient, replaceAgentAtas } from "./wrap.js";
+export type { WrapParams, WrapResult, PhalnxClientConfig, ClientWrapOpts, ExecuteResult } from "./wrap.js";
 
 // ─── Create Vault ──────────────────────────────────────────────────────────
 export { createVault } from "./create-vault.js";
 export type { CreateVaultOptions, CreateVaultResult } from "./create-vault.js";
+
+// ─── Vault Presets ───────────────────────────────────────────────────────────
+export {
+  VAULT_PRESETS,
+  getPreset,
+  listPresets,
+  presetToCreateVaultFields,
+} from "./presets.js";
+export type { VaultPreset, PresetName } from "./presets.js";
+
+// ─── Owner Transaction ───────────────────────────────────────────────────────
+export { buildOwnerTransaction } from "./owner-transaction.js";
+export type {
+  BuildOwnerTransactionParams,
+  OwnerTransactionResult,
+} from "./owner-transaction.js";
 
 // ─── Harden / withVault ─────────────────────────────────────────────────────
 export {
@@ -308,7 +459,7 @@ export type {
 } from "./transaction-executor.js";
 
 // ─── RPC Helpers ───────────────────────────────────────────────────────────
-export { BlockhashCache, sendAndConfirmTransaction } from "./rpc-helpers.js";
+export { BlockhashCache, signAndEncode, sendAndConfirmTransaction } from "./rpc-helpers.js";
 export type { Blockhash, SendAndConfirmOptions } from "./rpc-helpers.js";
 
 // ─── x402 HTTP 402 Payment Required ───────────────────────────────────────
@@ -366,3 +517,17 @@ export type {
 // ─── VelocityTracker ──────────────────────────────────────────────────────
 export { VelocityTracker } from "./velocity-tracker.js";
 export type { VelocityConfig, SpendStatus } from "./velocity-tracker.js";
+
+// ─── Balance Tracker / P&L ──────────────────────────────────────────────────
+export {
+  getVaultPnL,
+  getVaultTokenBalances,
+  getBalancePnL,
+  BalanceSnapshotStore,
+} from "./balance-tracker.js";
+export type {
+  TokenBalance,
+  BalanceSnapshot,
+  VaultPnL,
+  BalancePnL,
+} from "./balance-tracker.js";

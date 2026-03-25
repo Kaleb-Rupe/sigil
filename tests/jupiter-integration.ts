@@ -364,7 +364,8 @@ describe("jupiter-integration", () => {
       // Verify vault stats updated
       const vault = await program.account.agentVault.fetch(vaultPda);
       expect(vault.totalTransactions.toNumber()).to.equal(1);
-      expect(vault.totalVolume.toNumber()).to.equal(50_000_000);
+      // totalVolume uses actual_spend_tracked; mock DeFi is no-op → 0
+      expect(vault.totalVolume.toNumber()).to.equal(0);
     });
 
     it("records multiple composed swaps correctly", async () => {
@@ -382,7 +383,8 @@ describe("jupiter-integration", () => {
 
       const vault = await program.account.agentVault.fetch(vaultPda);
       expect(vault.totalTransactions.toNumber()).to.equal(2);
-      expect(vault.totalVolume.toNumber()).to.equal(80_000_000); // 50 + 30
+      // Mock DeFi no-ops: cumulative actual spend = 0
+      expect(vault.totalVolume.toNumber()).to.equal(0);
     });
   });
 

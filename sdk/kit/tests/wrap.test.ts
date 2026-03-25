@@ -1,12 +1,13 @@
 import { expect } from "chai";
 import type { Address, Instruction } from "@solana/kit";
 import { AccountRole } from "@solana/kit";
-import { wrap, replaceAgentAtas, type WrapParams } from "../src/wrap.js";
+import { wrap, replaceAgentAtas, PhalnxClient, type WrapParams, type PhalnxClientConfig } from "../src/wrap.js";
 import { createVault, type CreateVaultOptions } from "../src/create-vault.js";
 import { ActionType } from "../src/generated/types/actionType.js";
 import { VaultStatus } from "../src/generated/types/vaultStatus.js";
 import type { ResolvedVaultState } from "../src/state-resolver.js";
 import { FULL_PERMISSIONS, PROTOCOL_TREASURY } from "../src/types.js";
+import { createMockAgent, createMockVaultState } from "../src/testing/index.js";
 
 // ─── Test Addresses ─────────────────────────────────────────────────────────
 
@@ -24,10 +25,7 @@ const COMPUTE_BUDGET =
 // ─── Mock Helpers ───────────────────────────────────────────────────────────
 
 function mockAgent() {
-  return {
-    address: AGENT_ADDR,
-    signTransactions: async (txs: unknown[]) => txs,
-  } as any;
+  return createMockAgent(AGENT_ADDR);
 }
 
 function mockOwner() {
@@ -47,80 +45,14 @@ function makeInstruction(programAddress: Address): Instruction {
   };
 }
 
-function makeCachedState(overrides?: Partial<{
-  status: VaultStatus;
-  agentPaused: boolean;
-  agentPermissions: bigint;
-  noAgents: boolean;
-  dailyCap: bigint;
-  spent24h: bigint;
-  protocolMode: number;
-  protocols: Address[];
-  developerFeeRate: number;
-  maxConcurrentPositions: number;
-  openPositions: number;
-}>): ResolvedVaultState {
-  const status = overrides?.status ?? VaultStatus.Active;
-  const dailyCap = overrides?.dailyCap ?? 1_000_000_000n;
-  const spent = overrides?.spent24h ?? 0n;
-  return {
-    vault: {
-      discriminator: new Uint8Array(8),
-      owner: OWNER_ADDR,
-      vaultId: 0n,
-      agents: overrides?.noAgents ? [] : [
-        {
-          pubkey: AGENT_ADDR,
-          permissions: overrides?.agentPermissions ?? FULL_PERMISSIONS,
-          spendingLimitUsd: 0n,
-          paused: overrides?.agentPaused ?? false,
-        },
-      ],
-      feeDestination: FEE_DEST,
-      status,
-      bump: 255,
-      createdAt: 1000n,
-      totalTransactions: 0n,
-      totalVolume: 0n,
-      openPositions: overrides?.openPositions ?? 0,
-      activeEscrowCount: 0,
-      totalFeesCollected: 0n,
-    },
-    policy: {
-      discriminator: new Uint8Array(8),
-      vault: VAULT,
-      dailySpendingCapUsd: dailyCap,
-      maxTransactionSizeUsd: dailyCap,
-      protocolMode: overrides?.protocolMode ?? 0,
-      protocols: overrides?.protocols ?? [],
-      maxLeverageBps: 0,
-      canOpenPositions: true,
-      maxConcurrentPositions: overrides?.maxConcurrentPositions ?? 5,
-      developerFeeRate: overrides?.developerFeeRate ?? 0,
-      maxSlippageBps: 100,
-      timelockDuration: 0n,
-      allowedDestinations: [],
-      hasConstraints: false,
-      hasPendingPolicy: false,
-      hasProtocolCaps: false,
-      protocolCaps: [],
-      sessionExpirySlots: 0n,
-      bump: 255,
-    },
-    tracker: null,
-    overlay: null,
-    constraints: null,
-    globalBudget: {
-      spent24h: spent,
-      cap: dailyCap,
-      remaining: dailyCap > spent ? dailyCap - spent : 0n,
-    },
-    agentBudget: null,
-    allAgentBudgets: new Map(),
-    protocolBudgets: [],
-    maxTransactionUsd: dailyCap,
-    resolvedAtTimestamp: BigInt(Math.floor(Date.now() / 1000)),
-  };
+function makeCachedState(overrides?: Parameters<typeof createMockVaultState>[0]): ResolvedVaultState {
+  return createMockVaultState({
+    vault: VAULT,
+    agent: AGENT_ADDR,
+    owner: OWNER_ADDR,
+    feeDestination: FEE_DEST,
+    ...overrides,
+  });
 }
 
 function baseWrapParams(overrides?: Partial<WrapParams>): WrapParams {
@@ -432,5 +364,172 @@ describe("createVault()", () => {
     expect(r1.vaultAddress).to.equal(r2.vaultAddress);
     expect(r1.policyAddress).to.equal(r2.policyAddress);
     expect(r1.agentOverlayAddress).to.equal(r2.agentOverlayAddress);
+  });
+});
+
+// ─── PhalnxClient Tests ─────────────────────────────────────────────────
+
+/** Mock RPC that supports getLatestBlockhash (needed by PhalnxClient's instance cache). */
+function mockRpc() {
+  return {
+    getLatestBlockhash: () => ({
+      send: async () => ({
+        value: {
+          blockhash: "GHtXQBpokCiBP6spMNfMW9qLBjfQJhmR4GWzCiQ2ATQA",
+          lastValidBlockHeight: 200n,
+        },
+      }),
+    }),
+  } as any;
+}
+
+function clientConfig(overrides?: Partial<PhalnxClientConfig>): PhalnxClientConfig {
+  return {
+    rpc: mockRpc(),
+    vault: VAULT,
+    agent: mockAgent(),
+    network: "devnet",
+    ...overrides,
+  };
+}
+
+describe("PhalnxClient", () => {
+  it("constructor stores vault, agent, network, and creates caches", () => {
+    const agent = mockAgent();
+    const client = new PhalnxClient({
+      rpc: {} as any,
+      vault: VAULT,
+      agent,
+      network: "devnet",
+    });
+
+    expect(client.rpc).to.exist;
+    expect(client.vault).to.equal(VAULT);
+    expect(client.agent).to.equal(agent);
+    expect(client.network).to.equal("devnet");
+    // invalidateCaches should not throw (caches exist)
+    expect(() => client.invalidateCaches()).to.not.throw();
+  });
+
+  it("client.wrap() produces WrapResult via delegation to standalone wrap()", async () => {
+    const client = new PhalnxClient(clientConfig());
+    const result = await client.wrap(
+      [makeInstruction(JUPITER)],
+      {
+        tokenMint: USDC_DEVNET,
+        amount: 100_000_000n,
+        cachedState: makeCachedState(),
+        addressLookupTables: {},
+      },
+    );
+
+    expect(result.ok).to.equal(true);
+    expect(result.transaction).to.exist;
+    expect(result.actionType).to.equal(ActionType.Swap);
+    expect(result.txSizeBytes).to.be.a("number");
+  });
+
+  it("client.wrap() produces same actionType as direct wrap() with identical params", async () => {
+    const state = makeCachedState();
+    const blockhash = {
+      blockhash: "GHtXQBpokCiBP6spMNfMW9qLBjfQJhmR4GWzCiQ2ATQA",
+      lastValidBlockHeight: 200n,
+    };
+
+    // Use ClosePosition (non-spending, amount=0) to avoid RPC calls for fee ATAs
+    const directResult = await wrap(baseWrapParams({
+      cachedState: state,
+      blockhash,
+      actionType: ActionType.ClosePosition,
+      amount: 0n,
+    }));
+
+    const client = new PhalnxClient(clientConfig());
+    const clientResult = await client.wrap(
+      [makeInstruction(JUPITER)],
+      {
+        tokenMint: USDC_DEVNET,
+        amount: 0n,
+        actionType: ActionType.ClosePosition,
+        cachedState: state,
+        // Pre-supply ALTs to avoid RPC call for ALT resolution
+        addressLookupTables: {},
+      },
+    );
+
+    expect(clientResult.actionType).to.equal(directResult.actionType);
+    expect(clientResult.ok).to.equal(directResult.ok);
+  });
+
+  it("executeAndConfirm() throws if agent signer lacks signTransactions", async () => {
+    const brokenAgent = { address: AGENT_ADDR } as any; // no signTransactions
+    const client = new PhalnxClient(clientConfig({ agent: brokenAgent }));
+
+    try {
+      await client.executeAndConfirm(
+        [makeInstruction(JUPITER)],
+        {
+          tokenMint: USDC_DEVNET,
+          amount: 100_000_000n,
+          cachedState: makeCachedState(),
+          addressLookupTables: {},
+        },
+      );
+      expect.fail("should throw");
+    } catch (e: any) {
+      expect(e.message).to.include("signTransactions");
+    }
+  });
+
+  it("constructor throws if rpc is missing", () => {
+    try {
+      new PhalnxClient({ rpc: undefined as any, vault: VAULT, agent: mockAgent(), network: "devnet" });
+      expect.fail("should throw");
+    } catch (e: any) {
+      expect(e.message).to.include("rpc is required");
+    }
+  });
+
+  it("constructor throws if vault is missing", () => {
+    try {
+      new PhalnxClient({ rpc: {} as any, vault: undefined as any, agent: mockAgent(), network: "devnet" });
+      expect.fail("should throw");
+    } catch (e: any) {
+      expect(e.message).to.include("vault is required");
+    }
+  });
+
+  it("constructor throws if agent is missing", () => {
+    try {
+      new PhalnxClient({ rpc: {} as any, vault: VAULT, agent: undefined as any, network: "devnet" });
+      expect.fail("should throw");
+    } catch (e: any) {
+      expect(e.message).to.include("agent is required");
+    }
+  });
+
+  it("constructor throws if network is missing", () => {
+    try {
+      new PhalnxClient({ rpc: {} as any, vault: VAULT, agent: mockAgent(), network: undefined as any });
+      expect.fail("should throw");
+    } catch (e: any) {
+      expect(e.message).to.include("network is required");
+    }
+  });
+
+  it("PhalnxClient.createVault() delegates to standalone createVault", async () => {
+    const result = await PhalnxClient.createVault({
+      rpc: {} as any,
+      network: "devnet",
+      owner: mockOwner(),
+      agent: mockAgent(),
+      vaultId: 0n,
+    });
+
+    expect(result.vaultAddress).to.be.a("string");
+    expect(result.policyAddress).to.be.a("string");
+    expect(result.vaultId).to.equal(0n);
+    expect(result.initializeVaultIx).to.exist;
+    expect(result.registerAgentIx).to.exist;
   });
 });

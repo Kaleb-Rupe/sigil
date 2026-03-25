@@ -92,7 +92,7 @@ Nine PDA account types in `state/`:
 
 | PDA | Seeds | Size |
 |-----|-------|------|
-| **AgentVault** | `[b"vault", owner, vault_id]` | 700 bytes |
+| **AgentVault** | `[b"vault", owner, vault_id]` | 634 bytes |
 | **PolicyConfig** | `[b"policy", vault]` | 817 bytes |
 | **SpendTracker** | `[b"tracker", vault]` | 2,840 bytes (zero-copy) |
 | **SessionAuthority** | `[b"session", vault, agent, token_mint]` | Standard |
@@ -100,7 +100,7 @@ Nine PDA account types in `state/`:
 | **EscrowDeposit** | `[b"escrow", source_vault, dest_vault, escrow_id]` | 170 bytes |
 | **InstructionConstraints** | `[b"constraints", vault]` | 8,318 bytes |
 | **PendingConstraintsUpdate** | `[b"pending_constraints", vault]` | 8,334 bytes |
-| **AgentSpendOverlay** | `[b"agent_spend", vault]` | 2,368 bytes (zero-copy) |
+| **AgentSpendOverlay** | `[b"agent_spend", vault]` | 2,528 bytes (zero-copy) |
 
 See `docs/ARCHITECTURE.md` for full account descriptions, ActionType classification, validate_and_authorize flow, on-chain constants, and x402 payment flow.
 
@@ -147,9 +147,9 @@ Specs live in `programs/phalnx/src/certora/specs/`:
 
 ---
 
-## Error Codes (6000–6069)
+## Error Codes (6000–6070)
 
-70 error codes. Source of truth: `programs/phalnx/src/errors.rs`. See `docs/ERROR-CODES.md` for full table.
+71 error codes. Source of truth: `programs/phalnx/src/errors.rs`. See `docs/ERROR-CODES.md` for full table.
 
 ---
 
@@ -175,13 +175,34 @@ Specs live in `programs/phalnx/src/certora/specs/`:
 
 ## Current State
 
-On-chain program has 29 instructions, 9 PDA types, and is under active development (not frozen). The SDK uses the protocol-agnostic `wrap()` API as the primary entry point, with `createVault()` for vault provisioning. Spending enforcement is **outcome-based**: `finalize_session` measures actual stablecoin balance delta (not declared amounts) for cap checks. See `WRAP-ARCHITECTURE-PLAN.md` for the definitive implementation plan and `scripts/test-counts.json` for test counts.
+On-chain program has 29 instructions, 9 PDA types, and is under active development (not frozen). Spending enforcement is **outcome-based**: `finalize_session` measures actual stablecoin balance delta (not declared amounts) for cap checks, with post-finalize instruction scan (error 6070) as defense-in-depth. See `WRAP-ARCHITECTURE-PLAN.md` for the definitive implementation plan and `scripts/test-counts.json` for test counts.
 
 ### Wrap Architecture (Definitive Direction)
 
-Phalnx is a **security wrapper**, not a DeFi SDK. The `wrap()` function takes arbitrary DeFi instructions from any source (Jupiter API, Solana Agent Kit, GOAT SDK, MCP servers) and sandwiches them with `validate_and_authorize` + `finalize_session`. The `PhalnxWallet` decorator secures all SAK actions at the wallet signing boundary with zero SAK changes.
+Phalnx is a **security wrapper**, not a DeFi SDK. The `wrap()` function takes arbitrary DeFi instructions from any source (Jupiter API, Solana Agent Kit, MCP servers) and sandwiches them with `validate_and_authorize` + `finalize_session`. `PhalnxClient` is the primary API — holds vault/agent/network context, delegates to `wrap()` with instance-level caches.
 
-**MCP aggregator tools** (`phalnx_swap`, `phalnx_lend`, `phalnx_perp`) call aggregator APIs (Jupiter, Lulo, Ranger) internally and wrap results with Phalnx security. `phalnx_wrap` is the power-user tool for raw instructions.
+**Phase 5 (SDK additions) — COMPLETE (all 10 steps):**
+- `PhalnxClient` promoted (5.3): stateful client with `wrap()`, `executeAndConfirm()`, `getPnL()`, `getVaultState()`, `getTokenBalances()`, `getAgentBudget()`, static `createVault()`
+- Test utilities (5.4): `@phalnx/kit/testing` subpath with `createMockRpc()`, `createMockVaultState()`, devnet helpers
+- Formatting (5.5): 11 functions in `formatting.ts` with full-precision defaults (6 decimals USD, full token decimals)
+- Vault presets (5.6): `presets.ts` with Jupiter/perps/lending/full-access templates
+- Owner transactions (5.7): `buildOwnerTransaction()` in `owner-transaction.ts`
+- Spending history (5.8): `getSpendingHistory()` in `state-resolver.ts` — 144-epoch circular buffer to chart-ready time series
+- Post-finalize scan (5.9): defense-in-depth instruction check after finalize, error 6070
+- SAK plugin (5.10): `packages/plugin-solana-agent-kit/` — thin adapter with swap/transfer/status actions via `PhalnxClient.executeAndConfirm()`
+
+**Phase 6 (Analytics Data Layer) — COMPLETE (42 functions across 11 modules):**
+- `formatting.ts` (11): USD/percent/time/address/token display with full-precision defaults
+- `spending-analytics.ts` (3): velocity, breakdown, per-agent history
+- `vault-analytics.ts` (2): health assessment, one-call summary
+- `event-analytics.ts` (4): categorize, describe, build activity items, fetch feed
+- `agent-analytics.ts` (4): profiles, leaderboard, comparison, error breakdown
+- `security-analytics.ts` (3): 13-point posture, alert conditions, audit trail
+- `portfolio-analytics.ts` (4): cross-vault aggregation, agent ranking, time series
+- `protocol-analytics.ts` (2): per-protocol breakdown, cross-vault usage
+- `advanced-analytics.ts` (7): slippage, cap velocity, deviation, idle capital, escalation latency, coverage ratio, permission utilization
+- `protocol-names.ts` (1): shared protocol name resolution
+- `math-utils.ts` (1): shared Herfindahl computation (bigint-safe)
 
 See `WRAP-ARCHITECTURE-PLAN.md` for full spec and `WRAP-DISCRIMINATOR-TABLES.md` for verified discriminator bytes.
 
@@ -193,7 +214,7 @@ Test counts are in `scripts/test-counts.json` (run `node scripts/update-test-cou
 
 | Tier | Tool | Speed | When to use |
 |------|------|-------|-------------|
-| Unit | LiteSVM | ~45s for 325 tests | Policy logic, error paths, security exploits, composed TX with mocks |
+| Unit | LiteSVM | ~45s for 361 tests | Policy logic, error paths, security exploits, composed TX with mocks |
 | Integration | Surfpool | ~60s for 20 tests | Session expiry, real token balances, CU profiling, time travel |
 | Cluster | Devnet | ~5min for 69 tests | End-to-end with deployed program, costs SOL |
 

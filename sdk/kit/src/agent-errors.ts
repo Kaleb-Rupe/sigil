@@ -1837,6 +1837,111 @@ export function getAllOnChainErrorCodes(): number[] {
     .sort((a, b) => a - b);
 }
 
+// ---------------------------------------------------------------------------
+// Typed error categories (Step 5.5 — discriminated union for TypeScript switch)
+// ---------------------------------------------------------------------------
+
+/**
+ * Discriminated union for TypeScript switch exhaustiveness with typed context.
+ *
+ * Complements `ErrorCategory` (string literal union for agent decision-making).
+ * Use `PhalnxErrorCategory` when you need typed access to error-specific fields
+ * like `remaining` for spending errors or `protocol` for protocol errors.
+ */
+export type PhalnxErrorCategory =
+  | { type: "spending"; code: number; remaining: bigint; cap: bigint }
+  | { type: "permission"; code: number; required: string }
+  | { type: "protocol"; code: number; protocol: string }
+  | { type: "vault"; code: number; status: string }
+  | { type: "network"; code: number; retryable: boolean };
+
+/** Map from ErrorCategory string → PhalnxErrorCategory.type */
+const CATEGORY_TYPE_MAP: Record<ErrorCategory, PhalnxErrorCategory["type"]> = {
+  SPENDING_CAP: "spending",
+  PERMISSION: "permission",
+  PROTOCOL_NOT_SUPPORTED: "protocol",
+  RESOURCE_NOT_FOUND: "vault",
+  INPUT_VALIDATION: "vault",
+  POLICY_VIOLATION: "permission",
+  ESCALATION_REQUIRED: "permission",
+  TRANSIENT: "network",
+  RATE_LIMIT: "network",
+  FATAL: "network",
+};
+
+/**
+ * Convert an AgentError into a typed PhalnxErrorCategory for switch exhaustiveness.
+ *
+ * Extracts typed context from the AgentError.context bag into the appropriate
+ * discriminated union variant. Returns the variant matching the error's category.
+ *
+ * @example
+ * ```typescript
+ * const err = toAgentError(error);
+ * const cat = categorizeError(err);
+ * switch (cat.type) {
+ *   case "spending": console.log(`${cat.remaining} remaining of ${cat.cap}`); break;
+ *   case "permission": console.log(`Need: ${cat.required}`); break;
+ *   case "protocol": console.log(`Unknown: ${cat.protocol}`); break;
+ *   case "vault": console.log(`Vault ${cat.status}`); break;
+ *   case "network": console.log(`Retryable: ${cat.retryable}`); break;
+ * }
+ * ```
+ */
+/** Safely convert unknown context values to bigint without throwing. */
+function safeBigInt(value: unknown): bigint {
+  if (typeof value === "bigint") return value;
+  if (typeof value === "number" && Number.isFinite(value))
+    return BigInt(Math.trunc(value));
+  if (typeof value === "string") {
+    try {
+      return BigInt(value);
+    } catch {
+      return 0n;
+    }
+  }
+  return 0n;
+}
+
+export function categorizeError(err: AgentError): PhalnxErrorCategory {
+  const code = parseInt(err.code, 10) || 0;
+  const categoryType = CATEGORY_TYPE_MAP[err.category] ?? "network";
+
+  switch (categoryType) {
+    case "spending":
+      return {
+        type: "spending",
+        code,
+        remaining: safeBigInt(err.context.remaining),
+        cap: safeBigInt(err.context.cap),
+      };
+    case "permission":
+      return {
+        type: "permission",
+        code,
+        required: (err.context.required_permission as string) ?? err.message,
+      };
+    case "protocol":
+      return {
+        type: "protocol",
+        code,
+        protocol: (err.context.protocol as string) ?? "unknown",
+      };
+    case "vault":
+      return {
+        type: "vault",
+        code,
+        status: (err.context.vault_status as string) ?? err.message,
+      };
+    case "network":
+      return {
+        type: "network",
+        code,
+        retryable: err.retryable,
+      };
+  }
+}
+
 /**
  * Get all SDK error codes (for testing/documentation).
  */
