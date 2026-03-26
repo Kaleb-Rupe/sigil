@@ -40,14 +40,17 @@ export {
   USDT_MINT_DEVNET,
   USDT_MINT_MAINNET,
   JUPITER_PROGRAM_ADDRESS,
+  RECOGNIZED_DEFI_PROGRAMS,
   // Functions
   isStablecoinMint,
   hasPermission,
   permissionsToStrings,
+  stringsToPermissions,
   parseActionType,
   isSpendingAction,
   getPositionEffect,
   validateNetwork,
+  normalizeNetwork,
   toInstruction,
   // Permission builder
   PermissionBuilder,
@@ -60,7 +63,7 @@ export {
   // u64 boundary
   U64_MAX,
 } from "./types.js";
-export type { Network, PositionEffect } from "./types.js";
+export type { Network, NetworkInput, PositionEffect } from "./types.js";
 
 // ─── State Resolver ──────────────────────────────────────────────────────────
 export {
@@ -225,12 +228,14 @@ export {
   getSecurityPosture,
   evaluateAlertConditions,
   getAuditTrail,
+  getAuditTrailSummary,
 } from "./security-analytics.js";
 export type {
   SecurityPosture,
   SecurityCheck,
   Alert,
   AuditEntry,
+  AuditTrailSummary,
 } from "./security-analytics.js";
 
 // ─── Agent Analytics ─────────────────────────────────────────────────────────
@@ -252,6 +257,7 @@ export {
   getPortfolioOverview,
   aggregatePortfolio,
   getCrossVaultAgentRanking,
+  getAgentLeaderboardAcrossVaults,
   getPortfolioTimeSeries,
 } from "./portfolio-analytics.js";
 export type {
@@ -361,6 +367,8 @@ export type { CustodyAdapter } from "./custody-adapter.js";
 export {
   ON_CHAIN_ERROR_MAP,
   toAgentError,
+  wrapToAgentError,
+  PhalnxSdkError,
   protocolEscalationError,
   parseOnChainErrorCode,
   isAgentError,
@@ -387,12 +395,13 @@ export type {
 } from "./protocol-resolver.js";
 
 // ─── Inspector ───────────────────────────────────────────────────────────────
-export { analyzeInstructions } from "./inspector.js";
+export { analyzeInstructions, inspectConstraints } from "./inspector.js";
 export type {
   InspectableInstruction,
   TokenTransferInfo,
   InstructionAnalysis,
   DangerousTokenOperation,
+  ConstraintSummary,
 } from "./inspector.js";
 
 // ─── Shield ─────────────────────────────────────────────────────────────────
@@ -417,8 +426,13 @@ export { wrap, PhalnxClient, replaceAgentAtas } from "./wrap.js";
 export type { WrapParams, WrapResult, PhalnxClientConfig, ClientWrapOpts, ExecuteResult } from "./wrap.js";
 
 // ─── Create Vault ──────────────────────────────────────────────────────────
-export { createVault } from "./create-vault.js";
-export type { CreateVaultOptions, CreateVaultResult } from "./create-vault.js";
+export { createVault, createAndSendVault } from "./create-vault.js";
+export type {
+  CreateVaultOptions,
+  CreateVaultResult,
+  CreateAndSendVaultOptions,
+  CreateAndSendVaultResult,
+} from "./create-vault.js";
 
 // ─── Vault Presets ───────────────────────────────────────────────────────────
 export {

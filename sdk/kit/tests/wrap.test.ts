@@ -6,7 +6,7 @@ import { createVault, type CreateVaultOptions } from "../src/create-vault.js";
 import { ActionType } from "../src/generated/types/actionType.js";
 import { VaultStatus } from "../src/generated/types/vaultStatus.js";
 import type { ResolvedVaultState } from "../src/state-resolver.js";
-import { FULL_PERMISSIONS, PROTOCOL_TREASURY } from "../src/types.js";
+import { FULL_PERMISSIONS, PROTOCOL_TREASURY, USDC_MINT_DEVNET } from "../src/types.js";
 import { createMockAgent, createMockVaultState } from "../src/testing/index.js";
 
 // ─── Test Addresses ─────────────────────────────────────────────────────────
@@ -531,5 +531,75 @@ describe("PhalnxClient", () => {
     expect(result.vaultId).to.equal(0n);
     expect(result.initializeVaultIx).to.exist;
     expect(result.registerAgentIx).to.exist;
+  });
+});
+
+// ─── Pre-flight checks (Steps 23, 24) ────────────────────────────────────────
+
+const TOKEN_PROGRAM_ADDR = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address;
+const TOKEN_2022_ADDR = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb" as Address;
+
+describe("wrap() pre-flight checks", () => {
+  it("throws on top-level SPL Transfer in instructions", async () => {
+    const splTransferIx: Instruction = {
+      programAddress: TOKEN_PROGRAM_ADDR,
+      accounts: [],
+      data: new Uint8Array([3, 0, 0, 0, 0, 0, 0, 0, 0]), // disc 3 = Transfer
+    };
+    try {
+      await wrap(baseWrapParams({ instructions: [splTransferIx] }));
+      expect.fail("should throw");
+    } catch (e: any) {
+      expect(e.message).to.include("SPL Token Transfer not allowed");
+    }
+  });
+
+  it("throws on top-level SPL Approve in instructions", async () => {
+    const splApproveIx: Instruction = {
+      programAddress: TOKEN_PROGRAM_ADDR,
+      accounts: [],
+      data: new Uint8Array([4, 0, 0, 0, 0, 0, 0, 0, 0]), // disc 4 = Approve
+    };
+    try {
+      await wrap(baseWrapParams({ instructions: [splApproveIx] }));
+      expect.fail("should throw");
+    } catch (e: any) {
+      expect(e.message).to.include("SPL Token Approve not allowed");
+    }
+  });
+
+  it("throws on 2+ DeFi instructions for stablecoin input", async () => {
+    const jupIx1 = makeInstruction(JUPITER);
+    const jupIx2 = makeInstruction(JUPITER);
+    try {
+      await wrap(
+        baseWrapParams({
+          instructions: [jupIx1, jupIx2],
+          tokenMint: USDC_MINT_DEVNET, // stablecoin — must use real mint for isStablecoinMint() to match
+        }),
+      );
+      expect.fail("should throw");
+    } catch (e: any) {
+      expect(e.message).to.include("At most 1 recognized DeFi instruction");
+    }
+  });
+
+  it("throws on 0 DeFi instructions for non-stablecoin input", async () => {
+    const nonDefiIx: Instruction = {
+      programAddress: "UnknownProg1111111111111111111111111111111" as Address,
+      accounts: [],
+      data: new Uint8Array([1]),
+    };
+    try {
+      await wrap(
+        baseWrapParams({
+          instructions: [nonDefiIx],
+          tokenMint: "So11111111111111111111111111111111111111112" as Address, // SOL = non-stablecoin
+        }),
+      );
+      expect.fail("should throw");
+    } catch (e: any) {
+      expect(e.message).to.include("Exactly 1 recognized DeFi instruction");
+    }
   });
 });

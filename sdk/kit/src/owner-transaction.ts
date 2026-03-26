@@ -36,7 +36,7 @@ import { BlockhashCache, type Blockhash } from "./rpc-helpers.js";
 import { AltCache } from "./alt-loader.js";
 import { getPhalnxAltAddress } from "./alt-config.js";
 import { CU_OWNER_ACTION } from "./priority-fees.js";
-import type { Network } from "./types.js";
+import { normalizeNetwork, type Network } from "./types.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -72,12 +72,6 @@ export interface OwnerTransactionResult {
 
 const blockhashCache = new BlockhashCache();
 const altCache = new AltCache();
-
-// ─── Helper ─────────────────────────────────────────────────────────────────
-
-function normalizeNetwork(network: "devnet" | "mainnet"): Network {
-  return network === "mainnet" ? "mainnet-beta" : "devnet";
-}
 
 // ─── buildOwnerTransaction ──────────────────────────────────────────────────
 

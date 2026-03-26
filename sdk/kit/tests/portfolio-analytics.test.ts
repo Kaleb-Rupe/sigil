@@ -6,6 +6,7 @@
  */
 
 import { expect } from "chai";
+import { getAgentLeaderboardAcrossVaults } from "../src/portfolio-analytics.js";
 import { aggregatePortfolio } from "../src/portfolio-analytics.js";
 import type { VaultSummary } from "../src/vault-analytics.js";
 import type { Address } from "@solana/kit";
@@ -130,5 +131,56 @@ describe("aggregatePortfolio", () => {
     ];
     const result = aggregatePortfolio(vaults);
     expect(result.topVaultBySpending).to.equal("high");
+  });
+});
+
+// ─── getAgentLeaderboardAcrossVaults ──────────────────────────────────────────
+
+describe("getAgentLeaderboardAcrossVaults", () => {
+  it("returns ranked agents from multiple vaults", () => {
+    const vaultStates = [
+      {
+        address: "v1" as any,
+        state: {
+          vault: {
+            vaultId: 1n,
+            agents: [{ pubkey: "a1" as any, permissions: 1n, spendingLimitUsd: 0n, paused: false }],
+          },
+          allAgentBudgets: new Map([["a1", { spent24h: 200n, cap: 1000n, remaining: 800n }]]),
+          overlay: null,
+        } as any,
+      },
+      {
+        address: "v2" as any,
+        state: {
+          vault: {
+            vaultId: 2n,
+            agents: [{ pubkey: "a2" as any, permissions: 1n, spendingLimitUsd: 0n, paused: false }],
+          },
+          allAgentBudgets: new Map([["a2", { spent24h: 500n, cap: 1000n, remaining: 500n }]]),
+          overlay: null,
+        } as any,
+      },
+    ];
+
+    const result = getAgentLeaderboardAcrossVaults(vaultStates);
+    expect(result).to.have.length(2);
+    expect(result[0].agent).to.equal("a2"); // higher spend ranked first
+    expect(result[0].rank).to.equal(1);
+    expect(result[1].rank).to.equal(2);
+  });
+
+  it("returns empty for vaults with no agents", () => {
+    const result = getAgentLeaderboardAcrossVaults([
+      {
+        address: "v1" as any,
+        state: {
+          vault: { vaultId: 1n, agents: [] },
+          allAgentBudgets: new Map(),
+          overlay: null,
+        } as any,
+      },
+    ]);
+    expect(result).to.have.length(0);
   });
 });

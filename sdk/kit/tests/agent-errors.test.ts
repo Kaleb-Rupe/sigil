@@ -2,6 +2,8 @@ import { expect } from "chai";
 import {
   ON_CHAIN_ERROR_MAP,
   toAgentError,
+  wrapToAgentError,
+  PhalnxSdkError,
   protocolEscalationError,
   parseOnChainErrorCode,
   isAgentError,
@@ -14,15 +16,15 @@ describe("agent-errors", () => {
   // ─── On-chain error map completeness ──────────────────────────────────────
 
   describe("ON_CHAIN_ERROR_MAP completeness", () => {
-    it("maps all 70 error codes (6000-6069)", () => {
+    it("maps all 71 error codes (6000-6070)", () => {
       const codes = getAllOnChainErrorCodes();
-      expect(codes).to.have.lengthOf(70);
+      expect(codes).to.have.lengthOf(71);
       expect(codes[0]).to.equal(6000);
-      expect(codes[codes.length - 1]).to.equal(6069);
+      expect(codes[codes.length - 1]).to.equal(6070);
     });
 
-    it("every code from 6000-6069 is present with no gaps", () => {
-      for (let code = 6000; code <= 6069; code++) {
+    it("every code from 6000-6070 is present with no gaps", () => {
+      for (let code = 6000; code <= 6070; code++) {
         const entry = ON_CHAIN_ERROR_MAP[code];
         expect(entry, `Missing error code ${code}`).to.exist;
         expect(entry.name).to.be.a("string").and.not.be.empty;
@@ -344,6 +346,56 @@ describe("agent-errors", () => {
       expect(isAgentError("string")).to.be.false;
       expect(isAgentError(42)).to.be.false;
       expect(isAgentError(undefined)).to.be.false;
+    });
+  });
+
+  // ─── wrapToAgentError ────────────────────────────────────────────────────
+
+  describe("wrapToAgentError", () => {
+    it("converts vault-not-active error to RESOURCE_NOT_FOUND", () => {
+      const err = new Error("Vault is not active (status: Frozen)");
+      const result = wrapToAgentError(err);
+      expect(result.category).to.equal("RESOURCE_NOT_FOUND");
+      expect(result.recovery_actions.length).to.be.greaterThan(0);
+    });
+
+    it("converts permission error to PERMISSION category", () => {
+      const err = new Error("Agent abc123 is not registered in vault xyz");
+      const result = wrapToAgentError(err);
+      expect(result.category).to.equal("PERMISSION");
+    });
+
+    it("converts protocol-not-allowed to PROTOCOL_NOT_SUPPORTED", () => {
+      const err = new Error("Protocol JUP6Lk is not allowed by vault policy");
+      const result = wrapToAgentError(err);
+      expect(result.category).to.equal("PROTOCOL_NOT_SUPPORTED");
+    });
+
+    it("returns PhalnxSdkError that is instanceof Error", () => {
+      const err = new Error("some wrap error");
+      const result = wrapToAgentError(err);
+      expect(result).to.be.instanceOf(Error);
+      expect(result).to.be.instanceOf(PhalnxSdkError);
+      expect(result.name).to.equal("PhalnxSdkError");
+    });
+
+    it("falls back to UNKNOWN for unrecognized errors", () => {
+      const err = new Error("something completely unexpected");
+      const result = wrapToAgentError(err);
+      expect(result.code).to.equal("UNKNOWN");
+      expect(result.category).to.equal("FATAL");
+    });
+
+    it("PhalnxSdkError has all AgentError fields", () => {
+      const err = new Error("Position limit reached: 5/5");
+      const result = wrapToAgentError(err);
+      expect(result).to.have.property("code");
+      expect(result).to.have.property("message");
+      expect(result).to.have.property("category");
+      expect(result).to.have.property("retryable");
+      expect(result).to.have.property("recovery_actions");
+      expect(result).to.have.property("context");
+      expect(result.retryable).to.equal(true); // Position limit is retryable
     });
   });
 });

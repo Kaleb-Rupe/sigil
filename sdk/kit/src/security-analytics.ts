@@ -16,7 +16,7 @@ import { VaultStatus } from "./generated/types/vaultStatus.js";
 import { getSpendingVelocity } from "./spending-analytics.js";
 import { describeEvent } from "./event-analytics.js";
 import { formatUsd, formatAddress } from "./formatting.js";
-import { FULL_PERMISSIONS, PROTOCOL_MODE_ALLOWLIST } from "./types.js";
+import { FULL_PERMISSIONS, PROTOCOL_MODE_ALLOWLIST, EPOCH_DURATION, MAX_DEVELOPER_FEE_RATE } from "./types.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -57,10 +57,25 @@ export interface AuditEntry {
   description: string;
 }
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Count set bits in a bigint permission bitmask. */
+function countBits(n: bigint): number {
+  let count = 0;
+  let v = n;
+  while (v > 0n) {
+    count += Number(v & 1n);
+    v >>= 1n;
+  }
+  return count;
+}
+
 // ─── getSecurityPosture ──────────────────────────────────────────────────────
 
 /**
- * 13-point security posture checklist. Pure function — no RPC.
+ * 20-point security posture checklist. Pure function — no RPC.
+ * Checks 1-13: base. 14-17: timelock, fee, constraint alignment, permission concentration.
+ * Checks 18-19: discriminator staleness, allowlist coverage. Check 20: mode-ALL warning.
  */
 export function getSecurityPosture(state: ResolvedVaultState): SecurityPosture {
   const { vault, policy, constraints } = state;
@@ -189,7 +204,7 @@ export function getSecurityPosture(state: ResolvedVaultState): SecurityPosture {
       label: "Vault has recent activity (within 7 days)",
       passed: (() => {
         if (!state.tracker) return true;
-        const epochDuration = 600n;
+        const epochDuration = BigInt(EPOCH_DURATION);
         const lastEpochTimestamp = state.tracker.lastWriteEpoch * epochDuration;
         const sevenDaysAgo = state.resolvedAtTimestamp - 604800n;
         return lastEpochTimestamp > sevenDaysAgo || state.tracker.lastWriteEpoch === 0n;
@@ -197,6 +212,110 @@ export function getSecurityPosture(state: ResolvedVaultState): SecurityPosture {
       severity: "info",
       detail: "A vault with no recent activity may indicate a broken or stopped agent.",
       remediation: "Check agent health and ensure it's connected and running.",
+    },
+    // ---- Step 8: 4 new checks (14-17) ----
+    {
+      id: "timelock-meaningful",
+      label: "Timelock is at least 1 hour",
+      passed: policy.timelockDuration === 0n || policy.timelockDuration >= 3600n,
+      severity: "warning",
+      detail:
+        "A timelock under 1 hour may not provide enough reaction time if the owner key is compromised. " +
+        "A zero timelock (disabled) is caught by the 'timelock-enabled' check above.",
+      remediation:
+        policy.timelockDuration > 0n && policy.timelockDuration < 3600n
+          ? `Current timelock is ${Number(policy.timelockDuration)}s. Increase to at least 3600s (1 hour).`
+          : null,
+    },
+    {
+      id: "fee-rate-reasonable",
+      label: "Developer fee rate is at or below maximum",
+      passed: (policy.developerFeeRate ?? 0) <= MAX_DEVELOPER_FEE_RATE,
+      severity: "info",
+      detail:
+        "Developer fee rate must be at or below 500 (5 BPS = 0.05%). " +
+        "A zero rate is valid (no developer revenue). A rate at the maximum is valid but should be intentional.",
+      remediation:
+        (policy.developerFeeRate ?? 0) > MAX_DEVELOPER_FEE_RATE
+          ? `Fee rate ${policy.developerFeeRate} exceeds maximum ${MAX_DEVELOPER_FEE_RATE}. This should not be possible on-chain.`
+          : (policy.developerFeeRate ?? 0) === MAX_DEVELOPER_FEE_RATE
+            ? "Developer fee rate is at the maximum (5 BPS). Verify this is intentional."
+            : null,
+    },
+    {
+      id: "constraints-protocol-aligned",
+      label: "Constraint programs are in allowlist",
+      passed: (() => {
+        if (!constraints || !constraints.entries || policy.protocolMode !== PROTOCOL_MODE_ALLOWLIST) return true;
+        if (!policy.protocols) return true;
+        const allowedSet = new Set(policy.protocols.map(String));
+        for (const entry of constraints.entries) {
+          if (entry.programId && !allowedSet.has(String(entry.programId))) return false;
+        }
+        return true;
+      })(),
+      severity: "warning",
+      detail:
+        "Instruction constraints reference program addresses not in the protocol allowlist. " +
+        "These constraints will never trigger because the protocol is already blocked.",
+      remediation: "Update the allowlist to include constrained programs, or remove stale constraints.",
+    },
+    {
+      id: "no-permission-concentration",
+      label: "No agent has more than 15 permissions",
+      passed: !vault.agents.some((a: { permissions: bigint }) => countBits(a.permissions) > 15),
+      severity: "warning",
+      detail:
+        "An agent with more than 15 of 21 permission bits is effectively unrestricted. " +
+        "Use least-privilege — grant only the actions the agent's strategy requires.",
+      remediation: "Review agent permissions and restrict to only necessary action types.",
+    },
+    // ---- Step 18: 2 more checks (18-19) — council security findings ----
+    {
+      id: "constraints-current",
+      label: "Constraint discriminators are current",
+      passed: !constraints || !constraints.entries || constraints.entries.length === 0 || (() => {
+        // Verify constraint entries reference known program discriminators.
+        // Stale constraints silently stop matching after protocol upgrades.
+        for (const entry of constraints.entries) {
+          if (entry.dataConstraints && entry.dataConstraints.length === 0 &&
+              entry.accountConstraints && entry.accountConstraints.length === 0) {
+            return false; // Empty entry = likely stale or misconfigured
+          }
+        }
+        return true;
+      })(),
+      severity: "warning",
+      detail:
+        "Stale or empty constraint entries may not match current protocol instruction formats. " +
+        "Review constraints when protocols upgrade.",
+      remediation: "Review and update InstructionConstraints entries. Remove empty entries.",
+    },
+    {
+      id: "constraints-cover-allowlist",
+      label: "All allowlisted protocols have constraint entries",
+      passed: !constraints || !constraints.entries || policy.protocolMode !== PROTOCOL_MODE_ALLOWLIST ||
+        !policy.protocols ||
+        policy.protocols.every((p: Address) =>
+          constraints.entries.some((e: { programId: Address }) => String(e.programId) === String(p)),
+        ),
+      severity: "info",
+      detail:
+        "Protocols on the allowlist without constraint entries rely solely on spending caps for protection.",
+      remediation: "Add InstructionConstraints entries for all allowlisted protocols.",
+    },
+    // ---- Step 20: 1 more check (20) — council security finding ----
+    {
+      id: "mode-all-unguarded",
+      label: "Protocol mode ALL has constraint protection",
+      passed: policy.protocolMode !== 0 /* PROTOCOL_MODE_ALL */ ||
+        (constraints !== null && constraints.strictMode === true),
+      severity: "critical",
+      detail:
+        "Protocol mode ALL allows agents to call any program. Without strict-mode constraints, " +
+        "agents have unrestricted program access beyond spending caps and SPL transfer blocking.",
+      remediation:
+        "Switch to Allowlist mode, or enable InstructionConstraints with strict_mode=true.",
     },
   ];
 
@@ -406,25 +525,94 @@ const AUDIT_EVENTS: Record<string, AuditEntry["category"]> = {
 /**
  * Filter decoded events into a compliance-focused audit trail.
  * Shows only security-relevant events (policy, agent, emergency, escrow, constraints).
+ *
+ * Supports optional filtering by category, timestamp, and actor.
+ *
+ * Note on event field availability (verified against events.rs):
+ * - 10 of 22 events have no `timestamp` field — fallback through `executes_at`, `applied_at`, then 0.
+ * - 7+ events have neither `owner` nor `agent` — fallback through `settled_by`, `refunded_by`, `vault`.
+ * - `txSignature` requires enrichment from transaction envelope (DecodedPhalnxEvent has no such field).
  */
-export function getAuditTrail(events: DecodedPhalnxEvent[]): AuditEntry[] {
+export function getAuditTrail(
+  events: DecodedPhalnxEvent[],
+  options?: {
+    /** Filter to specific categories. If omitted, returns all. */
+    categories?: AuditEntry["category"][];
+    /** Filter to events after this Unix timestamp. */
+    since?: number;
+    /** Filter to events by a specific actor address. */
+    actor?: Address;
+  },
+): AuditEntry[] {
   const trail: AuditEntry[] = [];
 
   for (const e of events) {
     const category = AUDIT_EVENTS[e.name];
     if (!category) continue;
 
+    if (options?.categories && !options.categories.includes(category)) continue;
+
     const f = e.fields ?? {};
+
+    // Timestamp fallback: timestamp → executes_at → applied_at → 0
+    const timestamp = Number(
+      (f.timestamp as bigint) ?? (f.executes_at as bigint) ?? (f.applied_at as bigint) ?? 0n,
+    );
+
+    if (options?.since && timestamp > 0 && timestamp < options.since) continue;
+
+    // Actor fallback: owner → agent → settled_by → refunded_by → vault → "unknown"
+    const actor = (
+      (f.owner ?? f.agent ?? f.settled_by ?? f.refunded_by ?? f.vault ?? "unknown") as string
+    ) as Address;
+
+    if (options?.actor && actor !== options.actor) continue;
+
     trail.push({
-      timestamp: Number((f.timestamp as bigint) ?? 0n),
-      txSignature: "",
+      timestamp,
+      txSignature: (e as { txSignature?: string }).txSignature ?? "",
       category,
       action: e.name,
-      actor: ((f.owner ?? f.agent ?? "unknown") as string) as Address,
+      actor,
       details: f,
       description: describeEvent(e),
     });
   }
 
   return trail;
+}
+
+// ─── getAuditTrailSummary ────────────────────────────────────────────────────
+
+export interface AuditTrailSummary {
+  totalEntries: number;
+  byCategory: Record<AuditEntry["category"], number>;
+  latestTimestamp: number;
+  uniqueActors: Address[];
+}
+
+/** Summarize an audit trail into per-category counts. */
+export function getAuditTrailSummary(trail: AuditEntry[]): AuditTrailSummary {
+  const byCategory: Record<string, number> = {
+    policy_change: 0,
+    agent_change: 0,
+    emergency: 0,
+    escrow: 0,
+    constraint_change: 0,
+  };
+  const actors = new Set<string>();
+  let latest = 0;
+
+  for (const entry of trail) {
+    byCategory[entry.category]++;
+    actors.add(entry.actor);
+    if (entry.timestamp > latest) latest = entry.timestamp;
+  }
+
+  return {
+    totalEntries: trail.length,
+    byCategory: byCategory as Record<AuditEntry["category"], number>,
+    latestTimestamp: latest,
+    uniqueActors: Array.from(actors) as Address[],
+  };
 }

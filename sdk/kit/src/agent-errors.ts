@@ -5,7 +5,7 @@
  * Every error includes a category, retryability flag, and
  * recovery actions that tell the agent exactly what to do next.
  *
- * Maps all 70 on-chain error codes (6000-6069) plus 34 SDK
+ * Maps all 71 on-chain error codes (6000-6070) plus 34 SDK
  * error codes (7000-7033) to AgentError with machine-readable metadata.
  *
  * Zero dependency on @solana/web3.js or @coral-xyz/anchor.
@@ -1089,6 +1089,20 @@ export const ON_CHAIN_ERROR_MAP: Record<number, ErrorMapping> = {
       },
     ],
   },
+  6070: {
+    name: "UnauthorizedPostFinalizeInstruction",
+    message:
+      "Instructions after finalize_session must be ComputeBudget or SystemProgram only",
+    category: "POLICY_VIOLATION",
+    retryable: false,
+    recovery_actions: [
+      {
+        action: "remove_post_finalize_instructions",
+        description:
+          "Remove any instructions placed after finalize_session in the transaction. Only ComputeBudget and SystemProgram instructions are allowed after finalize.",
+      },
+    ],
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -2024,4 +2038,174 @@ function fromSdkMapping(
       original_message: originalMessage,
     },
   };
+}
+
+// ─── SDK Error Patterns (wrap() and friends) ─────────────────────────────────
+
+interface SdkErrorPattern {
+  pattern: RegExp;
+  category: ErrorCategory;
+  retryable: boolean;
+  recovery_actions: RecoveryAction[];
+}
+
+const SDK_ERROR_PATTERNS: SdkErrorPattern[] = [
+  {
+    pattern: /Vault is not active/,
+    category: "RESOURCE_NOT_FOUND",
+    retryable: false,
+    recovery_actions: [
+      { action: "check_vault_status", description: "Verify vault status. It may be frozen or closed." },
+      { action: "reactivate_vault", description: "If frozen, ask the vault owner to reactivate.", tool: "reactivateVault" },
+    ],
+  },
+  {
+    pattern: /Agent .+ is not registered/,
+    category: "PERMISSION",
+    retryable: false,
+    recovery_actions: [
+      { action: "register_agent", description: "Register this agent in the vault.", tool: "registerAgent" },
+    ],
+  },
+  {
+    pattern: /Agent .+ is paused/,
+    category: "PERMISSION",
+    retryable: false,
+    recovery_actions: [
+      { action: "unpause_agent", description: "Ask the vault owner to unpause this agent.", tool: "unpauseAgent" },
+    ],
+  },
+  {
+    pattern: /lacks permission for action/,
+    category: "PERMISSION",
+    retryable: false,
+    recovery_actions: [
+      { action: "update_permissions", description: "Request permission for this action type from the vault owner." },
+    ],
+  },
+  {
+    pattern: /Protocol .+ is not allowed/,
+    category: "PROTOCOL_NOT_SUPPORTED",
+    retryable: false,
+    recovery_actions: [
+      { action: "add_protocol", description: "Add this protocol to the vault's allowlist." },
+    ],
+  },
+  {
+    pattern: /Transaction size .+ exceeds/,
+    category: "INPUT_VALIDATION",
+    retryable: false,
+    recovery_actions: [
+      { action: "add_alts", description: "Pass protocolAltAddresses from your DeFi API response." },
+      { action: "reduce_instructions", description: "Reduce instruction count or split across multiple transactions." },
+    ],
+  },
+  {
+    pattern: /Position limit reached/,
+    category: "POLICY_VIOLATION",
+    retryable: true,
+    recovery_actions: [
+      { action: "close_position", description: "Close an existing position before opening a new one." },
+    ],
+  },
+  {
+    pattern: /Spending action .+ requires amount > 0/,
+    category: "INPUT_VALIDATION",
+    retryable: false,
+    recovery_actions: [
+      { action: "fix_amount", description: "Set amount to the transaction value in token base units." },
+    ],
+  },
+  {
+    pattern: /Non-spending action .+ requires amount === 0/,
+    category: "INPUT_VALIDATION",
+    retryable: false,
+    recovery_actions: [
+      { action: "set_zero_amount", description: "Non-spending actions (close, withdraw, etc.) require amount = 0n." },
+    ],
+  },
+  {
+    pattern: /No target protocol/,
+    category: "INPUT_VALIDATION",
+    retryable: false,
+    recovery_actions: [
+      { action: "add_instructions", description: "Include DeFi instructions in the wrap call, or set targetProtocol explicitly." },
+    ],
+  },
+  {
+    pattern: /Escrow action/,
+    category: "INPUT_VALIDATION",
+    retryable: false,
+    recovery_actions: [
+      { action: "use_escrow_api", description: "Use createEscrow/settleEscrow/refundEscrow instead of wrap()." },
+    ],
+  },
+];
+
+// ─── PhalnxSdkError ──────────────────────────────────────────────────────────
+
+/**
+ * Error class that is BOTH an Error instance AND an AgentError.
+ * Critical: extends Error so `instanceof Error` checks work in consumer code.
+ */
+export class PhalnxSdkError extends Error implements AgentError {
+  readonly code: string;
+  readonly category: ErrorCategory;
+  readonly retryable: boolean;
+  readonly recovery_actions: RecoveryAction[];
+  readonly context: Record<string, unknown>;
+  readonly retry_after_ms?: number;
+
+  constructor(agentError: AgentError) {
+    super(agentError.message);
+    this.name = "PhalnxSdkError";
+    this.code = agentError.code;
+    this.category = agentError.category;
+    this.retryable = agentError.retryable;
+    this.recovery_actions = agentError.recovery_actions;
+    this.context = agentError.context ?? {};
+    if (agentError.retry_after_ms) this.retry_after_ms = agentError.retry_after_ms;
+  }
+}
+
+// ─── wrapToAgentError ────────────────────────────────────────────────────────
+
+/**
+ * Convert any error thrown by wrap() or PhalnxClient methods into a structured AgentError.
+ * Returns a PhalnxSdkError (extends Error) so instanceof Error checks still work.
+ *
+ * Processing order:
+ * 1. Try on-chain error extraction via toAgentError() (numeric codes 6000-6070)
+ * 2. Pattern-match SDK error messages (11 patterns from wrap.ts throw sites)
+ * 3. Fallback to UNKNOWN/FATAL
+ */
+export function wrapToAgentError(err: unknown): PhalnxSdkError {
+  // Try on-chain error extraction first
+  const onChain = toAgentError(err);
+  if (onChain.code !== "UNKNOWN") return new PhalnxSdkError(onChain);
+
+  // Pattern-match SDK errors
+  const message = err instanceof Error ? err.message : String(err);
+  for (const p of SDK_ERROR_PATTERNS) {
+    if (p.pattern.test(message)) {
+      return new PhalnxSdkError({
+        code: `SDK_${p.category}`,
+        message,
+        category: p.category,
+        retryable: p.retryable,
+        recovery_actions: p.recovery_actions,
+        context: {},
+      });
+    }
+  }
+
+  // Fallback
+  return new PhalnxSdkError({
+    code: "UNKNOWN",
+    message,
+    category: "FATAL",
+    retryable: false,
+    recovery_actions: [],
+    context: {},
+  });
 }
