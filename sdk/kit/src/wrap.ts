@@ -53,14 +53,17 @@ import {
   hasPermission,
   isSpendingAction,
   validateNetwork,
+  normalizeNetwork,
   toInstruction,
   PROTOCOL_TREASURY,
   USDC_MINT_DEVNET,
   USDC_MINT_MAINNET,
   USDT_MINT_DEVNET,
   USDT_MINT_MAINNET,
+  RECOGNIZED_DEFI_PROGRAMS,
 } from "./types.js";
 import { isProtocolAllowed } from "./protocol-resolver.js";
+import { wrapToAgentError, type AgentError } from "./agent-errors.js";
 import { getVaultPnL, getVaultTokenBalances, type VaultPnL, type TokenBalance } from "./balance-tracker.js";
 import { createVault, type CreateVaultOptions, type CreateVaultResult } from "./create-vault.js";
 
@@ -69,23 +72,68 @@ import { createVault, type CreateVaultOptions, type CreateVaultResult } from "./
 const COMPUTE_BUDGET_PROGRAM =
   "ComputeBudget111111111111111111111111111111" as Address;
 const SYSTEM_PROGRAM = "11111111111111111111111111111111" as Address;
+const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address;
+const TOKEN_2022_PROGRAM = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb" as Address;
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface WrapParams {
+  /** On-chain vault PDA address. */
   vault: Address;
+  /** Agent signer — must be registered in the vault's agent list. */
   agent: TransactionSigner;
+  /** DeFi instructions to wrap. ComputeBudget and System instructions are stripped automatically. */
   instructions: Instruction[];
+  /** RPC client for state resolution and blockhash fetching. */
   rpc: Rpc<SolanaRpcApi>;
+  /** Network identifier. Accepts `"devnet"` or `"mainnet"` (normalized to `"mainnet-beta"` internally). */
   network: "devnet" | "mainnet";
+  /**
+   * Token mint being spent FROM the vault.
+   *
+   * For swaps: the input mint (what leaves the vault).
+   * For transfers: the transferred token's mint.
+   *
+   * The SDK uses this to derive the vault's ATA and rewrite agent ATAs
+   * in the DeFi instructions to point at the vault's token account.
+   */
   tokenMint: Address;
+  /**
+   * Amount in the token's native base units.
+   *
+   * - Stablecoin input (USDC/USDT): base units = USD with 6 decimals.
+   *   Example: $100 USDC = 100_000_000n (100 * 10^6).
+   *
+   * - Non-stablecoin input (SOL, BONK, etc.): raw token base units.
+   *   Example: 1 SOL = 1_000_000_000n (10^9 lamports).
+   *   Non-stablecoin amounts are NOT cap-checked (by design) —
+   *   finalize_session measures actual stablecoin balance delta instead.
+   *
+   * Must be > 0 for spending actions, 0 for non-spending actions.
+   */
   amount: bigint;
+  /**
+   * DeFi action type. Determines permission check and spending classification.
+   * Default: `ActionType.Swap`.
+   *
+   * 9 spending: Swap, OpenPosition, IncreasePosition, Deposit, Transfer,
+   *   AddCollateral, PlaceLimitOrder, SwapAndOpenPosition, CreateEscrow.
+   * 12 non-spending: ClosePosition, DecreasePosition, Withdraw, RemoveCollateral,
+   *   PlaceTriggerOrder, EditTriggerOrder, CancelTriggerOrder, EditLimitOrder,
+   *   CancelLimitOrder, CloseAndSwapPosition, SettleEscrow, RefundEscrow.
+   */
   actionType?: ActionType;
+  /** Protocol program address. Auto-detected from first DeFi instruction if omitted. */
   targetProtocol?: Address;
+  /** Declared leverage in basis points (100 = 1x). Advisory — on-chain checks declared value. */
   leverageBps?: number;
+  /** Override compute unit budget. Default: auto-estimated from action type. */
   computeUnits?: number;
+  /** Priority fee in microLamports per CU. Default: 0 (no priority fee). */
   priorityFeeMicroLamports?: number;
+  /** Output stablecoin ATA for non-stablecoin input swaps. Vault's canonical ATA derived if omitted. */
   outputStablecoinAccount?: Address;
+  /** Pre-fetched blockhash. If omitted, fetched via RPC (cached 30s). */
   blockhash?: Blockhash;
   /**
    * Protocol-specific ALT addresses to merge with the Phalnx ALT for tx compression.
@@ -93,7 +141,9 @@ export interface WrapParams {
    * These rotate per-route — always pass fresh values from the latest API response.
    */
   protocolAltAddresses?: Address[];
+  /** Pre-resolved ALT contents. If omitted, Phalnx ALT resolved automatically. */
   addressLookupTables?: AddressesByLookupTableAddress;
+  /** Pre-resolved vault state. Skips RPC fetch if fresh enough (see maxCacheAgeMs). */
   cachedState?: ResolvedVaultState;
   /** Max age in ms for cachedState before re-resolving. Default: 30_000 (30s). */
   maxCacheAgeMs?: number;
@@ -119,10 +169,6 @@ export interface WrapResult {
 }
 
 // ─── Internal helpers ───────────────────────────────────────────────────────
-
-function normalizeNetwork(network: "devnet" | "mainnet"): Network {
-  return network === "mainnet" ? "mainnet-beta" : "devnet";
-}
 
 /** Replace agent ATAs with vault ATAs in DeFi instruction account lists. */
 export function replaceAgentAtas(
@@ -264,6 +310,34 @@ export async function wrap(params: WrapParams): Promise<WrapResult> {
       ix.programAddress !== SYSTEM_PROGRAM,
   );
 
+  // Step 4b: SPL Token Transfer/Approve blocking (mirrors on-chain v&a.rs:278-294)
+  for (const ix of defiInstructions) {
+    if (
+      (ix.programAddress === TOKEN_PROGRAM ||
+        ix.programAddress === TOKEN_2022_PROGRAM) &&
+      ix.data &&
+      ix.data.length > 0
+    ) {
+      const disc = ix.data[0];
+      if (disc === 4) {
+        throw new Error(
+          "Top-level SPL Token Approve not allowed in wrapped transactions. " +
+            "DeFi programs handle approvals via CPI.",
+        );
+      }
+      if (
+        disc === 3 ||
+        disc === 12 ||
+        (ix.programAddress === TOKEN_2022_PROGRAM && disc === 26)
+      ) {
+        throw new Error(
+          "Top-level SPL Token Transfer not allowed in wrapped transactions. " +
+            "Use the Transfer ActionType instead.",
+        );
+      }
+    }
+  }
+
   // Step 5: Determine targetProtocol
   const targetProtocol =
     params.targetProtocol ?? defiInstructions[0]?.programAddress;
@@ -288,6 +362,25 @@ export async function wrap(params: WrapParams): Promise<WrapResult> {
     );
   }
 
+  // 6b2: DeFi instruction count enforcement (mirrors on-chain v&a.rs:325-354)
+  if (spending) {
+    const defiCount = defiInstructions.filter((ix) =>
+      RECOGNIZED_DEFI_PROGRAMS.has(ix.programAddress as string),
+    ).length;
+    const isStablecoinInput = isStablecoinMint(params.tokenMint, net);
+    if (isStablecoinInput && defiCount > 1) {
+      throw new Error(
+        "At most 1 recognized DeFi instruction for stablecoin input " +
+          "(prevents round-trip fee avoidance).",
+      );
+    }
+    if (!isStablecoinInput && defiCount !== 1) {
+      throw new Error(
+        "Exactly 1 recognized DeFi instruction required for non-stablecoin input.",
+      );
+    }
+  }
+
   // 6c: Cap headroom (advisory warning, not error)
   if (spending && params.amount > 0n) {
     const headroom = state.globalBudget.remaining;
@@ -299,15 +392,34 @@ export async function wrap(params: WrapParams): Promise<WrapResult> {
     }
   }
 
-  // 6d: Position limit check for increment actions
+  // 6d: Position limit check for increment actions (all 3 PositionEffect::Increment types)
   if (
     (actionType === ActionType.OpenPosition ||
-      actionType === ActionType.SwapAndOpenPosition) &&
+      actionType === ActionType.SwapAndOpenPosition ||
+      actionType === ActionType.PlaceLimitOrder) &&
     state.vault.openPositions >= state.policy.maxConcurrentPositions
   ) {
     throw new Error(
       `Position limit reached: ${state.vault.openPositions}/${state.policy.maxConcurrentPositions}`,
     );
+  }
+
+  // Step 6e: Non-canonical output stablecoin ATA rejection
+  if (
+    params.outputStablecoinAccount &&
+    spending &&
+    !isStablecoinMint(params.tokenMint, net)
+  ) {
+    const stableMint =
+      net === "devnet" ? USDC_MINT_DEVNET : USDC_MINT_MAINNET;
+    const canonicalAta = await deriveAta(params.vault, stableMint);
+    if (params.outputStablecoinAccount !== canonicalAta) {
+      throw new Error(
+        `Non-canonical output stablecoin ATA. Expected ${canonicalAta}, ` +
+          `got ${params.outputStablecoinAccount}. ` +
+          `Use the vault's canonical ATA for balance tracking consistency.`,
+      );
+    }
   }
 
   // Step 7: Derive token accounts (parallelized — all pure crypto, no RPC)
@@ -484,6 +596,8 @@ export interface PhalnxClientConfig {
   agent: TransactionSigner;
   network: "devnet" | "mainnet";
   blockhashTtlMs?: number;
+  /** Callback invoked on any error during executeAndConfirm(). For telemetry/logging. Error is always rethrown. */
+  onError?: (error: AgentError, context: { action: string; tokenMint: Address; amount: bigint }) => void;
 }
 
 /**
@@ -528,6 +642,7 @@ export interface ExecuteResult {
 export class PhalnxClient {
   private readonly blockhashCacheInstance: BlockhashCache;
   private readonly altCacheInstance: AltCache;
+  private readonly onErrorCallback?: PhalnxClientConfig["onError"];
   readonly rpc: Rpc<SolanaRpcApi>;
   readonly vault: Address;
   readonly agent: TransactionSigner;
@@ -545,6 +660,7 @@ export class PhalnxClient {
     this.network = config.network;
     this.blockhashCacheInstance = new BlockhashCache(config.blockhashTtlMs);
     this.altCacheInstance = new AltCache();
+    this.onErrorCallback = config.onError;
   }
 
   /**
@@ -611,14 +727,24 @@ export class PhalnxClient {
     instructions: Instruction[],
     opts: ClientWrapOpts & { confirmOptions?: SendAndConfirmOptions },
   ): Promise<ExecuteResult> {
-    const result = await this.wrap(instructions, opts);
-    const encoded = await signAndEncode(this.agent, result.transaction);
-    const signature = await sendAndConfirmTransaction(
-      this.rpc,
-      encoded,
-      opts.confirmOptions,
-    );
-    return { signature, wrapResult: result };
+    try {
+      const result = await this.wrap(instructions, opts);
+      const encoded = await signAndEncode(this.agent, result.transaction);
+      const signature = await sendAndConfirmTransaction(
+        this.rpc,
+        encoded,
+        opts.confirmOptions,
+      );
+      return { signature, wrapResult: result };
+    } catch (err) {
+      const sdkError = wrapToAgentError(err);
+      this.onErrorCallback?.(sdkError, {
+        action: opts.actionType?.toString() ?? "unknown",
+        tokenMint: opts.tokenMint,
+        amount: opts.amount,
+      });
+      throw sdkError;
+    }
   }
 
   invalidateCaches(): void {

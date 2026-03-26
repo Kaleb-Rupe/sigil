@@ -222,6 +222,64 @@ export function getCrossVaultAgentRanking(
   return allAgents;
 }
 
+// ─── getAgentLeaderboardAcrossVaults ─────────────────────────────────────────
+
+/**
+ * Rank agents across multiple pre-resolved vault states.
+ * Convenience wrapper when you have ResolvedVaultState[] but not a full PortfolioOverview.
+ *
+ * For the full portfolio pipeline, use getPortfolioOverview() + getCrossVaultAgentRanking().
+ */
+export function getAgentLeaderboardAcrossVaults(
+  vaultStates: Array<{ address: Address; state: ResolvedVaultState }>,
+): CrossVaultAgentRanking[] {
+  const allAgents: CrossVaultAgentRanking[] = [];
+
+  for (const { address: vaultAddress, state } of vaultStates) {
+    for (const [agentAddr, budget] of state.allAgentBudgets) {
+      const agentEntry = state.vault.agents.find((a) => a.pubkey === agentAddr);
+      if (!agentEntry) continue;
+
+      let lifetimeSpend = 0n;
+      if (state.overlay) {
+        const slotIdx = state.overlay.entries.findIndex((e) => {
+          try {
+            return bytesToAddress(e.agent) === agentAddr;
+          } catch {
+            return false;
+          }
+        });
+        if (slotIdx >= 0 && slotIdx < state.overlay.lifetimeSpend.length) {
+          lifetimeSpend = state.overlay.lifetimeSpend[slotIdx];
+        }
+      }
+
+      allAgents.push({
+        agent: agentAddr,
+        vaultAddress,
+        vaultId: state.vault.vaultId,
+        spend24h: budget.spent24h,
+        lifetimeSpend,
+        capUtilization:
+          budget.cap > 0n
+            ? Number((budget.spent24h * 10000n) / budget.cap) / 100
+            : 0,
+        paused: agentEntry.paused,
+        rank: 0,
+      });
+    }
+  }
+
+  allAgents.sort((a, b) =>
+    b.spend24h > a.spend24h ? 1 : b.spend24h < a.spend24h ? -1 : 0,
+  );
+  allAgents.forEach((a, i) => {
+    a.rank = i + 1;
+  });
+
+  return allAgents;
+}
+
 // ─── getPortfolioTimeSeries ──────────────────────────────────────────────────
 
 export interface PortfolioTimeSeries {

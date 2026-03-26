@@ -22,6 +22,9 @@ import {
 } from "./resolve-accounts.js";
 import { findNextVaultId } from "./harden.js";
 import { FULL_PERMISSIONS, toInstruction } from "./types.js";
+import { buildOwnerTransaction } from "./owner-transaction.js";
+import { signAndEncode, sendAndConfirmTransaction } from "./rpc-helpers.js";
+import type { SendAndConfirmOptions } from "./rpc-helpers.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -123,4 +126,50 @@ export async function createVault(
     initializeVaultIx: toInstruction(initializeVaultIx),
     registerAgentIx: toInstruction(registerAgentIx),
   };
+}
+
+// ─── createAndSendVault() ────────────────────────────────────────────────────
+
+export interface CreateAndSendVaultOptions extends CreateVaultOptions {
+  /** Priority fee in microLamports per CU. Default: 0. */
+  priorityFeeMicroLamports?: number;
+  /** Override compute units. Default: CU_OWNER_ACTION (200,000). */
+  computeUnits?: number;
+  /** Confirmation options (timeout, poll interval, commitment). */
+  confirmOptions?: SendAndConfirmOptions;
+}
+
+export interface CreateAndSendVaultResult extends CreateVaultResult {
+  /** Confirmed transaction signature. */
+  signature: string;
+}
+
+/**
+ * One-call vault creation: build instructions, compose transaction, sign, send, and confirm.
+ *
+ * Equivalent to calling createVault() → buildOwnerTransaction() → signAndEncode()
+ * → sendAndConfirmTransaction() manually.
+ */
+export async function createAndSendVault(
+  options: CreateAndSendVaultOptions,
+): Promise<CreateAndSendVaultResult> {
+  const result = await createVault(options);
+
+  const ownerTx = await buildOwnerTransaction({
+    rpc: options.rpc,
+    owner: options.owner,
+    instructions: [result.initializeVaultIx, result.registerAgentIx],
+    network: options.network,
+    computeUnits: options.computeUnits,
+    priorityFeeMicroLamports: options.priorityFeeMicroLamports,
+  });
+
+  const encoded = await signAndEncode(options.owner, ownerTx.transaction);
+  const signature = await sendAndConfirmTransaction(
+    options.rpc,
+    encoded,
+    options.confirmOptions,
+  );
+
+  return { ...result, signature };
 }

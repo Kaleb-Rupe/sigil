@@ -110,13 +110,33 @@ export const USDT_MINT_MAINNET =
 export const JUPITER_PROGRAM_ADDRESS =
   "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4" as Address;
 
+/** The 5 recognized DeFi programs for instruction count enforcement.
+ *  Must stay in sync with on-chain validate_and_authorize.rs:325-329. */
+export const RECOGNIZED_DEFI_PROGRAMS: ReadonlySet<string> = new Set([
+  "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", // Jupiter V6
+  "FLASH6Lo6h3iasJKWDs2F8TkW2UKf3s15C8PMGuVfgBn", // Flash Trade
+  "JLend2fEim9xUFcaHsyGePEoBzFLvkjMi3MnPcSuCdu", // Jupiter Lend
+  "jup3YeL8QhtSx1e253b2FDvsMNC87fDrgQZivbrndc9",  // Jupiter Earn
+  "jupr81YtYssSyPt8jbnGuiWon5f6x9TcDEFxYe3Bdzi",  // Jupiter Borrow
+]);
+
 export type Network = "devnet" | "mainnet-beta";
 
 /** Validate that a string is a recognized Network value. */
 export function validateNetwork(network: string): asserts network is Network {
-  if (network !== "devnet" && network !== "mainnet-beta") {
-    throw new Error(`Invalid network: "${network}". Must be "devnet" or "mainnet-beta".`);
+  const normalized = network === "mainnet" ? "mainnet-beta" : network;
+  if (normalized !== "devnet" && normalized !== "mainnet-beta") {
+    throw new Error(`Invalid network: "${network}". Must be "devnet", "mainnet", or "mainnet-beta".`);
   }
+}
+
+/** Short-form network accepted by public APIs. Normalized internally. */
+export type NetworkInput = "devnet" | "mainnet" | "mainnet-beta";
+
+/** Convert short-form network to canonical Network type.
+ *  "mainnet" → "mainnet-beta", all others pass through. */
+export function normalizeNetwork(network: NetworkInput): Network {
+  return network === "mainnet" ? "mainnet-beta" : (network as Network);
 }
 
 /** Type-safe instruction conversion from Codama builders. */
@@ -176,6 +196,26 @@ export function permissionsToStrings(permissions: bigint): string[] {
     if ((permissions & bit) !== 0n) {
       result.push(name);
     }
+  }
+  return result;
+}
+
+/**
+ * Convert an array of action type strings to a permission bitmask.
+ * Inverse of permissionsToStrings().
+ *
+ * @throws Error if any string is not a recognized action type.
+ * @example stringsToPermissions(["swap", "deposit"]) // => 33n (bit 0 + bit 5)
+ */
+export function stringsToPermissions(strings: string[]): bigint {
+  let result = 0n;
+  for (const s of strings) {
+    const bit = ACTION_PERMISSION_MAP[s];
+    if (bit === undefined) {
+      const valid = Object.keys(ACTION_PERMISSION_MAP).join(", ");
+      throw new Error(`Unknown action type: "${s}". Valid types: ${valid}`);
+    }
+    result |= bit;
   }
   return result;
 }

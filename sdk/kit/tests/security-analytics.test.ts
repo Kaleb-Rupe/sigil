@@ -6,6 +6,8 @@ import { expect } from "chai";
 import {
   getSecurityPosture,
   evaluateAlertConditions,
+  getAuditTrail,
+  getAuditTrailSummary,
 } from "../src/security-analytics.js";
 import { VaultStatus } from "../src/generated/types/vaultStatus.js";
 import { FULL_PERMISSIONS, PROTOCOL_MODE_ALLOWLIST } from "../src/types.js";
@@ -56,8 +58,8 @@ describe("getSecurityPosture", () => {
   it("passes all checks for well-configured vault", () => {
     const state = mockSecurityState({ constraints: {} });
     const posture = getSecurityPosture(state);
-    // 13 checks total, all should pass for well-configured vault
-    expect(posture.checks).to.have.length(13);
+    // 20 checks total (13 base + 4 Step 8 + 2 Step 18 + 1 Step 20)
+    expect(posture.checks).to.have.length(20);
     expect(posture.failCount).to.equal(0);
     expect(posture.criticalFailures).to.have.length(0);
   });
@@ -275,5 +277,111 @@ describe("evaluateAlertConditions", () => {
 
     const alerts = evaluateAlertConditions(state, "vault1" as Address);
     expect(alerts.some((a) => a.id.includes("drain-detected"))).to.equal(true);
+  });
+});
+
+// ─── Step 8 checks ──────────────────────────────────────────────────────────
+
+describe("Step 8 security checks", () => {
+  it("fails timelock-meaningful for short timelock", () => {
+    const state = mockSecurityState({ policy: { timelockDuration: 60n } });
+    const posture = getSecurityPosture(state);
+    const check = posture.checks.find((c) => c.id === "timelock-meaningful");
+    expect(check).to.exist;
+    expect(check!.passed).to.equal(false);
+  });
+
+  it("passes timelock-meaningful for disabled (0) timelock", () => {
+    const state = mockSecurityState({ policy: { timelockDuration: 0n } });
+    const posture = getSecurityPosture(state);
+    const check = posture.checks.find((c) => c.id === "timelock-meaningful");
+    expect(check!.passed).to.equal(true);
+  });
+
+  it("passes fee-rate-reasonable for valid fee rate", () => {
+    const state = mockSecurityState({ policy: { developerFeeRate: 100 } });
+    const posture = getSecurityPosture(state);
+    const check = posture.checks.find((c) => c.id === "fee-rate-reasonable");
+    expect(check!.passed).to.equal(true);
+  });
+
+  it("fails no-permission-concentration for 16+ bits", () => {
+    // 16 bits set: bits 0-15
+    const highPerms = (1n << 16n) - 1n;
+    const state = mockSecurityState({
+      vault: {
+        agents: [{ pubkey: "a1" as Address, permissions: highPerms, spendingLimitUsd: 500_000_000n, paused: false }],
+        status: 0,
+        feeDestination: "fee" as Address,
+        openPositions: 0,
+        activeEscrowCount: 0,
+      },
+    });
+    const posture = getSecurityPosture(state);
+    const check = posture.checks.find((c) => c.id === "no-permission-concentration");
+    expect(check!.passed).to.equal(false);
+  });
+
+  it("fails mode-all-unguarded for protocol mode ALL without strict constraints", () => {
+    const state = mockSecurityState({
+      policy: { protocolMode: 0 },
+      constraints: null,
+    });
+    const posture = getSecurityPosture(state);
+    const check = posture.checks.find((c) => c.id === "mode-all-unguarded");
+    expect(check!.passed).to.equal(false);
+    expect(check!.severity).to.equal("critical");
+  });
+});
+
+// ─── getAuditTrail ───────────────────────────────────────────────────────────
+
+describe("getAuditTrail", () => {
+  const mockEvents = [
+    { name: "PolicyUpdated", data: new Uint8Array(), fields: { owner: "owner1", timestamp: 1000n } },
+    { name: "AgentRegistered", data: new Uint8Array(), fields: { owner: "owner1", agent: "agent1", timestamp: 2000n } },
+    { name: "VaultFrozen", data: new Uint8Array(), fields: { owner: "owner1", timestamp: 3000n } },
+    { name: "SessionFinalized", data: new Uint8Array(), fields: {} }, // Not in AUDIT_EVENTS — should be filtered out
+  ] as any[];
+
+  it("filters to audit-relevant events only", () => {
+    const trail = getAuditTrail(mockEvents);
+    expect(trail).to.have.length(3);
+    expect(trail.every((e) => e.action !== "SessionFinalized")).to.equal(true);
+  });
+
+  it("filters by category", () => {
+    const trail = getAuditTrail(mockEvents, { categories: ["emergency"] });
+    expect(trail).to.have.length(1);
+    expect(trail[0].action).to.equal("VaultFrozen");
+  });
+
+  it("filters by since timestamp", () => {
+    const trail = getAuditTrail(mockEvents, { since: 2500 });
+    expect(trail).to.have.length(1);
+    expect(trail[0].action).to.equal("VaultFrozen");
+  });
+
+  it("filters by actor", () => {
+    // Actor fallback: owner ?? agent ?? ... — "owner1" takes precedence over "agent1"
+    const trail = getAuditTrail(mockEvents, { actor: "owner1" as Address });
+    expect(trail).to.have.length(3); // All 3 events have owner: "owner1"
+  });
+});
+
+// ─── getAuditTrailSummary ────────────────────────────────────────────────────
+
+describe("getAuditTrailSummary", () => {
+  it("returns per-category counts", () => {
+    const trail = getAuditTrail([
+      { name: "PolicyUpdated", data: new Uint8Array(), fields: { owner: "o1", timestamp: 1n } },
+      { name: "VaultFrozen", data: new Uint8Array(), fields: { owner: "o1", timestamp: 2n } },
+      { name: "VaultClosed", data: new Uint8Array(), fields: { owner: "o1", timestamp: 3n } },
+    ] as any[]);
+    const summary = getAuditTrailSummary(trail);
+    expect(summary.totalEntries).to.equal(3);
+    expect(summary.byCategory.policy_change).to.equal(1);
+    expect(summary.byCategory.emergency).to.equal(2);
+    expect(summary.latestTimestamp).to.equal(3);
   });
 });
