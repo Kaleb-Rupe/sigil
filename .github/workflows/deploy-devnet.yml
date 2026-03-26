@@ -227,7 +227,36 @@ jobs:
         run: rm -f "$HOME/.config/solana/deployer.json"
 
   # ────────────────────────────────────────────────────────────────
-  # Job 2: Run devnet tests against freshly deployed program
+  # Job 2: Verify deployed binary matches source (solana-verify)
+  # ────────────────────────────────────────────────────────────────
+  verify-program:
+    name: Verify Program Binary
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9
+        with:
+          toolchain: stable
+
+      - name: Install solana-verify
+        run: cargo install solana-verify
+
+      - name: Verify deployed program matches source
+        run: |
+          set -e
+          solana-verify verify-from-repo \
+            --program-id 4ZeVCqnjUgUtFrHHPG7jELUxvJeoVGHhGNgPrhBPwrHL \
+            --library-name phalnx \
+            --mount-path programs/phalnx \
+            --url https://api.devnet.solana.com
+
+  # ────────────────────────────────────────────────────────────────
+  # Job 3: Run devnet tests against freshly deployed program
   # ────────────────────────────────────────────────────────────────
   test:
     name: Devnet Tests (post-deploy)
