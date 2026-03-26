@@ -93,3 +93,21 @@ SDK provides `shieldedFetch()` for HTTP 402 payment:
 5. Client retries with `X-PAYMENT` header → server verifies and returns resource
 
 Dependency: `@x402/core` for types/encoding.
+
+## Multi-Sig Governance
+
+Phalnx does not implement on-chain multi-sig. Instead, it composes
+with external multi-sig programs (recommended: Squads V4).
+
+**How it works:**
+1. Set `vault.owner` to a Squads V4 multisig PDA
+2. All owner actions (policy changes, agent management, withdrawals)
+   require threshold signing through Squads before reaching Phalnx
+3. Phalnx checks `owner.key == vault.owner` -- the Solana runtime
+   guarantees this signature is valid
+
+**Combined with timelock:**
+- Policy changes require timelock_duration to elapse
+- Squads threshold signing adds a second governance layer
+- Result: no single person can change policy without both threshold
+  approval AND waiting the timelock period
