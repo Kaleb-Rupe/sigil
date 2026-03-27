@@ -28,6 +28,7 @@ import {
   accountExists,
   advanceTime,
   sendVersionedTx,
+  expectPhalnxError,
   recordCU,
   printCUSummary,
   TestEnv,
@@ -502,7 +503,7 @@ describe("instruction-constraints", () => {
         sendVersionedTx(svm, [validateIx, finalizeIx], agent);
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("InvalidConstraintsPda");
+        expectPhalnxError(err.toString(), "InvalidConstraintsPda");
       }
     });
 
@@ -597,7 +598,7 @@ describe("instruction-constraints", () => {
         sendVersionedTx(svm, [validateIx, finalizeIx], agent);
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("InvalidConstraintsPda");
+        expectPhalnxError(err.toString(), "InvalidConstraintsPda");
       }
     });
   });
@@ -644,7 +645,7 @@ describe("instruction-constraints", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("InvalidConstraintConfig");
+        expectPhalnxError(err.toString(), "InvalidConstraintConfig");
       }
     });
 
@@ -680,7 +681,7 @@ describe("instruction-constraints", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("InvalidConstraintConfig");
+        expectPhalnxError(err.toString(), "InvalidConstraintConfig");
       }
     });
 
@@ -715,7 +716,7 @@ describe("instruction-constraints", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("InvalidConstraintConfig");
+        expectPhalnxError(err.toString(), "InvalidConstraintConfig");
       }
     });
 
@@ -878,7 +879,7 @@ describe("instruction-constraints", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("TimelockActive");
+        expectPhalnxError(err.toString(), "TimelockActive");
       }
     });
 
@@ -895,7 +896,7 @@ describe("instruction-constraints", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("TimelockActive");
+        expectPhalnxError(err.toString(), "TimelockActive");
       }
     });
 
@@ -942,7 +943,7 @@ describe("instruction-constraints", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("TimelockNotExpired");
+        expectPhalnxError(err.toString(), "TimelockNotExpired");
       }
 
       // Advance time past timelock
@@ -1039,7 +1040,7 @@ describe("instruction-constraints", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("NoTimelockConfigured");
+        expectPhalnxError(err.toString(), "NoTimelockConfigured");
       }
     });
   });
@@ -1475,7 +1476,7 @@ describe("instruction-constraints", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("InvalidConstraintConfig");
+        expectPhalnxError(err.toString(), "InvalidConstraintConfig");
       }
     });
 
@@ -1502,7 +1503,7 @@ describe("instruction-constraints", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("InvalidConstraintConfig");
+        expectPhalnxError(err.toString(), "InvalidConstraintConfig");
       }
     });
 
@@ -2245,7 +2246,7 @@ describe("instruction-constraints", () => {
         sendVersionedTx(svm, [validateIx, mockDeFiIx, finalizeIx], cvAgent);
         expect.fail("Should have thrown ConstraintViolated");
       } catch (err: any) {
-        expect(err.toString()).to.include("ConstraintViolated");
+        expectPhalnxError(err.toString(), "ConstraintViolated");
       }
 
       // Clean up: close constraints for next test
@@ -2304,7 +2305,7 @@ describe("instruction-constraints", () => {
         sendVersionedTx(svm, [validateIx, mockDeFiIx, finalizeIx], cvAgent);
         expect.fail("Should have thrown UnconstrainedProgramBlocked");
       } catch (err: any) {
-        expect(err.toString()).to.include("UnconstrainedProgramBlocked");
+        expectPhalnxError(err.toString(), "UnconstrainedProgramBlocked");
       }
 
       // Clean up
