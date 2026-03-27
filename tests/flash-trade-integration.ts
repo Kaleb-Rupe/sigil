@@ -367,6 +367,28 @@ describe("flash-trade-integration", () => {
     });
   });
 
+  // P2 #23: Leverage limit boundary — test at exactly 100x (should succeed)
+  describe("leverage boundary", () => {
+    it("accepts leverage at exactly the policy limit (100x = 10000 bps)", async () => {
+      await sendComposedAction(
+        vaultPda, policyPda, trackerPda, agent, usdcMint,
+        new BN(10_000_000), flashProtocol,
+        { openPosition: {} },
+        10000, // exactly 100x — at the limit, should succeed
+      );
+      const vault = await program.account.agentVault.fetch(vaultPda);
+      expect(vault.openPositions).to.be.greaterThanOrEqual(1);
+
+      // Close position to clean up
+      await sendComposedAction(
+        vaultPda, policyPda, trackerPda, agent, usdcMint,
+        new BN(0), flashProtocol,
+        { closePosition: {} },
+        0,
+      );
+    });
+  });
+
   // =========================================================================
   // Exceeds max concurrent positions
   // =========================================================================
@@ -455,7 +477,11 @@ describe("flash-trade-integration", () => {
   // Increase position
   // =========================================================================
   describe("increase position", () => {
+    // P2 #25: Verify vault state changes on IncreasePosition (not just signature)
     it("increases a position within policy limits", async () => {
+      const vaultBefore = await program.account.agentVault.fetch(vaultPda);
+      const txCountBefore = vaultBefore.totalTransactions.toNumber();
+
       const sig = await sendComposedAction(
         vaultPda,
         policyPda,
@@ -469,6 +495,9 @@ describe("flash-trade-integration", () => {
       );
 
       expect(sig.signature).to.be.a("string");
+      // Verify transaction was actually recorded
+      const vaultAfter = await program.account.agentVault.fetch(vaultPda);
+      expect(vaultAfter.totalTransactions.toNumber()).to.equal(txCountBefore + 1);
     });
   });
 
@@ -476,7 +505,11 @@ describe("flash-trade-integration", () => {
   // Decrease position
   // =========================================================================
   describe("decrease position", () => {
+    // P2 #25: Verify vault state changes on DecreasePosition
     it("decreases a position within policy limits", async () => {
+      const vaultBefore = await program.account.agentVault.fetch(vaultPda);
+      const txCountBefore = vaultBefore.totalTransactions.toNumber();
+
       const sig = await sendComposedAction(
         vaultPda,
         policyPda,
@@ -489,6 +522,8 @@ describe("flash-trade-integration", () => {
       );
 
       expect(sig.signature).to.be.a("string");
+      const vaultAfter = await program.account.agentVault.fetch(vaultPda);
+      expect(vaultAfter.totalTransactions.toNumber()).to.equal(txCountBefore + 1);
     });
   });
 
@@ -945,6 +980,9 @@ describe("flash-trade-integration", () => {
     it("ClosePosition at daily cap succeeds — non-spending bypasses cap", async () => {
       // At 200/200 cap. Close with amount=0 (non-spending, risk-reducing).
       // Risk-reducing actions bypass cap entirely — no spending tracked.
+      // P1 #14: Verify vault balance unchanged (cap-exempt = no balance movement)
+      const balBefore = getTokenBalance(svm, capVaultUsdcAta);
+
       const sig = await sendComposedAction(
         capVault,
         capPolicy,
@@ -959,6 +997,10 @@ describe("flash-trade-integration", () => {
         capVaultUsdcAta,
       );
       expect(sig.signature).to.be.a("string");
+
+      // P1 #14: Non-spending action should NOT move vault balance (except protocol fee on amount=0 = 0)
+      const balAfter = getTokenBalance(svm, capVaultUsdcAta);
+      expect(balAfter).to.equal(balBefore);
 
       const vault = await program.account.agentVault.fetch(capVault);
       expect(vault.openPositions).to.equal(0);

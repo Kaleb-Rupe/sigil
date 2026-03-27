@@ -719,6 +719,41 @@ describe("instruction-constraints", () => {
       }
     });
 
+    // P2 #30: Verify exactly 32 bytes is accepted (boundary success case)
+    it("accepts exactly 32-byte constraint value (boundary)", async () => {
+      const exactValue = Buffer.alloc(32, 0xab);
+      await program.methods
+        .createInstructionConstraints(
+          [
+            {
+              programId: jupiterProgramId,
+              dataConstraints: [
+                { offset: 0, operator: { eq: {} }, value: exactValue },
+              ],
+              accountConstraints: [],
+            },
+          ],
+          false,
+        )
+        .accounts({
+          owner: owner.publicKey,
+          vault: vaultPda,
+          policy: policyPda,
+          constraints: constraintsPda,
+          systemProgram: SystemProgram.programId,
+        } as any)
+        .rpc();
+
+      const acct = await program.account.instructionConstraints.fetch(constraintsPda);
+      expect(Buffer.from(acct.entries[0].dataConstraints[0].value).length).to.equal(32);
+
+      // Clean up for subsequent tests
+      await program.methods
+        .closeInstructionConstraints()
+        .accounts({ owner: owner.publicKey, vault: vaultPda, policy: policyPda, constraints: constraintsPda } as any)
+        .rpc();
+    });
+
     // Re-create constraints for remaining tests
     after(async () => {
       // Policy may show has_constraints=false, recreate
