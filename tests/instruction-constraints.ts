@@ -2266,9 +2266,10 @@ describe("instruction-constraints", () => {
     });
 
     // C-7: UnconstrainedProgramBlocked via strict_mode=true
-    it.skip("UnconstrainedProgramBlocked when strict_mode=true and unknown program (C-7) — strict_mode not settable on rebrand branch", async () => {
-      // Create strict_mode=true constraints only for jupiterProgramId (random, not deployed)
-      // The intermediate ix will use phalnx program (deployed but not in constraints) → blocked
+    // P0 Finding 8: strict_mode enforcement — previously skipped, now enabled
+    it("UnconstrainedProgramBlocked when strict_mode=true and unknown program (C-7)", async () => {
+      // Create strict_mode=true constraints only for jupiterProgramId
+      // The intermediate ix targets phalnx program (not in constraints) → blocked
       await program.methods
         .createInstructionConstraints(
           [
@@ -2280,8 +2281,8 @@ describe("instruction-constraints", () => {
               accountConstraints: [],
             },
           ],
-          false,
-        ) // strict_mode not supported on this branch
+          true, // strict_mode=true — reject programs without constraint entries
+        )
         .accounts({
           owner: owner.publicKey,
           vault: cvVault,
