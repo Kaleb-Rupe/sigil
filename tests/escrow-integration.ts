@@ -590,6 +590,71 @@ describe("escrow-integration", () => {
 
     // Verify escrow ATA was closed
     expect(accountExists(svm, escrowUsdcAta)).to.be.false;
+
+    // P0 Finding 6: Verify cap NOT reversed on refund (prevents cap-washing).
+    // Spec says: "Cap NOT reversed on refund (prevents cap-washing)."
+    // The spending tracked by the escrow creation should remain charged.
+    const trackerAfterRefund = await program.account.spendTracker.fetch(
+      sourceTrackerPda,
+    );
+    // The tracker's rolling 24h spend should still include the escrow amount
+    // (it was charged at creation time and must NOT be reversed on refund).
+    const rolling24h = trackerAfterRefund.get_rolling_24h_usd
+      ? trackerAfterRefund.get_rolling_24h_usd()
+      : trackerAfterRefund.buckets.reduce(
+          (sum: bigint, b: { usdAmount: { toNumber: () => number } }) =>
+            sum + BigInt(b.usdAmount.toNumber()),
+          0n,
+        );
+    expect(Number(rolling24h)).to.be.greaterThanOrEqual(
+      escrowAmount.toNumber(),
+    );
+  });
+
+  // =========================================================================
+  // P2 #24: Escrow expiry exact boundary test
+  // =========================================================================
+  // P2 #24: Escrow expiry boundary — on-chain uses `>=` so settle fails AT exact expiry
+  it("settle at exact expiry timestamp fails (boundary: >= check)", async () => {
+    const escrowId = new BN(30);
+    const escrowAmount = new BN(5_000_000); // 5 USDC
+
+    const clock = svm.getClock();
+    const currentTimestamp = Number(clock.unixTimestamp);
+    const expiresAt = new BN(currentTimestamp + 60);
+
+    const { escrowPda, escrowUsdcAta } = await createEscrowHelper(
+      escrowId,
+      escrowAmount,
+      expiresAt,
+    );
+
+    // Advance to EXACTLY the expiry timestamp (not past it)
+    advanceTime(svm, 60);
+
+    // Settle at exact expiry — fails (on-chain: `now >= expiresAt` → EscrowExpired)
+    // This verifies the boundary: at T=expiresAt, settle is already blocked.
+    try {
+      await program.methods
+        .settleEscrow(Buffer.from([]))
+        .accounts({
+          destinationAgent: destAgent.publicKey,
+          destinationVault: destVaultPda,
+          sourceVault: sourceVaultPda,
+          escrow: escrowPda,
+          escrowAta: escrowUsdcAta,
+          destinationVaultAta: destVaultUsdcAta,
+          rentDestination: sourceOwner.publicKey,
+          tokenMint: usdcMint,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        } as any)
+        .signers([destAgent])
+        .rpc();
+      expect.fail("Should have thrown EscrowExpired at exact expiry");
+    } catch (err: any) {
+      if (err.message?.includes("Should have thrown")) throw err;
+      expect(err.toString()).to.include("6047"); // EscrowExpired exact code
+    }
   });
 
   // =========================================================================

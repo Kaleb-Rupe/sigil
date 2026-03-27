@@ -86,13 +86,18 @@ describe("@phalnx/plugin-solana-agent-kit", () => {
       });
       expect(result.success).to.be.true;
 
-      // Verify schema rejects invalid amount
+      // P2 #22: Verify schema rejects invalid amount AND check WHY it fails
       const invalid = swap.schema.safeParse({
         inputMint: "USDC",
         outputMint: "SOL",
         amount: -5,
       });
       expect(invalid.success).to.be.false;
+      // Verify the SPECIFIC field that caused rejection (not just "some error")
+      if (!invalid.success) {
+        const paths = invalid.error.issues.map((i: any) => i.path.join("."));
+        expect(paths).to.include("amount");
+      }
     });
 
     it("status action has empty input schema", () => {

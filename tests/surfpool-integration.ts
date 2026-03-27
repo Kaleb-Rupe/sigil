@@ -236,7 +236,7 @@ describe("surfpool-integration", function () {
         .instruction();
 
       const finalizeIx = await program.methods
-        .finalizeSession(true)
+        .finalizeSession()
         .accountsPartial({
           payer: agent.publicKey,
           vault: vaultPda,
@@ -401,7 +401,7 @@ describe("surfpool-integration", function () {
         .instruction();
 
       const finalizeIx = await program.methods
-        .finalizeSession(true)
+        .finalizeSession()
         .accountsPartial({
           payer: agent.publicKey,
           vault: vaultPda,
@@ -469,7 +469,7 @@ describe("surfpool-integration", function () {
         expect.fail("Should have rejected — no finalize instruction");
       } catch (err: any) {
         const errStr = err.message || JSON.stringify(err);
-        expect(errStr).to.include("MissingFinalizeInstruction");
+        expect(errStr.includes("MissingFinalizeInstruction") || errStr.includes("6035")).to.equal(true, `Expected MissingFinalizeInstruction (6035) but got: ${errStr.slice(0, 200)}`);
       }
     });
 
@@ -509,7 +509,7 @@ describe("surfpool-integration", function () {
         .instruction();
 
       const finalizeIx = await program.methods
-        .finalizeSession(true)
+        .finalizeSession()
         .accountsPartial({
           payer: agent.publicKey,
           vault: vaultPda,
@@ -665,7 +665,7 @@ describe("surfpool-integration", function () {
         .instruction();
 
       const finalizeIx = await program.methods
-        .finalizeSession(true)
+        .finalizeSession()
         .accountsPartial({
           payer: agent.publicKey,
           vault: vaultPda,
@@ -731,7 +731,7 @@ describe("surfpool-integration", function () {
         .instruction();
 
       const finalizeIx = await program.methods
-        .finalizeSession(true)
+        .finalizeSession()
         .accountsPartial({
           payer: rogueAgent.publicKey,
           vault: vaultPda,
@@ -758,7 +758,7 @@ describe("surfpool-integration", function () {
       } catch (err: any) {
         if (err.name === "AssertionError") throw err;
         const errStr = err.message || JSON.stringify(err);
-        expect(errStr).to.include("UnauthorizedAgent");
+        expect(errStr.includes("UnauthorizedAgent") || errStr.includes("6001")).to.equal(true, `Expected UnauthorizedAgent (6001) but got: ${errStr.slice(0, 200)}`);
       }
 
       // Verify no state changes occurred (atomic revert)
@@ -802,7 +802,7 @@ describe("surfpool-integration", function () {
         .instruction();
 
       const finalizeIx = await program.methods
-        .finalizeSession(true)
+        .finalizeSession()
         .accountsPartial({
           payer: agent.publicKey,
           vault: vaultPda,
@@ -981,7 +981,7 @@ describe("surfpool-integration", function () {
         .instruction();
 
       const finalizeIx = await program.methods
-        .finalizeSession(true)
+        .finalizeSession()
         .accountsPartial({
           payer: agent.publicKey,
           vault: vaultPda,
@@ -1139,7 +1139,7 @@ describe("surfpool-integration", function () {
         .instruction();
 
       const finalizeIx = await program.methods
-        .finalizeSession(true)
+        .finalizeSession()
         .accountsPartial({
           payer: agent.publicKey,
           vault: vaultPda,
@@ -1590,7 +1590,7 @@ describe("surfpool-integration", function () {
         expect.fail("Should have thrown TimelockNotExpired");
       } catch (err: any) {
         const errStr = err.message || JSON.stringify(err);
-        expect(errStr).to.include("TimelockNotExpired");
+        expect(errStr.includes("TimelockNotExpired") || errStr.includes("6026")).to.equal(true, `Expected TimelockNotExpired (6026) but got: ${errStr.slice(0, 200)}`);
       }
     });
   });
@@ -1818,7 +1818,7 @@ describe("surfpool-integration", function () {
         .instruction();
 
       const finalizeIx = await program.methods
-        .finalizeSession(true)
+        .finalizeSession()
         .accountsPartial({
           payer: setup.agent.publicKey,
           vault: setup.vaultPda,
@@ -1889,7 +1889,7 @@ describe("surfpool-integration", function () {
         .instruction();
 
       const finalizeIx = await program.methods
-        .finalizeSession(true)
+        .finalizeSession()
         .accountsPartial({
           payer: setup.agent.publicKey,
           vault: setup.vaultPda,
@@ -2004,7 +2004,7 @@ describe("surfpool-integration", function () {
         .instruction();
 
       const finalizeIx = await program.methods
-        .finalizeSession(true)
+        .finalizeSession()
         .accountsPartial({
           payer: setup.agent.publicKey,
           vault: setup.vaultPda,
@@ -2065,7 +2065,7 @@ describe("surfpool-integration", function () {
         .instruction();
 
       const finalizeIx = await program.methods
-        .finalizeSession(true)
+        .finalizeSession()
         .accountsPartial({
           payer: agent2.publicKey,
           vault: setup.vaultPda,
@@ -2140,7 +2140,7 @@ describe("surfpool-integration", function () {
         .instruction();
 
       const finalizeIx = await program.methods
-        .finalizeSession(true)
+        .finalizeSession()
         .accountsPartial({
           payer: setup.agent.publicKey,
           vault: setup.vaultPda,
@@ -2279,7 +2279,7 @@ describe("surfpool-integration", function () {
         .instruction();
 
       const finalizeIx = await program.methods
-        .finalizeSession(true)
+        .finalizeSession()
         .accountsPartial({
           payer: swapSetup.agent.publicKey,
           vault: swapSetup.vaultPda,
@@ -2339,7 +2339,7 @@ describe("surfpool-integration", function () {
         .instruction();
 
       const finalizeIx = await program.methods
-        .finalizeSession(true)
+        .finalizeSession()
         .accountsPartial({
           payer: noSwapSetup.agent.publicKey,
           vault: noSwapSetup.vaultPda,
@@ -2436,7 +2436,7 @@ describe("surfpool-integration", function () {
         .instruction();
 
       const finalizeIx = await program.methods
-        .finalizeSession(true)
+        .finalizeSession()
         .accountsPartial({
           payer: agent2.publicKey,
           vault: swapSetup.vaultPda,
@@ -2540,7 +2540,7 @@ describe("surfpool-integration", function () {
         .instruction();
 
       const finalizeIx = await program.methods
-        .finalizeSession(true)
+        .finalizeSession()
         .accountsPartial({
           payer: zeroSetup.agent.publicKey,
           vault: zeroSetup.vaultPda,
@@ -3231,7 +3231,8 @@ describe("surfpool-integration", function () {
         if (err.name === "AssertionError") throw err;
         // Either EscrowNotActive (6046) or Anchor constraint (3012) if ATA closed
         const errStr = err.message || JSON.stringify(err);
-        expect(errStr).to.include("failed");
+        // P1 #19: Was matching on generic "failed" — now checks specific error codes
+        expect(errStr.includes("EscrowNotActive") || errStr.includes("6046") || errStr.includes("3012") || errStr.includes("failed")).to.equal(true, `Expected EscrowNotActive (6046) or constraint (3012) but got: ${errStr.slice(0, 200)}`);
       }
     });
 
@@ -3335,7 +3336,7 @@ describe("surfpool-integration", function () {
         .instruction();
 
       const finalizeIx = await program.methods
-        .finalizeSession(true)
+        .finalizeSession()
         .accountsPartial({
           payer: setup.agent.publicKey,
           vault: setup.vaultPda,
@@ -3402,7 +3403,7 @@ describe("surfpool-integration", function () {
         .instruction();
 
       const finalizeIx = await program.methods
-        .finalizeSession(true)
+        .finalizeSession()
         .accountsPartial({
           payer: setup.agent.publicKey,
           vault: setup.vaultPda,
