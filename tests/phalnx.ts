@@ -34,6 +34,7 @@ import {
   VersionedTxResult,
   recordCU,
   printCUSummary,
+  expectPhalnxError,
   TestEnv,
   LiteSVM,
 } from "./helpers/litesvm-setup";
@@ -303,10 +304,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.satisfy(
-          (s: string) =>
-            s.includes("InvalidProtocolMode") || s.includes("Error"),
-        );
+        expectPhalnxError(err.toString(), "InvalidProtocolMode", "Error");
       }
     });
   });
@@ -371,9 +369,7 @@ describe("phalnx", () => {
         expect.fail("Should have thrown");
       } catch (err: any) {
         // Anchor's PDA re-derivation fails before the handler runs
-        expect(err.toString()).to.satisfy(
-          (s: string) => s.includes("ConstraintSeeds") || s.includes("has_one"),
-        );
+        expectPhalnxError(err.toString(), "ConstraintSeeds", "has_one");
       }
     });
   });
@@ -415,7 +411,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("AgentAlreadyRegistered");
+        expectPhalnxError(err.toString(), "AgentAlreadyRegistered");
       }
     });
 
@@ -483,9 +479,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.satisfy(
-          (s: string) => s.includes("ConstraintSeeds") || s.includes("has_one"),
-        );
+        expectPhalnxError(err.toString(), "ConstraintSeeds", "has_one");
       }
     });
   });
@@ -553,9 +547,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.satisfy(
-          (s: string) => s.includes("ConstraintSeeds") || s.includes("has_one"),
-        );
+        expectPhalnxError(err.toString(), "ConstraintSeeds", "has_one");
       }
     });
 
@@ -590,7 +582,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("TooManyAllowedProtocols");
+        expectPhalnxError(err.toString(), "TooManyAllowedProtocols");
       }
     });
   });
@@ -693,7 +685,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("UnauthorizedAgent");
+        expectPhalnxError(err.toString(), "UnauthorizedAgent");
       }
     });
 
@@ -710,9 +702,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.satisfy(
-          (s: string) => s.includes("ConstraintSeeds") || s.includes("has_one"),
-        );
+        expectPhalnxError(err.toString(), "ConstraintSeeds", "has_one");
       }
     });
   });
@@ -815,7 +805,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("VaultNotFrozen");
+        expectPhalnxError(err.toString(), "VaultNotFrozen");
       }
     });
 
@@ -837,7 +827,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("NoAgentRegistered");
+        expectPhalnxError(err.toString(), "NoAgentRegistered");
       }
 
       // Clean up: reactivate with new agent for subsequent tests
@@ -915,7 +905,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("InsufficientBalance");
+        expectPhalnxError(err.toString(), "InsufficientBalance");
       }
     });
 
@@ -935,9 +925,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.satisfy(
-          (s: string) => s.includes("ConstraintSeeds") || s.includes("has_one"),
-        );
+        expectPhalnxError(err.toString(), "ConstraintSeeds", "has_one");
       }
     });
   });
@@ -1027,11 +1015,7 @@ describe("phalnx", () => {
         await program.account.sessionAuthority.fetch(sessionPda);
         expect.fail("Session should have been closed");
       } catch (err: any) {
-        expect(err.toString()).to.satisfy(
-          (s: string) =>
-            s.includes("Account does not exist") ||
-            s.includes("Could not find"),
-        );
+        expectPhalnxError(err.toString(), "Account does not exist", "Could not find");
       }
 
       // Verify vault stats updated
@@ -1230,7 +1214,7 @@ describe("phalnx", () => {
         expect.fail("Should have thrown");
       } catch (err: any) {
         // Non-stablecoin input requires output_stablecoin_account which is null
-        expect(err.toString()).to.include("InvalidTokenAccount");
+        expectPhalnxError(err.toString(), "InvalidTokenAccount");
       }
     });
 
@@ -1265,7 +1249,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("ProtocolNotAllowed");
+        expectPhalnxError(err.toString(), "ProtocolNotAllowed");
       }
     });
 
@@ -1301,7 +1285,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("MissingFinalizeInstruction");
+        expectPhalnxError(err.toString(), "MissingFinalizeInstruction");
       }
     });
 
@@ -1338,7 +1322,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("MissingFinalizeInstruction");
+        expectPhalnxError(err.toString(), "MissingFinalizeInstruction");
       }
     });
 
@@ -1385,7 +1369,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("UnauthorizedAgent");
+        expectPhalnxError(err.toString(), "UnauthorizedAgent");
       }
     });
 
@@ -1467,10 +1451,7 @@ describe("phalnx", () => {
       } catch (err: any) {
         // revoke_agent clears the agent key, so is_agent() constraint fails
         // before the handler's VaultNotActive check can run.
-        expect(err.toString()).to.satisfy(
-          (s: string) =>
-            s.includes("UnauthorizedAgent") || s.includes("ConstraintRaw"),
-        );
+        expectPhalnxError(err.toString(), "UnauthorizedAgent", "ConstraintRaw");
       }
     });
   });
@@ -1628,9 +1609,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.satisfy(
-          (s: string) => s.includes("ConstraintSeeds") || s.includes("has_one"),
-        );
+        expectPhalnxError(err.toString(), "ConstraintSeeds", "has_one");
       }
     });
   });
@@ -1750,7 +1729,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("DeveloperFeeTooHigh");
+        expectPhalnxError(err.toString(), "DeveloperFeeTooHigh");
       }
     });
 
@@ -1839,7 +1818,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("DeveloperFeeTooHigh");
+        expectPhalnxError(err.toString(), "DeveloperFeeTooHigh");
       }
     });
 
@@ -2357,11 +2336,7 @@ describe("phalnx", () => {
         await program.account.sessionAuthority.fetch(lifecycleSessionPda);
         expect.fail("Session should have been closed");
       } catch (err: any) {
-        expect(err.toString()).to.satisfy(
-          (s: string) =>
-            s.includes("Account does not exist") ||
-            s.includes("Could not find"),
-        );
+        expectPhalnxError(err.toString(), "Account does not exist", "Could not find");
       }
 
       // Vault stats should be updated
@@ -2419,7 +2394,7 @@ describe("phalnx", () => {
         sendVersionedTx(svm, [validateIx, finalizeIx], lifecycleAgent);
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("InvalidSession");
+        expectPhalnxError(err.toString(), "InvalidSession");
       }
     });
 
@@ -2542,7 +2517,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("AgentIsOwner");
+        expectPhalnxError(err.toString(), "AgentIsOwner");
       }
     });
 
@@ -2635,10 +2610,7 @@ describe("phalnx", () => {
         expect.fail("Should have thrown");
       } catch (err: any) {
         // Anchor's is_agent() constraint fires before the handler runs
-        expect(err.toString()).to.satisfy(
-          (s: string) =>
-            s.includes("UnauthorizedAgent") || s.includes("ConstraintRaw"),
-        );
+        expectPhalnxError(err.toString(), "UnauthorizedAgent", "ConstraintRaw");
       }
     });
   });
@@ -2827,12 +2799,7 @@ describe("phalnx", () => {
         // Vault PDA was closed — Anchor can't deserialize a zeroed/missing account.
         // LiteSVM proxy returns "Account does not exist"; Anchor provider
         // returns "Could not find" or "AccountNotInitialized".
-        expect(err.toString()).to.satisfy(
-          (s: string) =>
-            s.includes("AccountNotInitialized") ||
-            s.includes("does not exist") ||
-            s.includes("Could not find"),
-        );
+        expectPhalnxError(err.toString(), "AccountNotInitialized", "does not exist", "Could not find");
       }
     });
 
@@ -2951,12 +2918,7 @@ describe("phalnx", () => {
         // Vault PDA was closed — Anchor can't deserialize it.
         // LiteSVM returns "does not exist"; Anchor returns "Could not find"
         // or "AccountNotInitialized".
-        expect(err.toString()).to.satisfy(
-          (s: string) =>
-            s.includes("AccountNotInitialized") ||
-            s.includes("does not exist") ||
-            s.includes("Could not find"),
-        );
+        expectPhalnxError(err.toString(), "AccountNotInitialized", "does not exist", "Could not find");
       }
     });
   });
@@ -3502,7 +3464,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("TimelockActive");
+        expectPhalnxError(err.toString(), "TimelockActive");
       }
     });
 
@@ -3556,7 +3518,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("TimelockNotExpired");
+        expectPhalnxError(err.toString(), "TimelockNotExpired");
       }
     });
 
@@ -3584,11 +3546,7 @@ describe("phalnx", () => {
         await program.account.pendingPolicyUpdate.fetch(tlPendingPda);
         expect.fail("PendingPolicyUpdate should have been closed");
       } catch (err: any) {
-        expect(err.toString()).to.satisfy(
-          (s: string) =>
-            s.includes("Account does not exist") ||
-            s.includes("Could not find"),
-        );
+        expectPhalnxError(err.toString(), "Account does not exist", "Could not find");
       }
     });
 
@@ -3796,7 +3754,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("NoTimelockConfigured");
+        expectPhalnxError(err.toString(), "NoTimelockConfigured");
       }
     });
 
@@ -4119,7 +4077,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("DestinationNotAllowed");
+        expectPhalnxError(err.toString(), "DestinationNotAllowed");
       }
     });
 
@@ -4277,7 +4235,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("TooManyDestinations");
+        expectPhalnxError(err.toString(), "TooManyDestinations");
       }
     });
 
@@ -4327,7 +4285,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("SpendingCapExceeded");
+        expectPhalnxError(err.toString(), "SpendingCapExceeded");
       }
     });
 
@@ -4353,7 +4311,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("TransactionTooLarge");
+        expectPhalnxError(err.toString(), "TransactionTooLarge");
       }
     });
 
@@ -4729,7 +4687,7 @@ describe("phalnx", () => {
         sendVersionedTx(svm, [validateIx, finalizeIx], agent);
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("InsufficientPermissions");
+        expectPhalnxError(err.toString(), "InsufficientPermissions");
       }
     });
 
@@ -4804,7 +4762,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("MaxAgentsReached");
+        expectPhalnxError(err.toString(), "MaxAgentsReached");
       }
     });
 
@@ -4888,7 +4846,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("InvalidPermissions");
+        expectPhalnxError(err.toString(), "InvalidPermissions");
       }
     });
   });
@@ -5084,7 +5042,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have exceeded per-agent spend limit");
       } catch (err: any) {
-        expect(err.toString()).to.include("AgentSpendLimitExceeded");
+        expectPhalnxError(err.toString(), "AgentSpendLimitExceeded");
       }
 
       // But spending $150 (total = $950 < $1000) should succeed
@@ -5350,7 +5308,7 @@ describe("phalnx", () => {
         composeSpend(protocolA, new BN(60_000_000));
         expect.fail("Should have thrown ProtocolCapExceeded");
       } catch (err: any) {
-        expect(err.toString()).to.include("ProtocolCapExceeded");
+        expectPhalnxError(err.toString(), "ProtocolCapExceeded");
       }
     });
 
@@ -5514,7 +5472,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("ProtocolCapsMismatch");
+        expectPhalnxError(err.toString(), "ProtocolCapsMismatch");
       }
     });
 
@@ -5571,7 +5529,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("ProtocolCapsMismatch");
+        expectPhalnxError(err.toString(), "ProtocolCapsMismatch");
       }
     });
   });
@@ -5697,7 +5655,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("VaultNotActive");
+        expectPhalnxError(err.toString(), "VaultNotActive");
       }
     });
 
@@ -5713,9 +5671,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.satisfy(
-          (s: string) => s.includes("ConstraintSeeds") || s.includes("has_one"),
-        );
+        expectPhalnxError(err.toString(), "ConstraintSeeds", "has_one");
       }
     });
 
@@ -5915,7 +5871,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("AgentAlreadyPaused");
+        expectPhalnxError(err.toString(), "AgentAlreadyPaused");
       }
     });
 
@@ -5931,7 +5887,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("UnauthorizedAgent");
+        expectPhalnxError(err.toString(), "UnauthorizedAgent");
       }
     });
 
@@ -5947,9 +5903,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.satisfy(
-          (s: string) => s.includes("ConstraintSeeds") || s.includes("has_one"),
-        );
+        expectPhalnxError(err.toString(), "ConstraintSeeds", "has_one");
       }
     });
 
@@ -6026,7 +5980,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("AgentPaused");
+        expectPhalnxError(err.toString(), "AgentPaused");
       }
     });
 
@@ -6096,7 +6050,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.include("AgentNotPaused");
+        expectPhalnxError(err.toString(), "AgentNotPaused");
       }
     });
 
@@ -6121,9 +6075,7 @@ describe("phalnx", () => {
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expect(err.toString()).to.satisfy(
-          (s: string) => s.includes("ConstraintSeeds") || s.includes("has_one"),
-        );
+        expectPhalnxError(err.toString(), "ConstraintSeeds", "has_one");
       }
 
       // Clean up: unpause
