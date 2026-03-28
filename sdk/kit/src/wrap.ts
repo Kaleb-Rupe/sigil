@@ -43,7 +43,13 @@ import {
   composePhalnxTransaction,
   measureTransactionSize,
 } from "./composer.js";
-import { BlockhashCache, signAndEncode, sendAndConfirmTransaction, type Blockhash, type SendAndConfirmOptions } from "./rpc-helpers.js";
+import {
+  BlockhashCache,
+  signAndEncode,
+  sendAndConfirmTransaction,
+  type Blockhash,
+  type SendAndConfirmOptions,
+} from "./rpc-helpers.js";
 import { AltCache, mergeAltAddresses, verifyPhalnxAlt } from "./alt-loader.js";
 import { getPhalnxAltAddress, getExpectedAltContents } from "./alt-config.js";
 import { deriveAta } from "./x402/transfer-builder.js";
@@ -61,11 +67,21 @@ import {
   USDT_MINT_DEVNET,
   USDT_MINT_MAINNET,
   RECOGNIZED_DEFI_PROGRAMS,
+  PROTOCOL_FEE_RATE,
 } from "./types.js";
 import { isProtocolAllowed } from "./protocol-resolver.js";
 import { wrapToAgentError, type AgentError } from "./agent-errors.js";
-import { getVaultPnL, getVaultTokenBalances, type VaultPnL, type TokenBalance } from "./balance-tracker.js";
-import { createVault, type CreateVaultOptions, type CreateVaultResult } from "./create-vault.js";
+import {
+  getVaultPnL,
+  getVaultTokenBalances,
+  type VaultPnL,
+  type TokenBalance,
+} from "./balance-tracker.js";
+import {
+  createVault,
+  type CreateVaultOptions,
+  type CreateVaultResult,
+} from "./create-vault.js";
 
 // ─── Well-known program addresses to strip ──────────────────────────────────
 
@@ -73,7 +89,8 @@ const COMPUTE_BUDGET_PROGRAM =
   "ComputeBudget111111111111111111111111111111" as Address;
 const SYSTEM_PROGRAM = "11111111111111111111111111111111" as Address;
 const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address;
-const TOKEN_2022_PROGRAM = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb" as Address;
+const TOKEN_2022_PROGRAM =
+  "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb" as Address;
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -237,15 +254,29 @@ export async function wrap(params: WrapParams): Promise<WrapResult> {
   // Step 1: Resolve vault state (with stale cache detection)
   let state: ResolvedVaultState;
   if (params.cachedState) {
-    const ageMs = (Date.now() / 1000 - Number(params.cachedState.resolvedAtTimestamp)) * 1000;
+    const ageMs =
+      (Date.now() / 1000 - Number(params.cachedState.resolvedAtTimestamp)) *
+      1000;
     const maxAge = params.maxCacheAgeMs ?? 30_000;
     if (ageMs > maxAge) {
-      state = await resolveVaultState(params.rpc, params.vault, params.agent.address, undefined, net);
+      state = await resolveVaultState(
+        params.rpc,
+        params.vault,
+        params.agent.address,
+        undefined,
+        net,
+      );
     } else {
       state = params.cachedState;
     }
   } else {
-    state = await resolveVaultState(params.rpc, params.vault, params.agent.address, undefined, net);
+    state = await resolveVaultState(
+      params.rpc,
+      params.vault,
+      params.agent.address,
+      undefined,
+      net,
+    );
   }
 
   // Verify vault is active
@@ -287,15 +318,13 @@ export async function wrap(params: WrapParams): Promise<WrapResult> {
   if (ESCROW_ACTIONS.has(actionType)) {
     throw new Error(
       `Escrow action "${actionKey}" uses standalone instructions, not wrap(). ` +
-      `Use createEscrow/settleEscrow/refundEscrow directly.`,
+        `Use createEscrow/settleEscrow/refundEscrow directly.`,
     );
   }
 
   const spending = isSpendingAction(actionKey);
   if (spending && params.amount === 0n) {
-    throw new Error(
-      `Spending action "${actionKey}" requires amount > 0`,
-    );
+    throw new Error(`Spending action "${actionKey}" requires amount > 0`);
   }
   if (!spending && params.amount !== undefined && params.amount !== 0n) {
     throw new Error(
@@ -310,7 +339,9 @@ export async function wrap(params: WrapParams): Promise<WrapResult> {
       ix.programAddress !== SYSTEM_PROGRAM,
   );
 
-  // Step 4b: SPL Token Transfer/Approve blocking (mirrors on-chain v&a.rs:278-294)
+  // Step 4b: SPL Token blocking — mirrors on-chain scan_instruction_shared().
+  // Blocked: Approve(4), ApproveChecked(13), Transfer(3), TransferChecked(12),
+  // SetAuthority(6), CloseAccount(9), Burn(8), BurnChecked(15), Token-2022:26.
   for (const ix of defiInstructions) {
     if (
       (ix.programAddress === TOKEN_PROGRAM ||
@@ -325,6 +356,12 @@ export async function wrap(params: WrapParams): Promise<WrapResult> {
             "DeFi programs handle approvals via CPI.",
         );
       }
+      if (disc === 13) {
+        throw new Error(
+          "Top-level SPL Token ApproveChecked not allowed in wrapped transactions. " +
+            "DeFi programs handle approvals via CPI.",
+        );
+      }
       if (
         disc === 3 ||
         disc === 12 ||
@@ -333,6 +370,18 @@ export async function wrap(params: WrapParams): Promise<WrapResult> {
         throw new Error(
           "Top-level SPL Token Transfer not allowed in wrapped transactions. " +
             "Use the Transfer ActionType instead.",
+        );
+      }
+      if (disc === 6 || disc === 9) {
+        throw new Error(
+          "Top-level SPL Token SetAuthority/CloseAccount not allowed in wrapped transactions. " +
+            "These operations could damage or destroy vault token accounts.",
+        );
+      }
+      if (disc === 8 || disc === 15) {
+        throw new Error(
+          "Top-level SPL Token Burn/BurnChecked not allowed in wrapped transactions. " +
+            "Delegate burn authority could destroy vault funds.",
         );
       }
     }
@@ -350,9 +399,7 @@ export async function wrap(params: WrapParams): Promise<WrapResult> {
   // Step 6: Pre-flight checks
   // 6a: Permission check (hard error)
   if (!hasPermission(agentEntry.permissions, actionKey)) {
-    throw new Error(
-      `Agent lacks permission for action "${actionKey}"`,
-    );
+    throw new Error(`Agent lacks permission for action "${actionKey}"`);
   }
 
   // 6b: Protocol allowlist (hard error)
@@ -381,13 +428,26 @@ export async function wrap(params: WrapParams): Promise<WrapResult> {
     }
   }
 
-  // 6c: Cap headroom (advisory warning, not error)
+  // 6c: Cap headroom — fee-inclusive check (hard error)
+  // On-chain finalize_session measures actual_spend which includes fees deducted
+  // from the vault balance. SDK must account for fees to avoid submitting TXs
+  // that will definitely fail and waste priority fees.
   if (spending && params.amount > 0n) {
+    const FEE_DENOM = 1_000_000n;
+    const ceilFee = (amount: bigint, rate: bigint): bigint =>
+      (amount * rate + FEE_DENOM - 1n) / FEE_DENOM;
+    const protocolFee = ceilFee(params.amount, BigInt(PROTOCOL_FEE_RATE));
+    const devFee = ceilFee(
+      params.amount,
+      BigInt(state.policy.developerFeeRate),
+    );
+    const totalWithFees = params.amount + protocolFee + devFee;
     const headroom = state.globalBudget.remaining;
-    if (params.amount > headroom) {
-      warnings.push(
-        `Amount ${params.amount} exceeds remaining daily cap headroom ${headroom}. ` +
-          `Transaction may be rejected on-chain.`,
+    if (totalWithFees > headroom) {
+      throw new Error(
+        `Amount ${params.amount} + fees (protocol: ${protocolFee}, dev: ${devFee}) = ${totalWithFees} ` +
+          `exceeds remaining daily cap headroom ${headroom}. ` +
+          `Reduce amount or wait for rolling window to free capacity.`,
       );
     }
   }
@@ -410,8 +470,7 @@ export async function wrap(params: WrapParams): Promise<WrapResult> {
     spending &&
     !isStablecoinMint(params.tokenMint, net)
   ) {
-    const stableMint =
-      net === "devnet" ? USDC_MINT_DEVNET : USDC_MINT_MAINNET;
+    const stableMint = net === "devnet" ? USDC_MINT_DEVNET : USDC_MINT_MAINNET;
     const canonicalAta = await deriveAta(params.vault, stableMint);
     if (params.outputStablecoinAccount !== canonicalAta) {
       throw new Error(
@@ -440,7 +499,24 @@ export async function wrap(params: WrapParams): Promise<WrapResult> {
   ] = await Promise.all([
     deriveAta(params.vault, params.tokenMint),
     needsOutputStablecoin && !params.outputStablecoinAccount
-      ? deriveAta(params.vault, defaultStableMint)
+      ? deriveAta(params.vault, defaultStableMint).then(async (ata) => {
+          // Fix 7: Verify output stablecoin ATA exists to prevent fee burn on missing account
+          try {
+            const info = await params.rpc
+              .getAccountInfo(ata, { encoding: "base64" })
+              .send();
+            if (!info || !info.value) {
+              warnings.push(
+                `Output stablecoin ATA ${ata} does not exist on-chain. ` +
+                  `Transaction will fail at validate_and_authorize. ` +
+                  `Create it first with createAssociatedTokenAccount.`,
+              );
+            }
+          } catch {
+            // RPC error — proceed with derived address (on-chain will catch)
+          }
+          return ata;
+        })
       : Promise.resolve(undefined),
     spending
       ? deriveAta(PROTOCOL_TREASURY, params.tokenMint)
@@ -504,8 +580,7 @@ export async function wrap(params: WrapParams): Promise<WrapResult> {
   });
 
   // Step 10: Compose + compile + measure
-  const blockhash =
-    params.blockhash ?? (await blockhashCache.get(params.rpc));
+  const blockhash = params.blockhash ?? (await blockhashCache.get(params.rpc));
 
   // Resolve ALTs — Phalnx ALT + protocol ALTs (e.g. Jupiter route-specific)
   let addressLookupTables = params.addressLookupTables;
@@ -517,13 +592,21 @@ export async function wrap(params: WrapParams): Promise<WrapResult> {
     // Verify Phalnx ALT contents — if stale cache causes mismatch, evict and retry once.
     // This self-heals after ALT extension without requiring manual cache invalidation.
     try {
-      verifyPhalnxAlt(addressLookupTables, phalnxAlt, getExpectedAltContents(net));
+      verifyPhalnxAlt(
+        addressLookupTables,
+        phalnxAlt,
+        getExpectedAltContents(net),
+      );
     } catch (e) {
       // Evict stale cache entry and re-resolve from RPC
       altCache.invalidate();
       addressLookupTables = await altCache.resolve(params.rpc, allAlts);
       // Second attempt throws if still mismatched (real corruption, not staleness)
-      verifyPhalnxAlt(addressLookupTables, phalnxAlt, getExpectedAltContents(net));
+      verifyPhalnxAlt(
+        addressLookupTables,
+        phalnxAlt,
+        getExpectedAltContents(net),
+      );
     }
   }
 
@@ -540,7 +623,8 @@ export async function wrap(params: WrapParams): Promise<WrapResult> {
 
   const { byteLength, withinLimit } = measureTransactionSize(compiledTx);
   if (!withinLimit) {
-    const hasProtocolAlts = params.protocolAltAddresses && params.protocolAltAddresses.length > 0;
+    const hasProtocolAlts =
+      params.protocolAltAddresses && params.protocolAltAddresses.length > 0;
     throw new Error(
       `Transaction size ${byteLength} bytes exceeds 1232 byte limit. ` +
         (hasProtocolAlts
@@ -550,8 +634,10 @@ export async function wrap(params: WrapParams): Promise<WrapResult> {
   }
 
   // Build vaultContext for downstream drain detection
-  const usdcMintForNet = net === "devnet" ? USDC_MINT_DEVNET : USDC_MINT_MAINNET;
-  const usdtMintForNet = net === "devnet" ? USDT_MINT_DEVNET : USDT_MINT_MAINNET;
+  const usdcMintForNet =
+    net === "devnet" ? USDC_MINT_DEVNET : USDC_MINT_MAINNET;
+  const usdtMintForNet =
+    net === "devnet" ? USDT_MINT_DEVNET : USDT_MINT_MAINNET;
   const tokenBalance =
     params.tokenMint === usdcMintForNet
       ? state.stablecoinBalances.usdc
@@ -596,7 +682,10 @@ export interface PhalnxClientConfig {
   network: "devnet" | "mainnet";
   blockhashTtlMs?: number;
   /** Callback invoked on any error during executeAndConfirm(). For telemetry/logging. Error is always rethrown. */
-  onError?: (error: AgentError, context: { action: string; tokenMint: Address; amount: bigint }) => void;
+  onError?: (
+    error: AgentError,
+    context: { action: string; tokenMint: Address; amount: bigint },
+  ) => void;
 }
 
 /**
@@ -651,7 +740,8 @@ export class PhalnxClient {
     if (!config.rpc) throw new Error("PhalnxClientConfig.rpc is required");
     if (!config.vault) throw new Error("PhalnxClientConfig.vault is required");
     if (!config.agent) throw new Error("PhalnxClientConfig.agent is required");
-    if (!config.network) throw new Error("PhalnxClientConfig.network is required");
+    if (!config.network)
+      throw new Error("PhalnxClientConfig.network is required");
 
     this.rpc = config.rpc;
     this.vault = config.vault;
@@ -669,7 +759,10 @@ export class PhalnxClient {
    * to the standalone wrap() function. This ensures invalidateCaches()
    * actually clears caches that are read (N-2 fix).
    */
-  async wrap(instructions: Instruction[], opts: ClientWrapOpts): Promise<WrapResult> {
+  async wrap(
+    instructions: Instruction[],
+    opts: ClientWrapOpts,
+  ): Promise<WrapResult> {
     // Parallelize blockhash + ALT resolution (both independent RPC calls)
     const altPromise = opts.addressLookupTables
       ? Promise.resolve(opts.addressLookupTables)
@@ -699,7 +792,10 @@ export class PhalnxClient {
       } catch {
         this.altCacheInstance.invalidate();
         const allAlts = mergeAltAddresses(phalnxAlt, opts.protocolAltAddresses);
-        addressLookupTables = await this.altCacheInstance.resolve(this.rpc, allAlts);
+        addressLookupTables = await this.altCacheInstance.resolve(
+          this.rpc,
+          allAlts,
+        );
         verifyPhalnxAlt(addressLookupTables, phalnxAlt, expected);
       }
     }
@@ -758,7 +854,12 @@ export class PhalnxClient {
   }
 
   async getVaultState(): Promise<ResolvedVaultStateForOwner> {
-    return resolveVaultStateForOwner(this.rpc, this.vault, undefined, this.networkFull);
+    return resolveVaultStateForOwner(
+      this.rpc,
+      this.vault,
+      undefined,
+      this.networkFull,
+    );
   }
 
   async getAgentBudget(): Promise<ResolvedBudget> {
@@ -773,7 +874,9 @@ export class PhalnxClient {
     return getVaultTokenBalances(this.rpc, this.vault, this.networkFull);
   }
 
-  static async createVault(opts: CreateVaultOptions): Promise<CreateVaultResult> {
+  static async createVault(
+    opts: CreateVaultOptions,
+  ): Promise<CreateVaultResult> {
     return createVault(opts);
   }
 }
