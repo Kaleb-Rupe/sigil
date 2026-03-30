@@ -119,6 +119,12 @@ export class TransactionExecutor {
     this.blockhashCache = new BlockhashCache(options?.blockhashCacheTtlMs);
     this.confirmOptions = options?.confirmOptions ?? {};
     this._skipSimulation = options?.skipSimulation ?? false;
+    if (this._skipSimulation) {
+      console.warn(
+        "[Phalnx] WARNING: skipSimulation=true — drain detection and simulation are DISABLED. " +
+          "This should only be used in testing environments, never in production.",
+      );
+    }
     this._drainThresholds = options?.drainThresholds;
   }
 
