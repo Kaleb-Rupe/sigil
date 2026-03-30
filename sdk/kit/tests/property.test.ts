@@ -300,18 +300,11 @@ describe("Property Tests — Category A: Exported Function Properties", () => {
     });
 
     it("unknown action keys always return false regardless of permissions", () => {
-      // Filter out strings that exist as inherited Object.prototype properties
-      // (e.g. "toString", "constructor") because ACTION_PERMISSION_MAP is a
-      // plain Record<string, bigint> and bracket access finds inherited props.
-      // This is a known SDK limitation — hasPermission should use hasOwnProperty.
-      const objectProtoKeys = new Set(
-        Object.getOwnPropertyNames(Object.prototype),
-      );
       fc.assert(
         fc.property(
           fc.bigUintN(21),
           fc.string({ minLength: 1, maxLength: 30 }).filter(
-            (s) => !ACTION_KEYS.includes(s) && !objectProtoKeys.has(s),
+            (s) => !ACTION_KEYS.includes(s),
           ),
           (permissions, unknownKey) => {
             expect(hasPermission(permissions, unknownKey)).to.equal(false);
@@ -319,6 +312,15 @@ describe("Property Tests — Category A: Exported Function Properties", () => {
         ),
         { numRuns: NUM_RUNS },
       );
+    });
+
+    it("Object.prototype keys return false, not throw (regression: P2 bug #2)", () => {
+      const protoKeys = ["toString", "constructor", "hasOwnProperty", "valueOf",
+        "isPrototypeOf", "propertyIsEnumerable", "__defineGetter__", "__lookupGetter__"];
+      for (const key of protoKeys) {
+        expect(hasPermission(FULL_PERMISSIONS, key)).to.equal(false);
+        expect(hasPermission(0n, key)).to.equal(false);
+      }
     });
 
     it("adding a permission never removes existing permissions (monotonicity)", () => {
@@ -665,13 +667,11 @@ describe("Property Tests — Category C: Fuzz Testing", () => {
       );
     });
 
-    it("random thresholds (integer, NaN, Infinity) never throw", () => {
-      // detectDrainAttempt clamps thresholds to [0, 100] but uses BigInt()
-      // internally, which requires integer values. Generate integers plus
-      // the pathological non-finite values (NaN, Infinity, -Infinity).
+    it("random thresholds (integer, float, NaN, Infinity) never throw", () => {
       const arbThreshold = fc.oneof(
         fc.integer({ min: -1000, max: 1000 }),
-        fc.constantFrom(NaN, Infinity, -Infinity, 0, 100, -1, 101),
+        fc.double({ min: -1000, max: 1000, noNaN: false }),
+        fc.constantFrom(NaN, Infinity, -Infinity, 0, 100, -1, 101, 5e-324, 99.999, 0.1),
       );
       fc.assert(
         fc.property(
@@ -694,6 +694,18 @@ describe("Property Tests — Category C: Fuzz Testing", () => {
         ),
         { numRuns: NUM_RUNS },
       );
+    });
+
+    it("non-integer float thresholds do not throw (regression: P2 bug #1)", () => {
+      const input: DrainDetectionInput = {
+        balanceDeltas: [makeDelta("Vault1111111111111111111111111111111111111111", 1000n, 0n)],
+        vaultAddress: "Vault1111111111111111111111111111111111111111",
+        totalVaultBalance: 1000n,
+      };
+      const edgeCases = [5e-324, Number.MIN_VALUE, 0.1, 49.99, 99.999, Math.PI];
+      for (const t of edgeCases) {
+        expect(() => detectDrainAttempt(input, { warningPercent: t, blockPercent: t })).to.not.throw();
+      }
     });
 
     it("zero vault balance produces no percentage-based flags", () => {

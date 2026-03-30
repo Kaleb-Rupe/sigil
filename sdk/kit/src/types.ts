@@ -184,8 +184,10 @@ export function hasPermission(
   permissions: bigint,
   actionType: string,
 ): boolean {
+  if (!Object.prototype.hasOwnProperty.call(ACTION_PERMISSION_MAP, actionType)) {
+    return false;
+  }
   const bit = ACTION_PERMISSION_MAP[actionType];
-  if (bit === undefined) return false;
   return (permissions & bit) !== 0n;
 }
 

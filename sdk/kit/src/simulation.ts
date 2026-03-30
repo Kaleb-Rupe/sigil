@@ -542,17 +542,17 @@ export function detectDrainAttempt(
   const rawBlock = drainThresholds?.blockPercent ?? DEFAULT_BLOCK_PERCENT;
   // Clamp to [0, 100] — prevents NaN/Infinity crashes (BigInt throws on non-finite)
   // and negative values which would invert the threshold logic
-  const warningPct = Math.max(
+  const warningPct = Math.floor(Math.max(
     0,
     Math.min(
       100,
       Number.isFinite(rawWarning) ? rawWarning : DEFAULT_WARNING_PERCENT,
     ),
-  );
-  const blockPct = Math.max(
+  ));
+  const blockPct = Math.floor(Math.max(
     0,
     Math.min(100, Number.isFinite(rawBlock) ? rawBlock : DEFAULT_BLOCK_PERCENT),
-  );
+  ));
 
   const vaultDelta = input.balanceDeltas.find(
     (d) => d.account === input.vaultAddress,
