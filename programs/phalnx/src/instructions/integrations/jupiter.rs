@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::errors::PhalnxError;
+use crate::errors::SigilError;
 
 // ---------------------------------------------------------------------------
 // Discriminators — Anchor sha256("global:<method>")[:8]
@@ -181,13 +181,13 @@ const SWAP_VARIANT_SIZES: [i8; SWAP_VARIANT_COUNT] = [
 /// `exact_out_route`, `shared_accounts_exact_out_route`.
 pub fn verify_jupiter_slippage(ix_data: &[u8], max_slippage_bps: u16) -> Result<()> {
     // Minimum sanity: disc(8) + vec_len(4) + suffix(19) = 31
-    require!(ix_data.len() >= 24, PhalnxError::InvalidJupiterInstruction);
+    require!(ix_data.len() >= 24, SigilError::InvalidJupiterInstruction);
 
     // 1. Parse discriminator — determine instruction variant
     let disc = &ix_data[..8];
     let has_id = disc == SHARED_ACCOUNTS_ROUTE_DISC || disc == SHARED_ACCOUNTS_EXACT_OUT_ROUTE_DISC;
     let is_known = has_id || disc == ROUTE_DISC || disc == EXACT_OUT_ROUTE_DISC;
-    require!(is_known, PhalnxError::InvalidJupiterInstruction);
+    require!(is_known, SigilError::InvalidJupiterInstruction);
 
     // 2. Cursor after disc (and optional id byte for shared_accounts variants)
     let mut cursor: usize = if has_id { 9 } else { 8 };
@@ -195,21 +195,21 @@ pub fn verify_jupiter_slippage(ix_data: &[u8], max_slippage_bps: u16) -> Result<
     // 3. Read route plan vec_len (u32 LE)
     let end4 = cursor
         .checked_add(4)
-        .ok_or(error!(PhalnxError::InvalidJupiterInstruction))?;
+        .ok_or(error!(SigilError::InvalidJupiterInstruction))?;
     require!(
         ix_data.len() >= end4,
-        PhalnxError::InvalidJupiterInstruction
+        SigilError::InvalidJupiterInstruction
     );
     let vec_len = u32::from_le_bytes(
         ix_data[cursor..end4]
             .try_into()
-            .map_err(|_| error!(PhalnxError::InvalidJupiterInstruction))?,
+            .map_err(|_| error!(SigilError::InvalidJupiterInstruction))?,
     );
     cursor = end4;
 
     require!(
         vec_len <= MAX_ROUTE_STEPS,
-        PhalnxError::InvalidJupiterInstruction
+        SigilError::InvalidJupiterInstruction
     );
 
     // 4. Parse each RoutePlanStep: swap_disc(1) + swap_fields(N) + percent(1)
@@ -218,17 +218,17 @@ pub fn verify_jupiter_slippage(ix_data: &[u8], max_slippage_bps: u16) -> Result<
         // Read swap variant discriminator
         require!(
             ix_data.len() > cursor,
-            PhalnxError::InvalidJupiterInstruction
+            SigilError::InvalidJupiterInstruction
         );
         let swap_disc = ix_data[cursor] as usize;
         cursor = cursor
             .checked_add(1)
-            .ok_or(error!(PhalnxError::InvalidJupiterInstruction))?;
+            .ok_or(error!(SigilError::InvalidJupiterInstruction))?;
 
         // Reject unknown variants
         require!(
             swap_disc < SWAP_VARIANT_COUNT,
-            PhalnxError::InvalidJupiterInstruction
+            SigilError::InvalidJupiterInstruction
         );
 
         let size = SWAP_VARIANT_SIZES[swap_disc];
@@ -236,44 +236,44 @@ pub fn verify_jupiter_slippage(ix_data: &[u8], max_slippage_bps: u16) -> Result<
             // Fixed-size variant
             cursor = cursor
                 .checked_add(size as usize)
-                .ok_or(error!(PhalnxError::InvalidJupiterInstruction))?;
+                .ok_or(error!(SigilError::InvalidJupiterInstruction))?;
         } else if size == -1 {
             // Variable-size variant (parseable)
             skip_variable_swap_fields(ix_data, &mut cursor, swap_disc as u8)?;
         } else {
             // Rejected variant (size == -2)
-            return Err(error!(PhalnxError::InvalidJupiterInstruction));
+            return Err(error!(SigilError::InvalidJupiterInstruction));
         }
 
         // Skip percent(1) + input_index(1) + output_index(1)
         cursor = cursor
             .checked_add(3)
-            .ok_or(error!(PhalnxError::InvalidJupiterInstruction))?;
+            .ok_or(error!(SigilError::InvalidJupiterInstruction))?;
     }
 
     // 5. Verify exact length: cursor + V1_SUFFIX_SIZE == data.len()
     //    Any trailing bytes are rejected here.
     let expected_len = cursor
         .checked_add(V1_SUFFIX_SIZE)
-        .ok_or(error!(PhalnxError::InvalidJupiterInstruction))?;
+        .ok_or(error!(SigilError::InvalidJupiterInstruction))?;
     require!(
         ix_data.len() == expected_len,
-        PhalnxError::InvalidJupiterInstruction
+        SigilError::InvalidJupiterInstruction
     );
 
     // 6. Read suffix fields
     let quoted_out_bytes: [u8; 8] = ix_data[cursor + 8..cursor + 16]
         .try_into()
-        .map_err(|_| error!(PhalnxError::InvalidJupiterInstruction))?;
+        .map_err(|_| error!(SigilError::InvalidJupiterInstruction))?;
     let quoted_out = u64::from_le_bytes(quoted_out_bytes);
 
     let slippage_bps = u16::from_le_bytes([ix_data[cursor + 16], ix_data[cursor + 17]]);
 
     // 7. Verify slippage within policy
-    require!(quoted_out > 0, PhalnxError::SwapSlippageExceeded);
+    require!(quoted_out > 0, SigilError::SwapSlippageExceeded);
     require!(
         slippage_bps <= max_slippage_bps,
-        PhalnxError::SwapSlippageExceeded
+        SigilError::SwapSlippageExceeded
     );
 
     Ok(())
@@ -290,7 +290,7 @@ fn skip_variable_swap_fields(data: &[u8], cursor: &mut usize, variant: u8) -> Re
             // WhirlpoolSwapV2 / DefiTuna: bool + Option<RemainingAccountsInfo>
             *cursor = cursor
                 .checked_add(1)
-                .ok_or(error!(PhalnxError::InvalidJupiterInstruction))?;
+                .ok_or(error!(SigilError::InvalidJupiterInstruction))?;
             skip_option_remaining_accounts_info(data, cursor)?;
         }
         75 => {
@@ -298,7 +298,7 @@ fn skip_variable_swap_fields(data: &[u8], cursor: &mut usize, variant: u8) -> Re
             skip_remaining_accounts_info(data, cursor)?;
         }
         _ => {
-            return Err(error!(PhalnxError::InvalidJupiterInstruction));
+            return Err(error!(SigilError::InvalidJupiterInstruction));
         }
     }
     Ok(())
@@ -308,42 +308,42 @@ fn skip_variable_swap_fields(data: &[u8], cursor: &mut usize, variant: u8) -> Re
 fn skip_remaining_accounts_info(data: &[u8], cursor: &mut usize) -> Result<()> {
     let end = cursor
         .checked_add(4)
-        .ok_or(error!(PhalnxError::InvalidJupiterInstruction))?;
-    require!(data.len() >= end, PhalnxError::InvalidJupiterInstruction);
+        .ok_or(error!(SigilError::InvalidJupiterInstruction))?;
+    require!(data.len() >= end, SigilError::InvalidJupiterInstruction);
     let vec_len = u32::from_le_bytes(
         data[*cursor..end]
             .try_into()
-            .map_err(|_| error!(PhalnxError::InvalidJupiterInstruction))?,
+            .map_err(|_| error!(SigilError::InvalidJupiterInstruction))?,
     ) as usize;
     *cursor = end;
 
     // Each RemainingAccountsSlice = AccountsType(u8) + length(u8) = 2 bytes
     let skip = vec_len
         .checked_mul(2)
-        .ok_or(error!(PhalnxError::InvalidJupiterInstruction))?;
+        .ok_or(error!(SigilError::InvalidJupiterInstruction))?;
     *cursor = cursor
         .checked_add(skip)
-        .ok_or(error!(PhalnxError::InvalidJupiterInstruction))?;
+        .ok_or(error!(SigilError::InvalidJupiterInstruction))?;
 
     require!(
         data.len() >= *cursor,
-        PhalnxError::InvalidJupiterInstruction
+        SigilError::InvalidJupiterInstruction
     );
     Ok(())
 }
 
 /// Skip `Option<RemainingAccountsInfo>` (1-byte tag + optional payload).
 fn skip_option_remaining_accounts_info(data: &[u8], cursor: &mut usize) -> Result<()> {
-    require!(data.len() > *cursor, PhalnxError::InvalidJupiterInstruction);
+    require!(data.len() > *cursor, SigilError::InvalidJupiterInstruction);
     let tag = data[*cursor];
     *cursor = cursor
         .checked_add(1)
-        .ok_or(error!(PhalnxError::InvalidJupiterInstruction))?;
+        .ok_or(error!(SigilError::InvalidJupiterInstruction))?;
 
     if tag == 1 {
         skip_remaining_accounts_info(data, cursor)?;
     } else {
-        require!(tag == 0, PhalnxError::InvalidJupiterInstruction);
+        require!(tag == 0, SigilError::InvalidJupiterInstruction);
     }
     Ok(())
 }
@@ -469,7 +469,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
-            anchor_lang::error!(PhalnxError::InvalidJupiterInstruction)
+            anchor_lang::error!(SigilError::InvalidJupiterInstruction)
         );
     }
 
@@ -490,7 +490,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
-            anchor_lang::error!(PhalnxError::InvalidJupiterInstruction)
+            anchor_lang::error!(SigilError::InvalidJupiterInstruction)
         );
     }
 
@@ -510,7 +510,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
-            anchor_lang::error!(PhalnxError::InvalidJupiterInstruction)
+            anchor_lang::error!(SigilError::InvalidJupiterInstruction)
         );
     }
 
@@ -530,7 +530,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
-            anchor_lang::error!(PhalnxError::InvalidJupiterInstruction)
+            anchor_lang::error!(SigilError::InvalidJupiterInstruction)
         );
     }
 
@@ -618,7 +618,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
-            anchor_lang::error!(PhalnxError::InvalidJupiterInstruction)
+            anchor_lang::error!(SigilError::InvalidJupiterInstruction)
         );
     }
 
@@ -638,7 +638,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
-            anchor_lang::error!(PhalnxError::SwapSlippageExceeded)
+            anchor_lang::error!(SigilError::SwapSlippageExceeded)
         );
     }
 
@@ -658,7 +658,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
-            anchor_lang::error!(PhalnxError::SwapSlippageExceeded)
+            anchor_lang::error!(SigilError::SwapSlippageExceeded)
         );
     }
 
@@ -674,7 +674,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
-            anchor_lang::error!(PhalnxError::InvalidJupiterInstruction)
+            anchor_lang::error!(SigilError::InvalidJupiterInstruction)
         );
     }
 
@@ -691,7 +691,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
-            anchor_lang::error!(PhalnxError::InvalidJupiterInstruction)
+            anchor_lang::error!(SigilError::InvalidJupiterInstruction)
         );
     }
 
@@ -711,7 +711,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
-            anchor_lang::error!(PhalnxError::SwapSlippageExceeded)
+            anchor_lang::error!(SigilError::SwapSlippageExceeded)
         );
     }
 
@@ -765,7 +765,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
-            anchor_lang::error!(PhalnxError::InvalidJupiterInstruction)
+            anchor_lang::error!(SigilError::InvalidJupiterInstruction)
         );
     }
 

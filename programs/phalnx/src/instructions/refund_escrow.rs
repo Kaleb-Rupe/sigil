@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_lang::solana_program::instruction::get_stack_height;
 use anchor_spl::token::{self, CloseAccount, Mint, Token, TokenAccount, Transfer};
 
-use crate::errors::PhalnxError;
+use crate::errors::SigilError;
 use crate::events::EscrowRefunded;
 use crate::state::*;
 
@@ -16,7 +16,7 @@ pub struct RefundEscrow<'info> {
         mut,
         constraint = source_vault.is_agent(&source_signer.key())
             || source_vault.owner == source_signer.key()
-            @ PhalnxError::UnauthorizedAgent,
+            @ SigilError::UnauthorizedAgent,
         seeds = [b"vault", source_vault.owner.as_ref(), source_vault.vault_id.to_le_bytes().as_ref()],
         bump = source_vault.bump,
     )]
@@ -24,7 +24,7 @@ pub struct RefundEscrow<'info> {
 
     #[account(
         mut,
-        constraint = escrow.source_vault == source_vault.key() @ PhalnxError::InvalidEscrowVault,
+        constraint = escrow.source_vault == source_vault.key() @ SigilError::InvalidEscrowVault,
         seeds = [b"escrow", source_vault.key().as_ref(), escrow.destination_vault.as_ref(), escrow.escrow_id.to_le_bytes().as_ref()],
         bump = escrow.bump,
     )]
@@ -47,7 +47,7 @@ pub struct RefundEscrow<'info> {
     /// CHECK: Validated as source vault owner — receives escrow ATA rent
     #[account(
         mut,
-        constraint = rent_destination.key() == source_vault.owner @ PhalnxError::UnauthorizedOwner,
+        constraint = rent_destination.key() == source_vault.owner @ SigilError::UnauthorizedOwner,
     )]
     pub rent_destination: UncheckedAccount<'info>,
 
@@ -60,7 +60,7 @@ pub fn handler(ctx: Context<RefundEscrow>) -> Result<()> {
     require!(
         get_stack_height()
             == anchor_lang::solana_program::instruction::TRANSACTION_LEVEL_STACK_HEIGHT,
-        PhalnxError::CpiCallNotAllowed
+        SigilError::CpiCallNotAllowed
     );
 
     let escrow = &ctx.accounts.escrow;
@@ -71,25 +71,25 @@ pub fn handler(ctx: Context<RefundEscrow>) -> Result<()> {
     if source_vault.owner != ctx.accounts.source_signer.key() {
         require!(
             !source_vault.is_agent_paused(&ctx.accounts.source_signer.key()),
-            PhalnxError::AgentPaused
+            SigilError::AgentPaused
         );
         require!(
             source_vault
                 .has_permission(&ctx.accounts.source_signer.key(), &ActionType::RefundEscrow),
-            PhalnxError::InsufficientPermissions
+            SigilError::InsufficientPermissions
         );
     }
 
     // 2. Escrow must be Active
     require!(
         escrow.status == EscrowStatus::Active,
-        PhalnxError::EscrowNotActive
+        SigilError::EscrowNotActive
     );
 
     // 3. Must be expired
     require!(
         clock.unix_timestamp >= escrow.expires_at,
-        PhalnxError::EscrowNotExpired
+        SigilError::EscrowNotExpired
     );
 
     // 4. Build escrow PDA signer seeds

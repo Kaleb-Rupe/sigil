@@ -1,4 +1,4 @@
-use crate::errors::PhalnxError;
+use crate::errors::SigilError;
 use crate::state::MAX_ALLOWED_PROTOCOLS;
 use anchor_lang::prelude::*;
 
@@ -72,7 +72,7 @@ impl SpendTracker {
     /// Record a spend in the current epoch bucket.
     /// If the bucket is from a different epoch, reset it first.
     pub fn record_spend(&mut self, clock: &Clock, usd_amount: u64) -> Result<()> {
-        require!(clock.unix_timestamp > 0, PhalnxError::Overflow);
+        require!(clock.unix_timestamp > 0, SigilError::Overflow);
         // Safe: EPOCH_DURATION is a non-zero constant (600)
         let current_epoch = clock.unix_timestamp.checked_div(EPOCH_DURATION).unwrap();
         let idx = (current_epoch % NUM_EPOCHS as i64) as usize;
@@ -87,7 +87,7 @@ impl SpendTracker {
         self.buckets[idx].usd_amount = self.buckets[idx]
             .usd_amount
             .checked_add(usd_amount)
-            .ok_or(error!(PhalnxError::Overflow))?;
+            .ok_or(error!(SigilError::Overflow))?;
 
         self.last_write_epoch = current_epoch;
 
@@ -179,7 +179,7 @@ impl SpendTracker {
         protocol_id: &Pubkey,
         usd_amount: u64,
     ) -> Result<()> {
-        require!(clock.unix_timestamp > 0, PhalnxError::Overflow);
+        require!(clock.unix_timestamp > 0, SigilError::Overflow);
         let current_epoch = clock.unix_timestamp.checked_div(EPOCH_DURATION).unwrap();
         let protocol_bytes = protocol_id.to_bytes();
         let empty_bytes = [0u8; 32];
@@ -198,7 +198,7 @@ impl SpendTracker {
                     self.protocol_counters[i].window_spend = self.protocol_counters[i]
                         .window_spend
                         .checked_add(usd_amount)
-                        .ok_or(error!(PhalnxError::Overflow))?;
+                        .ok_or(error!(SigilError::Overflow))?;
                 }
                 return Ok(());
             }
@@ -214,7 +214,7 @@ impl SpendTracker {
             self.protocol_counters[idx].window_spend = usd_amount;
             Ok(())
         } else {
-            Err(error!(PhalnxError::ProtocolCapExceeded))
+            Err(error!(SigilError::ProtocolCapExceeded))
         }
     }
 }

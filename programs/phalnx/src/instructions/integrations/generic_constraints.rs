@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 
 use anchor_lang::solana_program::instruction::AccountMeta;
 
-use crate::errors::PhalnxError;
+use crate::errors::SigilError;
 use crate::state::{AccountConstraint, ConstraintEntry, ConstraintOperator, DataConstraint};
 
 /// Verify all data constraints against instruction data.
@@ -16,7 +16,7 @@ pub fn verify_data_constraints(ix_data: &[u8], constraints: &[DataConstraint]) -
             offset
                 .checked_add(len)
                 .is_some_and(|end| end <= ix_data.len()),
-            PhalnxError::ConstraintViolated
+            SigilError::ConstraintViolated
         );
         let actual = &ix_data[offset..offset + len];
         let expected = &dc.value;
@@ -29,7 +29,7 @@ pub fn verify_data_constraints(ix_data: &[u8], constraints: &[DataConstraint]) -
             ConstraintOperator::LteSigned => compare_le_signed(actual, expected) <= 0,
             ConstraintOperator::Bitmask => bitmask_check(actual, expected),
         };
-        require!(passes, PhalnxError::ConstraintViolated);
+        require!(passes, SigilError::ConstraintViolated);
     }
     Ok(())
 }
@@ -42,10 +42,10 @@ pub fn verify_account_constraints(
 ) -> Result<()> {
     for ac in constraints {
         let idx = ac.index as usize;
-        require!(idx < ix_accounts.len(), PhalnxError::ConstraintViolated);
+        require!(idx < ix_accounts.len(), SigilError::ConstraintViolated);
         require!(
             ix_accounts[idx].pubkey == ac.expected,
-            PhalnxError::ConstraintViolated
+            SigilError::ConstraintViolated
         );
     }
     Ok(())
@@ -86,7 +86,7 @@ pub fn verify_against_entries(
         return Ok(false); // No entries for this program — caller decides policy
     }
 
-    require!(any_passed, PhalnxError::ConstraintViolated);
+    require!(any_passed, SigilError::ConstraintViolated);
     Ok(true)
 }
 

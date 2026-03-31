@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::errors::PhalnxError;
+use crate::errors::SigilError;
 use crate::events::InstructionConstraintsCreated;
 use crate::state::*;
 
@@ -10,7 +10,7 @@ pub struct CreateInstructionConstraints<'info> {
     pub owner: Signer<'info>,
 
     #[account(
-        has_one = owner @ PhalnxError::UnauthorizedOwner,
+        has_one = owner @ SigilError::UnauthorizedOwner,
         seeds = [b"vault", owner.key().as_ref(), vault.vault_id.to_le_bytes().as_ref()],
         bump = vault.bump,
     )]

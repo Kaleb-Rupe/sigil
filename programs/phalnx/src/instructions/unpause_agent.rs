@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::errors::PhalnxError;
+use crate::errors::SigilError;
 use crate::events::AgentUnpausedEvent;
 use crate::state::*;
 
@@ -10,7 +10,7 @@ pub struct UnpauseAgent<'info> {
 
     #[account(
         mut,
-        has_one = owner @ PhalnxError::UnauthorizedOwner,
+        has_one = owner @ SigilError::UnauthorizedOwner,
         seeds = [b"vault", owner.key().as_ref(), vault.vault_id.to_le_bytes().as_ref()],
         bump = vault.bump,
     )]
@@ -23,7 +23,7 @@ pub fn handler(ctx: Context<UnpauseAgent>, agent_to_unpause: Pubkey) -> Result<(
     // Works on Active or Frozen vaults (not Closed)
     require!(
         vault.status != VaultStatus::Closed,
-        PhalnxError::VaultAlreadyClosed
+        SigilError::VaultAlreadyClosed
     );
 
     // Find the agent entry
@@ -31,10 +31,10 @@ pub fn handler(ctx: Context<UnpauseAgent>, agent_to_unpause: Pubkey) -> Result<(
         .agents
         .iter_mut()
         .find(|a| a.pubkey == agent_to_unpause)
-        .ok_or(error!(PhalnxError::UnauthorizedAgent))?;
+        .ok_or(error!(SigilError::UnauthorizedAgent))?;
 
     // Must be paused
-    require!(agent_entry.paused, PhalnxError::AgentNotPaused);
+    require!(agent_entry.paused, SigilError::AgentNotPaused);
 
     agent_entry.paused = false;
 

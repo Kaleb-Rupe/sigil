@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::errors::PhalnxError;
+use crate::errors::SigilError;
 use crate::state::*;
 
 /// Convert stablecoin amount to USD (6 decimals).
@@ -13,23 +13,23 @@ pub(crate) fn stablecoin_to_usd(amount: u64, token_decimals: u8) -> Result<u64> 
         // Fewer decimals than USD: multiply up
         let diff = USD_DECIMALS
             .checked_sub(token_decimals)
-            .ok_or(PhalnxError::Overflow)?;
+            .ok_or(SigilError::Overflow)?;
         let multiplier = 10u64
             .checked_pow(diff as u32)
-            .ok_or(PhalnxError::Overflow)?;
+            .ok_or(SigilError::Overflow)?;
         amount
             .checked_mul(multiplier)
-            .ok_or(error!(PhalnxError::Overflow))
+            .ok_or(error!(SigilError::Overflow))
     } else {
         // More decimals than USD: divide down
         let diff = token_decimals
             .checked_sub(USD_DECIMALS)
-            .ok_or(PhalnxError::Overflow)?;
+            .ok_or(SigilError::Overflow)?;
         let divisor = 10u64
             .checked_pow(diff as u32)
-            .ok_or(PhalnxError::Overflow)?;
+            .ok_or(SigilError::Overflow)?;
         amount
             .checked_div(divisor)
-            .ok_or(error!(PhalnxError::Overflow))
+            .ok_or(error!(SigilError::Overflow))
     }
 }

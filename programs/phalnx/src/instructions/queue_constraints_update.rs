@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::errors::PhalnxError;
+use crate::errors::SigilError;
 use crate::events::ConstraintsChangeQueued;
 use crate::state::*;
 
@@ -10,7 +10,7 @@ pub struct QueueConstraintsUpdate<'info> {
     pub owner: Signer<'info>,
 
     #[account(
-        has_one = owner @ PhalnxError::UnauthorizedOwner,
+        has_one = owner @ SigilError::UnauthorizedOwner,
         seeds = [b"vault", owner.key().as_ref(), vault.vault_id.to_le_bytes().as_ref()],
         bump = vault.bump,
     )]
@@ -24,7 +24,7 @@ pub struct QueueConstraintsUpdate<'info> {
     pub policy: Account<'info, PolicyConfig>,
 
     #[account(
-        has_one = vault @ PhalnxError::InvalidConstraintsPda,
+        has_one = vault @ SigilError::InvalidConstraintsPda,
         seeds = [b"constraints", vault.key().as_ref()],
         bump = constraints.bump,
     )]
@@ -52,7 +52,7 @@ pub fn handler(
     // Timelock must be configured to use queue
     require!(
         policy.timelock_duration > 0,
-        PhalnxError::NoTimelockConfigured
+        SigilError::NoTimelockConfigured
     );
 
     InstructionConstraints::validate_entries(&entries)?;
@@ -61,7 +61,7 @@ pub fn handler(
     let executes_at = clock
         .unix_timestamp
         .checked_add(policy.timelock_duration as i64)
-        .ok_or(PhalnxError::Overflow)?;
+        .ok_or(SigilError::Overflow)?;
 
     let pending = &mut ctx.accounts.pending_constraints;
     pending.vault = ctx.accounts.vault.key();

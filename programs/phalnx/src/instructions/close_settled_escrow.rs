@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::errors::PhalnxError;
+use crate::errors::SigilError;
 use crate::state::*;
 
 #[derive(Accounts)]
@@ -10,7 +10,7 @@ pub struct CloseSettledEscrow<'info> {
     pub signer: Signer<'info>,
 
     #[account(
-        constraint = source_vault.owner == signer.key() @ PhalnxError::UnauthorizedOwner,
+        constraint = source_vault.owner == signer.key() @ SigilError::UnauthorizedOwner,
         seeds = [b"vault", source_vault.owner.as_ref(), source_vault.vault_id.to_le_bytes().as_ref()],
         bump = source_vault.bump,
     )]
@@ -24,7 +24,7 @@ pub struct CloseSettledEscrow<'info> {
     #[account(
         mut,
         close = signer,
-        has_one = source_vault @ PhalnxError::InvalidEscrowVault,
+        has_one = source_vault @ SigilError::InvalidEscrowVault,
         seeds = [b"escrow", source_vault.key().as_ref(), destination_vault_key.key().as_ref(), escrow_id.to_le_bytes().as_ref()],
         bump = escrow.bump,
     )]
@@ -37,7 +37,7 @@ pub fn handler(ctx: Context<CloseSettledEscrow>, _escrow_id: u64) -> Result<()> 
     // Escrow must be settled or refunded (not Active)
     require!(
         escrow.status == EscrowStatus::Settled || escrow.status == EscrowStatus::Refunded,
-        PhalnxError::EscrowNotActive
+        SigilError::EscrowNotActive
     );
 
     // Anchor `close = signer` handles PDA closure, rent → signer

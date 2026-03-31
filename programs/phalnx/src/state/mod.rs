@@ -59,11 +59,11 @@ pub const FINALIZE_SESSION_DISCRIMINATOR: [u8; 8] = [34, 148, 144, 47, 37, 130, 
 pub(crate) fn ceil_fee(amount: u64, rate: u64) -> Result<u64> {
     amount
         .checked_mul(rate)
-        .ok_or(error!(PhalnxError::Overflow))?
+        .ok_or(error!(SigilError::Overflow))?
         .checked_add(FEE_RATE_DENOMINATOR - 1)
-        .ok_or(error!(PhalnxError::Overflow))?
+        .ok_or(error!(SigilError::Overflow))?
         .checked_div(FEE_RATE_DENOMINATOR)
-        .ok_or(error!(PhalnxError::Overflow))
+        .ok_or(error!(SigilError::Overflow))
 }
 
 // Build requires exactly one of: --features mainnet OR --features devnet
@@ -214,7 +214,7 @@ pub const USD_DECIMALS: u8 = 6;
 /// 10^6 — base multiplier for USD amounts with 6 decimals
 pub const USD_BASE: u64 = 1_000_000;
 
-use crate::errors::PhalnxError;
+use crate::errors::SigilError;
 use anchor_lang::prelude::*;
 
 /// Vault status enum

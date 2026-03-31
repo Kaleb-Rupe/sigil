@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 
 #[error_code]
-pub enum PhalnxError {
+pub enum SigilError {
     #[msg("Vault is not active")]
     VaultNotActive,
 

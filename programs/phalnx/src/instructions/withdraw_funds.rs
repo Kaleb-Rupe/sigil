@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 
-use crate::errors::PhalnxError;
+use crate::errors::SigilError;
 use crate::events::FundsWithdrawn;
 use crate::state::*;
 
@@ -12,7 +12,7 @@ pub struct WithdrawFunds<'info> {
 
     #[account(
         mut,
-        has_one = owner @ PhalnxError::UnauthorizedOwner,
+        has_one = owner @ SigilError::UnauthorizedOwner,
         seeds = [b"vault", owner.key().as_ref(), vault.vault_id.to_le_bytes().as_ref()],
         bump = vault.bump,
     )]
@@ -44,11 +44,11 @@ pub fn handler(ctx: Context<WithdrawFunds>, amount: u64) -> Result<()> {
 
     require!(
         vault.status != VaultStatus::Closed,
-        PhalnxError::VaultAlreadyClosed
+        SigilError::VaultAlreadyClosed
     );
     require!(
         ctx.accounts.vault_token_account.amount >= amount,
-        PhalnxError::InsufficientBalance
+        SigilError::InsufficientBalance
     );
 
     // PDA signer seeds
@@ -80,7 +80,7 @@ pub fn handler(ctx: Context<WithdrawFunds>, amount: u64) -> Result<()> {
         vault.total_withdrawn_usd = vault
             .total_withdrawn_usd
             .checked_add(amount)
-            .ok_or(error!(PhalnxError::Overflow))?;
+            .ok_or(error!(SigilError::Overflow))?;
     }
 
     let clock = Clock::get()?;

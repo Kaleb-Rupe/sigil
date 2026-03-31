@@ -4,7 +4,7 @@ use anchor_lang::solana_program::instruction::get_stack_height;
 use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 
-use crate::errors::PhalnxError;
+use crate::errors::SigilError;
 use crate::events::{AgentSpendLimitChecked, EscrowCreated, FeesCollected};
 use crate::state::*;
 
@@ -18,15 +18,15 @@ pub struct CreateEscrow<'info> {
 
     #[account(
         mut,
-        constraint = source_vault.is_agent(&agent.key()) @ PhalnxError::UnauthorizedAgent,
-        constraint = source_vault.is_active() @ PhalnxError::VaultNotActive,
+        constraint = source_vault.is_agent(&agent.key()) @ SigilError::UnauthorizedAgent,
+        constraint = source_vault.is_active() @ SigilError::VaultNotActive,
         seeds = [b"vault", source_vault.owner.as_ref(), source_vault.vault_id.to_le_bytes().as_ref()],
         bump = source_vault.bump,
     )]
     pub source_vault: Account<'info, AgentVault>,
 
     #[account(
-        constraint = policy.vault == source_vault.key() @ PhalnxError::InvalidEscrowVault,
+        constraint = policy.vault == source_vault.key() @ SigilError::InvalidEscrowVault,
         seeds = [b"policy", source_vault.key().as_ref()],
         bump = policy.bump,
     )]
@@ -48,8 +48,8 @@ pub struct CreateEscrow<'info> {
     pub agent_spend_overlay: AccountLoader<'info, AgentSpendOverlay>,
 
     #[account(
-        constraint = destination_vault.is_active() @ PhalnxError::VaultNotActive,
-        constraint = destination_vault.key() != source_vault.key() @ PhalnxError::InvalidEscrowVault,
+        constraint = destination_vault.is_active() @ SigilError::VaultNotActive,
+        constraint = destination_vault.key() != source_vault.key() @ SigilError::InvalidEscrowVault,
         seeds = [b"vault", destination_vault.owner.as_ref(), destination_vault.vault_id.to_le_bytes().as_ref()],
         bump = destination_vault.bump,
     )]
@@ -106,7 +106,7 @@ pub fn handler(
     require!(
         get_stack_height()
             == anchor_lang::solana_program::instruction::TRANSACTION_LEVEL_STACK_HEIGHT,
-        PhalnxError::CpiCallNotAllowed
+        SigilError::CpiCallNotAllowed
     );
 
     let source_vault = &ctx.accounts.source_vault;
@@ -116,30 +116,30 @@ pub fn handler(
     // 0b. Agent must not be paused
     require!(
         !source_vault.is_agent_paused(&ctx.accounts.agent.key()),
-        PhalnxError::AgentPaused
+        SigilError::AgentPaused
     );
 
     // 1. Permission check
     require!(
         source_vault.has_permission(&ctx.accounts.agent.key(), &ActionType::CreateEscrow),
-        PhalnxError::InsufficientPermissions
+        SigilError::InsufficientPermissions
     );
 
     // 2. Stablecoin-only
     let token_mint_key = ctx.accounts.token_mint.key();
     require!(
         is_stablecoin_mint(&token_mint_key),
-        PhalnxError::UnsupportedToken
+        SigilError::UnsupportedToken
     );
 
     // 3. Amount must be positive
-    require!(amount > 0, PhalnxError::InsufficientBalance);
+    require!(amount > 0, SigilError::InsufficientBalance);
 
     // 4-5. Validate expiry: must be in the future and within max duration
     require!(
         expires_at > clock.unix_timestamp
             && expires_at <= clock.unix_timestamp.saturating_add(MAX_ESCROW_DURATION),
-        PhalnxError::EscrowDurationExceeded
+        SigilError::EscrowDurationExceeded
     );
 
     // 6. Cap check — record spending in tracker
@@ -149,7 +149,7 @@ pub fn handler(
     // Single tx USD check
     require!(
         usd_amount <= policy.max_transaction_size_usd,
-        PhalnxError::TransactionTooLarge
+        SigilError::TransactionTooLarge
     );
 
     // Rolling 24h USD check
@@ -157,10 +157,10 @@ pub fn handler(
     let rolling_usd = tracker.get_rolling_24h_usd(&clock);
     let new_total_usd = rolling_usd
         .checked_add(usd_amount)
-        .ok_or(PhalnxError::Overflow)?;
+        .ok_or(SigilError::Overflow)?;
     require!(
         new_total_usd <= policy.daily_spending_cap_usd,
-        PhalnxError::SpendingCapExceeded
+        SigilError::SpendingCapExceeded
     );
     tracker.record_spend(&clock, usd_amount)?;
     drop(tracker);
@@ -169,17 +169,17 @@ pub fn handler(
     let agent_key = ctx.accounts.agent.key();
     let agent_entry = source_vault
         .get_agent(&agent_key)
-        .ok_or(error!(PhalnxError::UnauthorizedAgent))?;
+        .ok_or(error!(SigilError::UnauthorizedAgent))?;
     let mut overlay = ctx.accounts.agent_spend_overlay.load_mut()?;
     if let Some(agent_slot) = overlay.find_agent_slot(&agent_key) {
         if agent_entry.spending_limit_usd > 0 {
             let agent_rolling = overlay.get_agent_rolling_24h_usd(&clock, agent_slot);
             let new_agent_spend = agent_rolling
                 .checked_add(usd_amount)
-                .ok_or(PhalnxError::Overflow)?;
+                .ok_or(SigilError::Overflow)?;
             require!(
                 new_agent_spend <= agent_entry.spending_limit_usd,
-                PhalnxError::AgentSpendLimitExceeded
+                SigilError::AgentSpendLimitExceeded
             );
             emit!(AgentSpendLimitChecked {
                 vault: source_vault.key(),
@@ -192,7 +192,7 @@ pub fn handler(
         }
         overlay.record_agent_contribution(&clock, agent_slot, usd_amount)?;
     } else if agent_entry.spending_limit_usd > 0 {
-        return Err(error!(PhalnxError::AgentSlotNotFound));
+        return Err(error!(SigilError::AgentSlotNotFound));
     }
     drop(overlay);
 
@@ -202,9 +202,9 @@ pub fn handler(
     let developer_fee = ceil_fee(amount, dev_fee_rate as u64)?;
     let net_amount = amount
         .checked_sub(protocol_fee)
-        .ok_or(PhalnxError::Overflow)?
+        .ok_or(SigilError::Overflow)?
         .checked_sub(developer_fee)
-        .ok_or(PhalnxError::Overflow)?;
+        .ok_or(SigilError::Overflow)?;
 
     // Build vault PDA signer seeds
     let owner_key = source_vault.owner;
@@ -227,14 +227,14 @@ pub fn handler(
             .accounts
             .protocol_treasury_ata
             .as_ref()
-            .ok_or(error!(PhalnxError::InvalidProtocolTreasury))?;
+            .ok_or(error!(SigilError::InvalidProtocolTreasury))?;
         require!(
             treasury_token.owner == PROTOCOL_TREASURY,
-            PhalnxError::InvalidProtocolTreasury
+            SigilError::InvalidProtocolTreasury
         );
         require!(
             treasury_token.mint == token_mint_key,
-            PhalnxError::InvalidProtocolTreasury
+            SigilError::InvalidProtocolTreasury
         );
 
         let cpi_accounts = Transfer {
@@ -256,14 +256,14 @@ pub fn handler(
             .accounts
             .fee_destination_ata
             .as_ref()
-            .ok_or(error!(PhalnxError::InvalidFeeDestination))?;
+            .ok_or(error!(SigilError::InvalidFeeDestination))?;
         require!(
             fee_dest.owner == vault_fee_destination,
-            PhalnxError::InvalidFeeDestination
+            SigilError::InvalidFeeDestination
         );
         require!(
             fee_dest.mint == token_mint_key,
-            PhalnxError::InvalidFeeDestination
+            SigilError::InvalidFeeDestination
         );
 
         let cpi_accounts = Transfer {
@@ -331,20 +331,20 @@ pub fn handler(
     source_vault.active_escrow_count = source_vault
         .active_escrow_count
         .checked_add(1)
-        .ok_or(error!(PhalnxError::Overflow))?;
+        .ok_or(error!(SigilError::Overflow))?;
     source_vault.total_transactions = source_vault
         .total_transactions
         .checked_add(1)
-        .ok_or(PhalnxError::Overflow)?;
+        .ok_or(SigilError::Overflow)?;
     source_vault.total_volume = source_vault
         .total_volume
         .checked_add(amount)
-        .ok_or(PhalnxError::Overflow)?;
+        .ok_or(SigilError::Overflow)?;
     if developer_fee > 0 {
         source_vault.total_fees_collected = source_vault
             .total_fees_collected
             .checked_add(developer_fee)
-            .ok_or(PhalnxError::Overflow)?;
+            .ok_or(SigilError::Overflow)?;
     }
 
     // 13. Emit event

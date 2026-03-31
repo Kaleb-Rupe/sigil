@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::errors::PhalnxError;
+use crate::errors::SigilError;
 use crate::events::PolicyChangeQueued;
 use crate::state::*;
 
@@ -10,7 +10,7 @@ pub struct QueuePolicyUpdate<'info> {
     pub owner: Signer<'info>,
 
     #[account(
-        has_one = owner @ PhalnxError::UnauthorizedOwner,
+        has_one = owner @ SigilError::UnauthorizedOwner,
         seeds = [b"vault", owner.key().as_ref(), vault.vault_id.to_le_bytes().as_ref()],
         bump = vault.bump,
     )]
@@ -59,51 +59,51 @@ pub fn handler(
 
     require!(
         vault.status != VaultStatus::Closed,
-        PhalnxError::VaultAlreadyClosed
+        SigilError::VaultAlreadyClosed
     );
 
     // Timelock must be configured to use queue
     require!(
         policy.timelock_duration > 0,
-        PhalnxError::NoTimelockConfigured
+        SigilError::NoTimelockConfigured
     );
 
     // Validate bounded vectors if provided
     if let Some(ref mode) = protocol_mode {
         require!(
             *mode <= PROTOCOL_MODE_DENYLIST,
-            PhalnxError::InvalidProtocolMode
+            SigilError::InvalidProtocolMode
         );
     }
     if let Some(ref protos) = protocols {
         require!(
             protos.len() <= MAX_ALLOWED_PROTOCOLS,
-            PhalnxError::TooManyAllowedProtocols
+            SigilError::TooManyAllowedProtocols
         );
     }
     if let Some(ref fee_rate) = developer_fee_rate {
         require!(
             *fee_rate <= MAX_DEVELOPER_FEE_RATE,
-            PhalnxError::DeveloperFeeTooHigh
+            SigilError::DeveloperFeeTooHigh
         );
     }
     if let Some(ref slippage) = max_slippage_bps {
         require!(
             *slippage <= MAX_SLIPPAGE_BPS,
-            PhalnxError::SlippageBpsTooHigh
+            SigilError::SlippageBpsTooHigh
         );
     }
     if let Some(ref destinations) = allowed_destinations {
         require!(
             destinations.len() <= MAX_ALLOWED_DESTINATIONS,
-            PhalnxError::TooManyDestinations
+            SigilError::TooManyDestinations
         );
     }
     if let Some(ref expiry) = session_expiry_slots {
         if *expiry > 0 {
             require!(
                 *expiry >= 10 && *expiry <= 450,
-                PhalnxError::InvalidSessionExpiry
+                SigilError::InvalidSessionExpiry
             );
         }
     }
@@ -115,7 +115,7 @@ pub fn handler(
             let effective_mode = protocol_mode.unwrap_or(policy.protocol_mode);
             require!(
                 effective_mode == PROTOCOL_MODE_ALLOWLIST,
-                PhalnxError::ProtocolCapsMismatch
+                SigilError::ProtocolCapsMismatch
             );
             let effective_protos_len = protocols
                 .as_ref()
@@ -125,7 +125,7 @@ pub fn handler(
                 .map_or(policy.protocol_caps.len(), |c| c.len());
             require!(
                 effective_caps_len == effective_protos_len,
-                PhalnxError::ProtocolCapsMismatch
+                SigilError::ProtocolCapsMismatch
             );
         }
     }
@@ -134,7 +134,7 @@ pub fn handler(
     let executes_at = clock
         .unix_timestamp
         .checked_add(policy.timelock_duration as i64)
-        .ok_or(PhalnxError::Overflow)?;
+        .ok_or(SigilError::Overflow)?;
 
     let pending = &mut ctx.accounts.pending_policy;
     pending.vault = vault.key();

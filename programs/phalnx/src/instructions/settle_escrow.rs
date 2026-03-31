@@ -3,7 +3,7 @@ use anchor_lang::solana_program::instruction::get_stack_height;
 use anchor_spl::token::{self, CloseAccount, Mint, Token, TokenAccount, Transfer};
 use solana_program::hash::Hasher;
 
-use crate::errors::PhalnxError;
+use crate::errors::SigilError;
 use crate::events::EscrowSettled;
 use crate::state::*;
 
@@ -20,7 +20,7 @@ pub struct SettleEscrow<'info> {
     pub destination_agent: Signer<'info>,
 
     #[account(
-        constraint = destination_vault.is_agent(&destination_agent.key()) @ PhalnxError::UnauthorizedAgent,
+        constraint = destination_vault.is_agent(&destination_agent.key()) @ SigilError::UnauthorizedAgent,
         seeds = [b"vault", destination_vault.owner.as_ref(), destination_vault.vault_id.to_le_bytes().as_ref()],
         bump = destination_vault.bump,
     )]
@@ -35,8 +35,8 @@ pub struct SettleEscrow<'info> {
 
     #[account(
         mut,
-        constraint = escrow.destination_vault == destination_vault.key() @ PhalnxError::InvalidEscrowVault,
-        constraint = escrow.source_vault == source_vault.key() @ PhalnxError::InvalidEscrowVault,
+        constraint = escrow.destination_vault == destination_vault.key() @ SigilError::InvalidEscrowVault,
+        constraint = escrow.source_vault == source_vault.key() @ SigilError::InvalidEscrowVault,
         seeds = [b"escrow", source_vault.key().as_ref(), destination_vault.key().as_ref(), escrow.escrow_id.to_le_bytes().as_ref()],
         bump = escrow.bump,
     )]
@@ -59,7 +59,7 @@ pub struct SettleEscrow<'info> {
     /// CHECK: Validated as source vault owner — receives escrow ATA rent
     #[account(
         mut,
-        constraint = rent_destination.key() == source_vault.owner @ PhalnxError::UnauthorizedOwner,
+        constraint = rent_destination.key() == source_vault.owner @ SigilError::UnauthorizedOwner,
     )]
     pub rent_destination: UncheckedAccount<'info>,
 
@@ -72,7 +72,7 @@ pub fn handler(ctx: Context<SettleEscrow>, proof: Vec<u8>) -> Result<()> {
     require!(
         get_stack_height()
             == anchor_lang::solana_program::instruction::TRANSACTION_LEVEL_STACK_HEIGHT,
-        PhalnxError::CpiCallNotAllowed
+        SigilError::CpiCallNotAllowed
     );
 
     let escrow = &ctx.accounts.escrow;
@@ -83,7 +83,7 @@ pub fn handler(ctx: Context<SettleEscrow>, proof: Vec<u8>) -> Result<()> {
         !ctx.accounts
             .destination_vault
             .is_agent_paused(&ctx.accounts.destination_agent.key()),
-        PhalnxError::AgentPaused
+        SigilError::AgentPaused
     );
 
     // 1. Permission check
@@ -92,26 +92,26 @@ pub fn handler(ctx: Context<SettleEscrow>, proof: Vec<u8>) -> Result<()> {
             &ctx.accounts.destination_agent.key(),
             &ActionType::SettleEscrow
         ),
-        PhalnxError::InsufficientPermissions
+        SigilError::InsufficientPermissions
     );
 
     // 2. Escrow must be Active
     require!(
         escrow.status == EscrowStatus::Active,
-        PhalnxError::EscrowNotActive
+        SigilError::EscrowNotActive
     );
 
     // 3. Must not be expired
     require!(
         clock.unix_timestamp < escrow.expires_at,
-        PhalnxError::EscrowExpired
+        SigilError::EscrowExpired
     );
 
     // 4. Conditional escrow: verify SHA-256 proof
     if escrow.condition_hash != [0u8; 32] {
         require!(
             sha256(&proof) == escrow.condition_hash,
-            PhalnxError::EscrowConditionsNotMet
+            SigilError::EscrowConditionsNotMet
         );
     }
 

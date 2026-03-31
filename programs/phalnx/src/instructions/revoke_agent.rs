@@ -1,7 +1,7 @@
 use anchor_lang::accounts::account_loader::AccountLoader;
 use anchor_lang::prelude::*;
 
-use crate::errors::PhalnxError;
+use crate::errors::SigilError;
 use crate::events::AgentRevoked;
 use crate::state::*;
 
@@ -11,7 +11,7 @@ pub struct RevokeAgent<'info> {
 
     #[account(
         mut,
-        has_one = owner @ PhalnxError::UnauthorizedOwner,
+        has_one = owner @ SigilError::UnauthorizedOwner,
         seeds = [b"vault", owner.key().as_ref(), vault.vault_id.to_le_bytes().as_ref()],
         bump = vault.bump,
     )]
@@ -31,11 +31,11 @@ pub fn handler(ctx: Context<RevokeAgent>, agent_to_remove: Pubkey) -> Result<()>
 
     require!(
         vault.status != VaultStatus::Closed,
-        PhalnxError::VaultAlreadyClosed
+        SigilError::VaultAlreadyClosed
     );
     require!(
         vault.is_agent(&agent_to_remove),
-        PhalnxError::UnauthorizedAgent
+        SigilError::UnauthorizedAgent
     );
 
     // Release overlay slot before removing agent from vault

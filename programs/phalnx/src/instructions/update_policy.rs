@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::errors::PhalnxError;
+use crate::errors::SigilError;
 use crate::events::PolicyUpdated;
 use crate::state::*;
 
@@ -9,7 +9,7 @@ pub struct UpdatePolicy<'info> {
     pub owner: Signer<'info>,
 
     #[account(
-        has_one = owner @ PhalnxError::UnauthorizedOwner,
+        has_one = owner @ SigilError::UnauthorizedOwner,
         seeds = [b"vault", owner.key().as_ref(), vault.vault_id.to_le_bytes().as_ref()],
         bump = vault.bump,
     )]
@@ -45,13 +45,13 @@ pub fn handler(
     let vault = &ctx.accounts.vault;
     require!(
         vault.status != VaultStatus::Closed,
-        PhalnxError::VaultAlreadyClosed
+        SigilError::VaultAlreadyClosed
     );
 
     let policy = &mut ctx.accounts.policy;
 
     // When timelock > 0, immediate updates are blocked
-    require!(policy.timelock_duration == 0, PhalnxError::TimelockActive);
+    require!(policy.timelock_duration == 0, SigilError::TimelockActive);
 
     if let Some(cap) = daily_spending_cap_usd {
         policy.daily_spending_cap_usd = cap;
@@ -62,14 +62,14 @@ pub fn handler(
     if let Some(mode) = protocol_mode {
         require!(
             mode <= PROTOCOL_MODE_DENYLIST,
-            PhalnxError::InvalidProtocolMode
+            SigilError::InvalidProtocolMode
         );
         policy.protocol_mode = mode;
     }
     if let Some(protos) = protocols {
         require!(
             protos.len() <= MAX_ALLOWED_PROTOCOLS,
-            PhalnxError::TooManyAllowedProtocols
+            SigilError::TooManyAllowedProtocols
         );
         policy.protocols = protos;
     }
@@ -85,14 +85,14 @@ pub fn handler(
     if let Some(fee_rate) = developer_fee_rate {
         require!(
             fee_rate <= MAX_DEVELOPER_FEE_RATE,
-            PhalnxError::DeveloperFeeTooHigh
+            SigilError::DeveloperFeeTooHigh
         );
         policy.developer_fee_rate = fee_rate;
     }
     if let Some(slippage) = max_slippage_bps {
         require!(
             slippage <= MAX_SLIPPAGE_BPS,
-            PhalnxError::SlippageBpsTooHigh
+            SigilError::SlippageBpsTooHigh
         );
         policy.max_slippage_bps = slippage;
     }
@@ -102,7 +102,7 @@ pub fn handler(
     if let Some(destinations) = allowed_destinations {
         require!(
             destinations.len() <= MAX_ALLOWED_DESTINATIONS,
-            PhalnxError::TooManyDestinations
+            SigilError::TooManyDestinations
         );
         policy.allowed_destinations = destinations;
     }
@@ -110,7 +110,7 @@ pub fn handler(
         if expiry > 0 {
             require!(
                 (10..=450).contains(&expiry),
-                PhalnxError::InvalidSessionExpiry
+                SigilError::InvalidSessionExpiry
             );
         }
         policy.session_expiry_slots = expiry;
@@ -127,11 +127,11 @@ pub fn handler(
     if policy.has_protocol_caps {
         require!(
             policy.protocol_mode == PROTOCOL_MODE_ALLOWLIST,
-            PhalnxError::ProtocolCapsMismatch
+            SigilError::ProtocolCapsMismatch
         );
         require!(
             policy.protocol_caps.len() == policy.protocols.len(),
-            PhalnxError::ProtocolCapsMismatch
+            SigilError::ProtocolCapsMismatch
         );
     }
 

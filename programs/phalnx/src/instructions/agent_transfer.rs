@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_lang::solana_program::instruction::get_stack_height;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 
-use crate::errors::PhalnxError;
+use crate::errors::SigilError;
 use crate::events::{AgentSpendLimitChecked, AgentTransferExecuted, FeesCollected};
 use crate::state::*;
 
@@ -15,7 +15,7 @@ pub struct AgentTransfer<'info> {
 
     #[account(
         mut,
-        constraint = vault.is_agent(&agent.key()) @ PhalnxError::UnauthorizedAgent,
+        constraint = vault.is_agent(&agent.key()) @ SigilError::UnauthorizedAgent,
         seeds = [b"vault", vault.owner.as_ref(), vault.vault_id.to_le_bytes().as_ref()],
         bump = vault.bump,
     )]
@@ -48,7 +48,7 @@ pub struct AgentTransfer<'info> {
     #[account(
         mut,
         constraint = vault_token_account.owner == vault.key()
-            @ PhalnxError::InvalidTokenAccount,
+            @ SigilError::InvalidTokenAccount,
     )]
     pub vault_token_account: Account<'info, TokenAccount>,
 
@@ -56,7 +56,7 @@ pub struct AgentTransfer<'info> {
     #[account(
         constraint = token_mint_account.key()
             == vault_token_account.mint
-            @ PhalnxError::InvalidTokenAccount,
+            @ SigilError::InvalidTokenAccount,
     )]
     pub token_mint_account: Account<'info, Mint>,
 
@@ -80,7 +80,7 @@ pub fn handler(ctx: Context<AgentTransfer>, amount: u64) -> Result<()> {
     require!(
         get_stack_height()
             == anchor_lang::solana_program::instruction::TRANSACTION_LEVEL_STACK_HEIGHT,
-        PhalnxError::CpiCallNotAllowed
+        SigilError::CpiCallNotAllowed
     );
 
     let vault = &ctx.accounts.vault;
@@ -88,45 +88,45 @@ pub fn handler(ctx: Context<AgentTransfer>, amount: u64) -> Result<()> {
     let clock = Clock::get()?;
 
     // 1. Vault must be active
-    require!(vault.is_active(), PhalnxError::VaultNotActive);
+    require!(vault.is_active(), SigilError::VaultNotActive);
 
     // 1a-pre. Agent must not be paused
     require!(
         !vault.is_agent_paused(&ctx.accounts.agent.key()),
-        PhalnxError::AgentPaused
+        SigilError::AgentPaused
     );
 
     // 1a. Agent must have Transfer permission (single lookup replaces has_permission + get_agent)
     let agent_key = ctx.accounts.agent.key();
     let agent_entry = vault
         .get_agent(&agent_key)
-        .ok_or(error!(PhalnxError::UnauthorizedAgent))?;
+        .ok_or(error!(SigilError::UnauthorizedAgent))?;
     require!(
         agent_entry.permissions & (1u64 << ActionType::Transfer.permission_bit()) != 0,
-        PhalnxError::InsufficientPermissions
+        SigilError::InsufficientPermissions
     );
 
     // 2. Amount must be positive
-    require!(amount > 0, PhalnxError::TransactionTooLarge);
+    require!(amount > 0, SigilError::TransactionTooLarge);
 
     let token_mint = ctx.accounts.vault_token_account.mint;
 
     // 3. Token must be a stablecoin (stablecoin-only enforcement)
     require!(
         is_stablecoin_mint(&token_mint),
-        PhalnxError::UnsupportedToken
+        SigilError::UnsupportedToken
     );
 
     // 4. Destination must be allowed
     require!(
         policy.is_destination_allowed(&ctx.accounts.destination_token_account.owner),
-        PhalnxError::DestinationNotAllowed
+        SigilError::DestinationNotAllowed
     );
 
     // 5. Mint consistency
     require!(
         ctx.accounts.destination_token_account.mint == token_mint,
-        PhalnxError::InvalidTokenAccount
+        SigilError::InvalidTokenAccount
     );
 
     // 6. Get token decimals from validated mint account
@@ -138,7 +138,7 @@ pub fn handler(ctx: Context<AgentTransfer>, amount: u64) -> Result<()> {
     // 8. Single tx USD check
     require!(
         usd_amount <= policy.max_transaction_size_usd,
-        PhalnxError::TransactionTooLarge
+        SigilError::TransactionTooLarge
     );
 
     // 9. Rolling 24h USD check
@@ -146,10 +146,10 @@ pub fn handler(ctx: Context<AgentTransfer>, amount: u64) -> Result<()> {
     let rolling_usd = tracker.get_rolling_24h_usd(&clock);
     let new_total_usd = rolling_usd
         .checked_add(usd_amount)
-        .ok_or(PhalnxError::Overflow)?;
+        .ok_or(SigilError::Overflow)?;
     require!(
         new_total_usd <= policy.daily_spending_cap_usd,
-        PhalnxError::SpendingCapExceeded
+        SigilError::SpendingCapExceeded
     );
 
     // --- Per-agent cap check via contribution overlay ---
@@ -159,10 +159,10 @@ pub fn handler(ctx: Context<AgentTransfer>, amount: u64) -> Result<()> {
             let agent_rolling = overlay.get_agent_rolling_24h_usd(&clock, agent_slot);
             let new_agent_spend = agent_rolling
                 .checked_add(usd_amount)
-                .ok_or(PhalnxError::Overflow)?;
+                .ok_or(SigilError::Overflow)?;
             require!(
                 new_agent_spend <= agent_entry.spending_limit_usd,
-                PhalnxError::AgentSpendLimitExceeded
+                SigilError::AgentSpendLimitExceeded
             );
             emit!(AgentSpendLimitChecked {
                 vault: vault.key(),
@@ -175,7 +175,7 @@ pub fn handler(ctx: Context<AgentTransfer>, amount: u64) -> Result<()> {
         }
         overlay.record_agent_contribution(&clock, agent_slot, usd_amount)?;
     } else if agent_entry.spending_limit_usd > 0 {
-        return Err(error!(PhalnxError::AgentSlotNotFound));
+        return Err(error!(SigilError::AgentSlotNotFound));
     }
     drop(overlay);
 
@@ -205,9 +205,9 @@ pub fn handler(ctx: Context<AgentTransfer>, amount: u64) -> Result<()> {
 
     let net_amount = amount
         .checked_sub(protocol_fee)
-        .ok_or(PhalnxError::Overflow)?
+        .ok_or(SigilError::Overflow)?
         .checked_sub(developer_fee)
-        .ok_or(PhalnxError::Overflow)?;
+        .ok_or(SigilError::Overflow)?;
 
     // Transfer net amount to destination
     let cpi_accounts = Transfer {
@@ -228,14 +228,14 @@ pub fn handler(ctx: Context<AgentTransfer>, amount: u64) -> Result<()> {
             .accounts
             .protocol_treasury_token_account
             .as_ref()
-            .ok_or(error!(PhalnxError::InvalidProtocolTreasury))?;
+            .ok_or(error!(SigilError::InvalidProtocolTreasury))?;
         require!(
             treasury_token.owner == PROTOCOL_TREASURY,
-            PhalnxError::InvalidProtocolTreasury
+            SigilError::InvalidProtocolTreasury
         );
         require!(
             treasury_token.mint == token_mint,
-            PhalnxError::InvalidProtocolTreasury
+            SigilError::InvalidProtocolTreasury
         );
 
         let cpi_accounts = Transfer {
@@ -257,14 +257,14 @@ pub fn handler(ctx: Context<AgentTransfer>, amount: u64) -> Result<()> {
             .accounts
             .fee_destination_token_account
             .as_ref()
-            .ok_or(error!(PhalnxError::InvalidFeeDestination))?;
+            .ok_or(error!(SigilError::InvalidFeeDestination))?;
         require!(
             fee_dest.owner == vault_fee_destination,
-            PhalnxError::InvalidFeeDestination
+            SigilError::InvalidFeeDestination
         );
         require!(
             fee_dest.mint == token_mint,
-            PhalnxError::InvalidFeeDestination
+            SigilError::InvalidFeeDestination
         );
 
         let cpi_accounts = Transfer {
@@ -285,16 +285,16 @@ pub fn handler(ctx: Context<AgentTransfer>, amount: u64) -> Result<()> {
     vault.total_transactions = vault
         .total_transactions
         .checked_add(1)
-        .ok_or(PhalnxError::Overflow)?;
+        .ok_or(SigilError::Overflow)?;
     vault.total_volume = vault
         .total_volume
         .checked_add(amount)
-        .ok_or(PhalnxError::Overflow)?;
+        .ok_or(SigilError::Overflow)?;
     if developer_fee > 0 {
         vault.total_fees_collected = vault
             .total_fees_collected
             .checked_add(developer_fee)
-            .ok_or(PhalnxError::Overflow)?;
+            .ok_or(SigilError::Overflow)?;
     }
 
     // Emit fee event if fees were collected

@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::errors::PhalnxError;
+use crate::errors::SigilError;
 use crate::events::PositionsSynced;
 use crate::state::AgentVault;
 
@@ -11,7 +11,7 @@ pub struct SyncPositions<'info> {
     #[account(
         mut,
         constraint = vault.is_owner(&owner.key())
-            @ PhalnxError::UnauthorizedOwner,
+            @ SigilError::UnauthorizedOwner,
         seeds = [
             b"vault",
             vault.owner.as_ref(),

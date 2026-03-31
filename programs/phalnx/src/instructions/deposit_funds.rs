@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 
-use crate::errors::PhalnxError;
+use crate::errors::SigilError;
 use crate::events::FundsDeposited;
 use crate::state::*;
 
@@ -13,7 +13,7 @@ pub struct DepositFunds<'info> {
 
     #[account(
         mut,
-        has_one = owner @ PhalnxError::UnauthorizedOwner,
+        has_one = owner @ SigilError::UnauthorizedOwner,
         seeds = [b"vault", owner.key().as_ref(), vault.vault_id.to_le_bytes().as_ref()],
         bump = vault.bump,
     )]
@@ -47,7 +47,7 @@ pub fn handler(ctx: Context<DepositFunds>, amount: u64) -> Result<()> {
     let vault = &mut ctx.accounts.vault;
     require!(
         vault.status != VaultStatus::Closed,
-        PhalnxError::VaultAlreadyClosed
+        SigilError::VaultAlreadyClosed
     );
 
     // Transfer tokens from owner to vault PDA token account
@@ -64,7 +64,7 @@ pub fn handler(ctx: Context<DepositFunds>, amount: u64) -> Result<()> {
         vault.total_deposited_usd = vault
             .total_deposited_usd
             .checked_add(amount)
-            .ok_or(error!(PhalnxError::Overflow))?;
+            .ok_or(error!(SigilError::Overflow))?;
     }
 
     let clock = Clock::get()?;

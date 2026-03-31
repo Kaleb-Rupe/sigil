@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::errors::PhalnxError;
+use crate::errors::SigilError;
 
 pub const MAX_CONSTRAINT_ENTRIES: usize = 16;
 pub const MAX_DATA_CONSTRAINTS_PER_ENTRY: usize = 8;
@@ -60,29 +60,29 @@ impl InstructionConstraints {
     pub fn validate_entries(entries: &[ConstraintEntry]) -> Result<()> {
         require!(
             entries.len() <= MAX_CONSTRAINT_ENTRIES,
-            PhalnxError::InvalidConstraintConfig
+            SigilError::InvalidConstraintConfig
         );
         for entry in entries {
             require!(
                 entry.data_constraints.len() <= MAX_DATA_CONSTRAINTS_PER_ENTRY,
-                PhalnxError::InvalidConstraintConfig
+                SigilError::InvalidConstraintConfig
             );
             require!(
                 entry.account_constraints.len() <= MAX_ACCOUNT_CONSTRAINTS_PER_ENTRY,
-                PhalnxError::InvalidConstraintConfig
+                SigilError::InvalidConstraintConfig
             );
             // Reject fully empty entries (no data_constraints AND no account_constraints)
             require!(
                 !entry.data_constraints.is_empty() || !entry.account_constraints.is_empty(),
-                PhalnxError::InvalidConstraintConfig
+                SigilError::InvalidConstraintConfig
             );
             for dc in &entry.data_constraints {
                 require!(
                     dc.value.len() <= MAX_CONSTRAINT_VALUE_LEN,
-                    PhalnxError::InvalidConstraintConfig
+                    SigilError::InvalidConstraintConfig
                 );
                 // Reject zero-length constraint values
-                require!(!dc.value.is_empty(), PhalnxError::InvalidConstraintConfig);
+                require!(!dc.value.is_empty(), SigilError::InvalidConstraintConfig);
             }
         }
         Ok(())

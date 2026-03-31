@@ -1,7 +1,7 @@
 use anchor_lang::accounts::account_loader::AccountLoader;
 use anchor_lang::prelude::*;
 
-use crate::errors::PhalnxError;
+use crate::errors::SigilError;
 use crate::events::AgentPermissionsUpdated;
 use crate::state::*;
 
@@ -12,7 +12,7 @@ pub struct UpdateAgentPermissions<'info> {
 
     #[account(
         mut,
-        constraint = vault.owner == owner.key() @ PhalnxError::UnauthorizedOwner,
+        constraint = vault.owner == owner.key() @ SigilError::UnauthorizedOwner,
         seeds = [b"vault", vault.owner.as_ref(), vault.vault_id.to_le_bytes().as_ref()],
         bump = vault.bump,
     )]
@@ -44,11 +44,11 @@ pub fn handler(
 
     // Timelock guard: direct permission updates only allowed without timelock.
     // For timelocked vaults, use revoke_agent + register_agent instead.
-    require!(policy.timelock_duration == 0, PhalnxError::TimelockActive);
+    require!(policy.timelock_duration == 0, SigilError::TimelockActive);
 
     require!(
         new_permissions & !FULL_PERMISSIONS == 0,
-        PhalnxError::InvalidPermissions
+        SigilError::InvalidPermissions
     );
 
     let vault = &mut ctx.accounts.vault;
@@ -56,7 +56,7 @@ pub fn handler(
         .agents
         .iter_mut()
         .find(|a| a.pubkey == agent)
-        .ok_or(error!(PhalnxError::UnauthorizedAgent))?;
+        .ok_or(error!(SigilError::UnauthorizedAgent))?;
     let old_permissions = entry.permissions;
     let old_spending_limit = entry.spending_limit_usd;
     entry.permissions = new_permissions;
@@ -70,7 +70,7 @@ pub fn handler(
             // Need a slot but don't have one — claim it
             require!(
                 overlay.claim_slot(&agent).is_some(),
-                PhalnxError::OverlaySlotExhausted
+                SigilError::OverlaySlotExhausted
             );
         } else if spending_limit_usd == 0 && old_spending_limit > 0 && has_slot {
             // No longer need a slot — release it

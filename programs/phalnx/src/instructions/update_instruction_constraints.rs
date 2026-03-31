@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::errors::PhalnxError;
+use crate::errors::SigilError;
 use crate::events::InstructionConstraintsUpdated;
 use crate::state::*;
 
@@ -10,7 +10,7 @@ pub struct UpdateInstructionConstraints<'info> {
     pub owner: Signer<'info>,
 
     #[account(
-        has_one = owner @ PhalnxError::UnauthorizedOwner,
+        has_one = owner @ SigilError::UnauthorizedOwner,
         seeds = [b"vault", owner.key().as_ref(), vault.vault_id.to_le_bytes().as_ref()],
         bump = vault.bump,
     )]
@@ -25,7 +25,7 @@ pub struct UpdateInstructionConstraints<'info> {
 
     #[account(
         mut,
-        has_one = vault @ PhalnxError::InvalidConstraintsPda,
+        has_one = vault @ SigilError::InvalidConstraintsPda,
         seeds = [b"constraints", vault.key().as_ref()],
         bump = constraints.bump,
     )]
@@ -41,7 +41,7 @@ pub fn handler(
     // For timelocked vaults, use queue_constraints_update / apply_constraints_update.
     require!(
         ctx.accounts.policy.timelock_duration == 0,
-        PhalnxError::TimelockActive
+        SigilError::TimelockActive
     );
 
     InstructionConstraints::validate_entries(&entries)?;

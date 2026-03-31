@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::errors::PhalnxError;
+use crate::errors::SigilError;
 use crate::events::AgentRegistered;
 use crate::state::*;
 
@@ -10,7 +10,7 @@ pub struct RegisterAgent<'info> {
 
     #[account(
         mut,
-        has_one = owner @ PhalnxError::UnauthorizedOwner,
+        has_one = owner @ SigilError::UnauthorizedOwner,
         seeds = [b"vault", owner.key().as_ref(), vault.vault_id.to_le_bytes().as_ref()],
         bump = vault.bump,
     )]
@@ -35,19 +35,19 @@ pub fn handler(
 
     require!(
         vault.status != VaultStatus::Closed,
-        PhalnxError::VaultAlreadyClosed
+        SigilError::VaultAlreadyClosed
     );
     require!(
         permissions & !FULL_PERMISSIONS == 0,
-        PhalnxError::InvalidPermissions
+        SigilError::InvalidPermissions
     );
-    require!(!vault.is_agent(&agent), PhalnxError::AgentAlreadyRegistered);
+    require!(!vault.is_agent(&agent), SigilError::AgentAlreadyRegistered);
     require!(
         vault.agent_count() < MAX_AGENTS_PER_VAULT,
-        PhalnxError::MaxAgentsReached
+        SigilError::MaxAgentsReached
     );
-    require!(agent != Pubkey::default(), PhalnxError::InvalidAgentKey);
-    require!(agent != vault.owner, PhalnxError::AgentIsOwner);
+    require!(agent != Pubkey::default(), SigilError::InvalidAgentKey);
+    require!(agent != vault.owner, SigilError::AgentIsOwner);
 
     vault.agents.push(AgentEntry {
         pubkey: agent,
@@ -67,7 +67,7 @@ pub fn handler(
                     if spending_limit_usd > 0 {
                         // Remove the agent we just pushed — no slot to enforce limit
                         vault.agents.retain(|a| a.pubkey != agent);
-                        return Err(error!(PhalnxError::OverlaySlotExhausted));
+                        return Err(error!(SigilError::OverlaySlotExhausted));
                     }
                     // spending_limit_usd == 0: no per-agent limit needed, continue
                 }

@@ -5,7 +5,7 @@ use anchor_lang::solana_program::sysvar::instructions::{
 };
 use anchor_spl::token::{self, Approve, Mint, Token, TokenAccount, Transfer};
 
-use crate::errors::PhalnxError;
+use crate::errors::SigilError;
 use crate::events::{ActionAuthorized, FeesCollected};
 use crate::state::*;
 
@@ -19,7 +19,7 @@ pub struct ValidateAndAuthorize<'info> {
     pub agent: Signer<'info>,
 
     #[account(
-        constraint = vault.is_agent(&agent.key()) @ PhalnxError::UnauthorizedAgent,
+        constraint = vault.is_agent(&agent.key()) @ SigilError::UnauthorizedAgent,
         seeds = [b"vault", vault.owner.as_ref(), vault.vault_id.to_le_bytes().as_ref()],
         bump = vault.bump,
     )]
@@ -68,16 +68,16 @@ pub struct ValidateAndAuthorize<'info> {
     #[account(
         mut,
         constraint = vault_token_account.owner == vault.key()
-            @ PhalnxError::InvalidTokenAccount,
+            @ SigilError::InvalidTokenAccount,
         constraint = vault_token_account.mint == token_mint_account.key()
-            @ PhalnxError::InvalidTokenAccount,
+            @ SigilError::InvalidTokenAccount,
     )]
     pub vault_token_account: Account<'info, TokenAccount>,
 
     /// The token mint being spent — constrained to match token_mint arg
     #[account(
         constraint = token_mint_account.key() == token_mint
-            @ PhalnxError::InvalidTokenAccount,
+            @ SigilError::InvalidTokenAccount,
     )]
     pub token_mint_account: Account<'info, Mint>,
 
@@ -118,7 +118,7 @@ pub fn handler(
     require!(
         get_stack_height()
             == anchor_lang::solana_program::instruction::TRANSACTION_LEVEL_STACK_HEIGHT,
-        PhalnxError::CpiCallNotAllowed
+        SigilError::CpiCallNotAllowed
     );
 
     let vault = &ctx.accounts.vault;
@@ -131,7 +131,7 @@ pub fn handler(
     // Load constraints PDA deterministically — agent CANNOT omit this
     let loaded_constraints: Option<InstructionConstraints> = if !ctx.remaining_accounts.is_empty() {
         let info = &ctx.remaining_accounts[0];
-        require!(info.owner == &crate::ID, PhalnxError::InvalidConstraintsPda);
+        require!(info.owner == &crate::ID, SigilError::InvalidConstraintsPda);
         let data = info.try_borrow_data()?;
         let constraints = InstructionConstraints::try_deserialize(&mut &data[..])?;
         // Use stored bump for O(1) PDA verification instead of find_program_address (~1,500 CU)
@@ -139,54 +139,54 @@ pub fn handler(
             &[b"constraints", vault_key.as_ref(), &[constraints.bump]],
             &crate::ID,
         )
-        .map_err(|_| error!(PhalnxError::InvalidConstraintsPda))?;
+        .map_err(|_| error!(SigilError::InvalidConstraintsPda))?;
         require_keys_eq!(
             info.key(),
             constraints_pda,
-            PhalnxError::InvalidConstraintsPda
+            SigilError::InvalidConstraintsPda
         );
         require_keys_eq!(
             constraints.vault,
             vault_key,
-            PhalnxError::InvalidConstraintsPda
+            SigilError::InvalidConstraintsPda
         );
         Some(constraints)
     } else {
         // No constraints PDA passed — verify none are configured
-        require!(!policy.has_constraints, PhalnxError::InvalidConstraintsPda);
+        require!(!policy.has_constraints, SigilError::InvalidConstraintsPda);
         None
     };
 
     // 1. Vault must be active
-    require!(vault.is_active(), PhalnxError::VaultNotActive);
+    require!(vault.is_active(), SigilError::VaultNotActive);
 
     // 1a-pre. Agent must not be paused
     require!(
         !vault.is_agent_paused(&ctx.accounts.agent.key()),
-        PhalnxError::AgentPaused
+        SigilError::AgentPaused
     );
 
     // 1a. Agent must have permission for this action type
     require!(
         vault.has_permission(&ctx.accounts.agent.key(), &action_type),
-        PhalnxError::InsufficientPermissions
+        SigilError::InsufficientPermissions
     );
 
     // 1b. Escrow actions use standalone instructions, not the composition flow
-    require!(!action_type.is_escrow_action(), PhalnxError::InvalidSession);
+    require!(!action_type.is_escrow_action(), SigilError::InvalidSession);
 
     // 1c. Amount validation: spending requires amount > 0,
     //     non-spending requires amount == 0
     if is_spending {
-        require!(amount > 0, PhalnxError::TransactionTooLarge);
+        require!(amount > 0, SigilError::TransactionTooLarge);
     } else {
-        require!(amount == 0, PhalnxError::InvalidNonSpendingAmount);
+        require!(amount == 0, SigilError::InvalidNonSpendingAmount);
     }
 
     // 2. Protocol must be allowed (mode-based check) — ALL actions
     require!(
         policy.is_protocol_allowed(&target_protocol),
-        PhalnxError::ProtocolNotAllowed
+        SigilError::ProtocolNotAllowed
     );
 
     // --- Stablecoin-only spending path ---
@@ -215,17 +215,17 @@ pub fn handler(
                 .accounts
                 .output_stablecoin_account
                 .as_ref()
-                .ok_or(error!(PhalnxError::InvalidTokenAccount))?;
+                .ok_or(error!(SigilError::InvalidTokenAccount))?;
 
             // Verify the stablecoin account belongs to the vault
             require!(
                 stablecoin_acct.owner == vault_key,
-                PhalnxError::InvalidTokenAccount
+                SigilError::InvalidTokenAccount
             );
             // Verify it's actually a stablecoin mint
             require!(
                 is_stablecoin_mint(&stablecoin_acct.mint),
-                PhalnxError::UnsupportedToken
+                SigilError::UnsupportedToken
             );
 
             output_mint = stablecoin_acct.mint;
@@ -242,7 +242,7 @@ pub fn handler(
     // Shared across spending and non-spending scan paths
     let ix_sysvar = ctx.accounts.instructions_sysvar.to_account_info();
     let current_idx = load_current_index_checked(&ix_sysvar)
-        .map_err(|_| error!(PhalnxError::MissingFinalizeInstruction))?;
+        .map_err(|_| error!(SigilError::MissingFinalizeInstruction))?;
     let current_idx_usize = current_idx as usize;
     let spl_token_id = ctx.accounts.token_program.key();
     let compute_budget_id = Pubkey::new_from_array([
@@ -281,9 +281,9 @@ pub fn handler(
         // Burn(8), BurnChecked(15): delegate can burn (SPL delegation grants burn).
         if ix.program_id == *spl_token_id && !ix.data.is_empty() {
             match ix.data[0] {
-                4 | 13 => return Err(error!(PhalnxError::UnauthorizedTokenApproval)),
-                3 | 12 => return Err(error!(PhalnxError::UnauthorizedTokenTransfer)),
-                6 | 8 | 9 | 15 => return Err(error!(PhalnxError::UnauthorizedTokenTransfer)),
+                4 | 13 => return Err(error!(SigilError::UnauthorizedTokenApproval)),
+                3 | 12 => return Err(error!(SigilError::UnauthorizedTokenTransfer)),
+                6 | 8 | 9 | 15 => return Err(error!(SigilError::UnauthorizedTokenTransfer)),
                 _ => {}
             }
         }
@@ -291,9 +291,9 @@ pub fn handler(
         // Token-2022: same blocked set + disc 26 (TransferCheckedWithFee)
         if ix.program_id == TOKEN_2022_PROGRAM_ID && !ix.data.is_empty() {
             match ix.data[0] {
-                4 | 13 => return Err(error!(PhalnxError::UnauthorizedTokenApproval)),
-                3 | 12 | 26 => return Err(error!(PhalnxError::UnauthorizedTokenTransfer)),
-                6 | 8 | 9 | 15 => return Err(error!(PhalnxError::UnauthorizedTokenTransfer)),
+                4 | 13 => return Err(error!(SigilError::UnauthorizedTokenApproval)),
+                3 | 12 | 26 => return Err(error!(SigilError::UnauthorizedTokenTransfer)),
+                6 | 8 | 9 | 15 => return Err(error!(SigilError::UnauthorizedTokenTransfer)),
                 _ => {}
             }
         }
@@ -308,7 +308,7 @@ pub fn handler(
         // Protocol allowlist
         require!(
             policy.is_protocol_allowed(&ix.program_id),
-            PhalnxError::ProtocolNotAllowed
+            SigilError::ProtocolNotAllowed
         );
 
         // Generic instruction constraints (OR across entries)
@@ -320,7 +320,7 @@ pub fn handler(
                 &ix.accounts,
             )?;
             if !matched && constraints.strict_mode {
-                return Err(error!(PhalnxError::UnconstrainedProgramBlocked));
+                return Err(error!(SigilError::UnconstrainedProgramBlocked));
             }
         }
 
@@ -366,7 +366,7 @@ pub fn handler(
                     if is_recognized_defi {
                         require!(
                             ix.program_id == target_protocol,
-                            PhalnxError::ProtocolMismatch
+                            SigilError::ProtocolMismatch
                         );
                         defi_ix_count = defi_ix_count.saturating_add(1);
                     }
@@ -382,12 +382,12 @@ pub fn handler(
 
         // DeFi instruction count enforcement
         if is_stablecoin_input {
-            require!(defi_ix_count <= 1, PhalnxError::TooManyDeFiInstructions);
+            require!(defi_ix_count <= 1, SigilError::TooManyDeFiInstructions);
         } else {
-            require!(defi_ix_count == 1, PhalnxError::TooManyDeFiInstructions);
+            require!(defi_ix_count == 1, SigilError::TooManyDeFiInstructions);
         }
 
-        require!(found_finalize, PhalnxError::MissingFinalizeInstruction);
+        require!(found_finalize, SigilError::MissingFinalizeInstruction);
     }
 
     // 6b. Non-spending instruction scan — validates all instructions between
@@ -420,7 +420,7 @@ pub fn handler(
             idx = idx.saturating_add(1);
         }
 
-        require!(found_finalize, PhalnxError::MissingFinalizeInstruction);
+        require!(found_finalize, SigilError::MissingFinalizeInstruction);
     }
 
     // 7. Leverage check (for perp actions) — ALL actions
@@ -440,7 +440,7 @@ pub fn handler(
     if let Some(lev) = leverage_bps {
         require!(
             policy.is_leverage_within_limit(lev),
-            PhalnxError::LeverageTooHigh
+            SigilError::LeverageTooHigh
         );
     }
 
@@ -449,15 +449,15 @@ pub fn handler(
         PositionEffect::Increment => {
             require!(
                 policy.can_open_positions,
-                PhalnxError::PositionOpeningDisallowed
+                SigilError::PositionOpeningDisallowed
             );
             require!(
                 vault.open_positions < policy.max_concurrent_positions,
-                PhalnxError::TooManyPositions
+                SigilError::TooManyPositions
             );
         }
         PositionEffect::Decrement => {
-            require!(vault.open_positions > 0, PhalnxError::NoPositionsToClose);
+            require!(vault.open_positions > 0, SigilError::NoPositionsToClose);
         }
         PositionEffect::None => {}
     }
@@ -482,9 +482,9 @@ pub fn handler(
     if is_spending {
         let delegation_amount = amount
             .checked_sub(protocol_fee)
-            .ok_or(PhalnxError::Overflow)?
+            .ok_or(SigilError::Overflow)?
             .checked_sub(developer_fee)
-            .ok_or(PhalnxError::Overflow)?;
+            .ok_or(SigilError::Overflow)?;
 
         // Transfer protocol fee
         if protocol_fee > 0 {
@@ -492,14 +492,14 @@ pub fn handler(
                 .accounts
                 .protocol_treasury_token_account
                 .as_ref()
-                .ok_or(error!(PhalnxError::InvalidProtocolTreasury))?;
+                .ok_or(error!(SigilError::InvalidProtocolTreasury))?;
             require!(
                 treasury_token.owner == PROTOCOL_TREASURY,
-                PhalnxError::InvalidProtocolTreasury
+                SigilError::InvalidProtocolTreasury
             );
             require!(
                 treasury_token.mint == token_mint,
-                PhalnxError::InvalidProtocolTreasury
+                SigilError::InvalidProtocolTreasury
             );
 
             let cpi_accounts = Transfer {
@@ -521,14 +521,14 @@ pub fn handler(
                 .accounts
                 .fee_destination_token_account
                 .as_ref()
-                .ok_or(error!(PhalnxError::InvalidFeeDestination))?;
+                .ok_or(error!(SigilError::InvalidFeeDestination))?;
             require!(
                 fee_dest.owner == vault_fee_destination,
-                PhalnxError::InvalidFeeDestination
+                SigilError::InvalidFeeDestination
             );
             require!(
                 fee_dest.mint == token_mint,
-                PhalnxError::InvalidFeeDestination
+                SigilError::InvalidFeeDestination
             );
 
             let cpi_accounts = Transfer {

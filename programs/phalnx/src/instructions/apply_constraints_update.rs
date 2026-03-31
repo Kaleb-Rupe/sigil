@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::errors::PhalnxError;
+use crate::errors::SigilError;
 use crate::events::ConstraintsChangeApplied;
 use crate::state::*;
 
@@ -10,7 +10,7 @@ pub struct ApplyConstraintsUpdate<'info> {
     pub owner: Signer<'info>,
 
     #[account(
-        has_one = owner @ PhalnxError::UnauthorizedOwner,
+        has_one = owner @ SigilError::UnauthorizedOwner,
         seeds = [b"vault", owner.key().as_ref(), vault.vault_id.to_le_bytes().as_ref()],
         bump = vault.bump,
     )]
@@ -18,7 +18,7 @@ pub struct ApplyConstraintsUpdate<'info> {
 
     #[account(
         mut,
-        has_one = vault @ PhalnxError::InvalidConstraintsPda,
+        has_one = vault @ SigilError::InvalidConstraintsPda,
         seeds = [b"constraints", vault.key().as_ref()],
         bump = constraints.bump,
     )]
@@ -26,7 +26,7 @@ pub struct ApplyConstraintsUpdate<'info> {
 
     #[account(
         mut,
-        has_one = vault @ PhalnxError::InvalidPendingConstraintsPda,
+        has_one = vault @ SigilError::InvalidPendingConstraintsPda,
         seeds = [b"pending_constraints", vault.key().as_ref()],
         bump = pending_constraints.bump,
         close = owner,
@@ -41,7 +41,7 @@ pub fn handler(ctx: Context<ApplyConstraintsUpdate>) -> Result<()> {
     // Timelock must have expired
     require!(
         pending.is_ready(clock.unix_timestamp),
-        PhalnxError::TimelockNotExpired
+        SigilError::TimelockNotExpired
     );
 
     // Overwrite constraint entries and strict_mode

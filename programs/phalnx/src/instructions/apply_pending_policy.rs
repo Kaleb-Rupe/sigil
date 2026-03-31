@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::errors::PhalnxError;
+use crate::errors::SigilError;
 use crate::events::PolicyChangeApplied;
 use crate::state::*;
 
@@ -10,7 +10,7 @@ pub struct ApplyPendingPolicy<'info> {
     pub owner: Signer<'info>,
 
     #[account(
-        has_one = owner @ PhalnxError::UnauthorizedOwner,
+        has_one = owner @ SigilError::UnauthorizedOwner,
         seeds = [b"vault", owner.key().as_ref(), vault.vault_id.to_le_bytes().as_ref()],
         bump = vault.bump,
     )]
@@ -41,7 +41,7 @@ pub fn handler(ctx: Context<ApplyPendingPolicy>) -> Result<()> {
     // Timelock must have expired
     require!(
         pending.is_ready(clock.unix_timestamp),
-        PhalnxError::TimelockNotExpired
+        SigilError::TimelockNotExpired
     );
 
     let policy = &mut ctx.accounts.policy;

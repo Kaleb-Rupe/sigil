@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::errors::PhalnxError;
+use crate::errors::SigilError;
 use crate::events::VaultCreated;
 use crate::state::*;
 
@@ -73,38 +73,38 @@ pub fn handler(
     // Validate protocol_mode
     require!(
         protocol_mode <= PROTOCOL_MODE_DENYLIST,
-        PhalnxError::InvalidProtocolMode
+        SigilError::InvalidProtocolMode
     );
     require!(
         protocols.len() <= MAX_ALLOWED_PROTOCOLS,
-        PhalnxError::TooManyAllowedProtocols
+        SigilError::TooManyAllowedProtocols
     );
     require!(
         developer_fee_rate <= MAX_DEVELOPER_FEE_RATE,
-        PhalnxError::DeveloperFeeTooHigh
+        SigilError::DeveloperFeeTooHigh
     );
     require!(
         max_slippage_bps <= MAX_SLIPPAGE_BPS,
-        PhalnxError::SlippageBpsTooHigh
+        SigilError::SlippageBpsTooHigh
     );
     require!(
         ctx.accounts.fee_destination.key() != Pubkey::default(),
-        PhalnxError::InvalidFeeDestination
+        SigilError::InvalidFeeDestination
     );
     require!(
         allowed_destinations.len() <= MAX_ALLOWED_DESTINATIONS,
-        PhalnxError::TooManyDestinations
+        SigilError::TooManyDestinations
     );
 
     // Validate per-protocol caps
     if !protocol_caps.is_empty() {
         require!(
             protocol_mode == PROTOCOL_MODE_ALLOWLIST,
-            PhalnxError::ProtocolCapsMismatch
+            SigilError::ProtocolCapsMismatch
         );
         require!(
             protocol_caps.len() == protocols.len(),
-            PhalnxError::ProtocolCapsMismatch
+            SigilError::ProtocolCapsMismatch
         );
     }
 

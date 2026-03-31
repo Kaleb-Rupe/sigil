@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::errors::PhalnxError;
+use crate::errors::SigilError;
 
 /// Overlay epoch duration: 1 hour (3600 seconds).
 /// Chosen over the global tracker's 10-minute epoch because per-agent spend
@@ -229,7 +229,7 @@ impl AgentSpendOverlay {
         usd_amount: u64,
     ) -> Result<()> {
         if slot_idx >= MAX_OVERLAY_ENTRIES {
-            return Err(error!(PhalnxError::Overflow));
+            return Err(error!(SigilError::Overflow));
         }
 
         let current_epoch = clock.unix_timestamp / OVERLAY_EPOCH_DURATION;
@@ -242,7 +242,7 @@ impl AgentSpendOverlay {
         // Add contribution
         self.entries[slot_idx].contributions[idx] = self.entries[slot_idx].contributions[idx]
             .checked_add(usd_amount)
-            .ok_or(error!(PhalnxError::Overflow))?;
+            .ok_or(error!(SigilError::Overflow))?;
 
         // Update last_write_epoch
         self.entries[slot_idx].last_write_epoch = current_epoch;
