@@ -1,15 +1,15 @@
 /**
- * wrap() — Protocol-agnostic DeFi instruction wrapping.
+ * seal() — Protocol-agnostic DeFi instruction sealing.
  *
  * Takes arbitrary DeFi instructions (from Jupiter API, SAK, GOAT, MCP servers)
- * and sandwiches them with Phalnx security:
+ * and sandwiches them with Sigil security:
  * [ComputeBudget, ValidateAndAuthorize, ...defiIxs, FinalizeSession]
  *
  * All succeed or all revert atomically.
  *
- * Devnet prerequisites (see WRAP-ARCHITECTURE-PLAN-v5.md Phase 4):
- * - Phalnx program deployed at PHALNX_PROGRAM_ADDRESS
- * - PHALNX_ALT_DEVNET updated in alt-config.ts (currently placeholder)
+ * Devnet prerequisites:
+ * - Sigil program deployed at SIGIL_PROGRAM_ADDRESS
+ * - SIGIL_ALT_DEVNET updated in alt-config.ts (currently placeholder)
  * - PROTOCOL_TREASURY token accounts initialized for USDC/USDT on devnet
  * - Vault funded with tokens and ATAs created
  */
@@ -40,7 +40,7 @@ import {
 } from "./state-resolver.js";
 import { getSessionPDA, getAgentOverlayPDA } from "./resolve-accounts.js";
 import {
-  composePhalnxTransaction,
+  composeSigilTransaction,
   measureTransactionSize,
 } from "./composer.js";
 import {
@@ -50,8 +50,8 @@ import {
   type Blockhash,
   type SendAndConfirmOptions,
 } from "./rpc-helpers.js";
-import { AltCache, mergeAltAddresses, verifyPhalnxAlt } from "./alt-loader.js";
-import { getPhalnxAltAddress, getExpectedAltContents } from "./alt-config.js";
+import { AltCache, mergeAltAddresses, verifySigilAlt } from "./alt-loader.js";
+import { getSigilAltAddress, getExpectedAltContents } from "./alt-config.js";
 import { deriveAta } from "./x402/transfer-builder.js";
 import {
   type Network,
@@ -70,7 +70,7 @@ import {
   PROTOCOL_FEE_RATE,
 } from "./types.js";
 import { isProtocolAllowed } from "./protocol-resolver.js";
-import { wrapToAgentError, type AgentError } from "./agent-errors.js";
+import { toSigilAgentError, type AgentError } from "./agent-errors.js";
 import {
   getVaultPnL,
   getVaultTokenBalances,
@@ -95,12 +95,12 @@ const TOKEN_2022_PROGRAM =
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-export interface WrapParams {
+export interface SealParams {
   /** On-chain vault PDA address. */
   vault: Address;
   /** Agent signer — must be registered in the vault's agent list. */
   agent: TransactionSigner;
-  /** DeFi instructions to wrap. ComputeBudget and System instructions are stripped automatically. */
+  /** DeFi instructions to seal. ComputeBudget and System instructions are stripped automatically. */
   instructions: Instruction[];
   /** RPC client for state resolution and blockhash fetching. */
   rpc: Rpc<SolanaRpcApi>;
@@ -154,12 +154,12 @@ export interface WrapParams {
   /** Pre-fetched blockhash. If omitted, fetched via RPC (cached 30s). */
   blockhash?: Blockhash;
   /**
-   * Protocol-specific ALT addresses to merge with the Phalnx ALT for tx compression.
+   * Protocol-specific ALT addresses to merge with the Sigil ALT for tx compression.
    * Jupiter: extract `addressLookupTableAddresses` from the /swap-instructions response.
    * These rotate per-route — always pass fresh values from the latest API response.
    */
   protocolAltAddresses?: Address[];
-  /** Pre-resolved ALT contents. If omitted, Phalnx ALT resolved automatically. */
+  /** Pre-resolved ALT contents. If omitted, Sigil ALT resolved automatically. */
   addressLookupTables?: AddressesByLookupTableAddress;
   /** Pre-resolved vault state. Skips RPC fetch if fresh enough (see maxCacheAgeMs). */
   cachedState?: ResolvedVaultState;
@@ -169,7 +169,7 @@ export interface WrapParams {
   additionalAtaReplacements?: Map<Address, Address>;
 }
 
-export interface WrapResult {
+export interface SealResult {
   ok: true;
   transaction: ReturnType<typeof compileTransaction>;
   actionType: ActionType;
@@ -177,7 +177,7 @@ export interface WrapResult {
   txSizeBytes: number;
   /** Block height after which the blockhash expires. Sign and send before this. */
   lastValidBlockHeight: bigint;
-  /** Vault context for downstream drain detection (eliminates double-resolve) */
+  /** Vault context for downstream drain detection (eliminates double-resolve). */
   vaultContext?: {
     vaultAddress: Address;
     vaultTokenAta: Address;
@@ -242,22 +242,22 @@ const ACTION_TYPE_KEYS: Record<number, string> = {
 const blockhashCache = new BlockhashCache();
 const altCache = new AltCache();
 
-// ─── wrap() ─────────────────────────────────────────────────────────────────
+// ─── seal() ─────────────────────────────────────────────────────────────────
 
 /**
- * Wrap arbitrary DeFi instructions with Phalnx security.
+ * Seal arbitrary DeFi instructions with Sigil security.
  *
  * Sandwiches the provided instructions between validate_and_authorize (before)
  * and finalize_session (after) in an atomic Solana transaction.
  *
  * NOTE: Concurrent calls for the same vault+agent+tokenMint are NOT supported.
- * The on-chain SessionAuthority PDA is deterministic — two concurrent wraps
+ * The on-chain SessionAuthority PDA is deterministic — two concurrent seals
  * produce colliding session PDAs and only one will succeed on-chain.
  *
  * @throws Error if vault is not active, agent lacks permission, protocol not allowed,
  *   spending cap insufficient, or transaction exceeds 1232 byte limit.
  */
-export async function wrap(params: WrapParams): Promise<WrapResult> {
+export async function seal(params: SealParams): Promise<SealResult> {
   const warnings: string[] = [];
   const net = normalizeNetwork(params.network);
   validateNetwork(net);
@@ -328,7 +328,7 @@ export async function wrap(params: WrapParams): Promise<WrapResult> {
   ]);
   if (ESCROW_ACTIONS.has(actionType)) {
     throw new Error(
-      `Escrow action "${actionKey}" uses standalone instructions, not wrap(). ` +
+      `Escrow action "${actionKey}" uses standalone instructions, not seal(). ` +
         `Use createEscrow/settleEscrow/refundEscrow directly.`,
     );
   }
@@ -337,7 +337,7 @@ export async function wrap(params: WrapParams): Promise<WrapResult> {
   if (params.amount < 0n) {
     throw new Error(
       `Amount must be non-negative, got ${params.amount}. ` +
-        `Phalnx amounts are unsigned 64-bit integers (0 to 18446744073709551615).`,
+        `Sigil amounts are unsigned 64-bit integers (0 to 18446744073709551615).`,
     );
   }
   if (spending && params.amount === 0n) {
@@ -369,13 +369,13 @@ export async function wrap(params: WrapParams): Promise<WrapResult> {
       const disc = ix.data[0];
       if (disc === 4) {
         throw new Error(
-          "Top-level SPL Token Approve not allowed in wrapped transactions. " +
+          "Top-level SPL Token Approve not allowed in sealed transactions. " +
             "DeFi programs handle approvals via CPI.",
         );
       }
       if (disc === 13) {
         throw new Error(
-          "Top-level SPL Token ApproveChecked not allowed in wrapped transactions. " +
+          "Top-level SPL Token ApproveChecked not allowed in sealed transactions. " +
             "DeFi programs handle approvals via CPI.",
         );
       }
@@ -385,19 +385,19 @@ export async function wrap(params: WrapParams): Promise<WrapResult> {
         (ix.programAddress === TOKEN_2022_PROGRAM && disc === 26)
       ) {
         throw new Error(
-          "Top-level SPL Token Transfer not allowed in wrapped transactions. " +
+          "Top-level SPL Token Transfer not allowed in sealed transactions. " +
             "Use the Transfer ActionType instead.",
         );
       }
       if (disc === 6 || disc === 9) {
         throw new Error(
-          "Top-level SPL Token SetAuthority/CloseAccount not allowed in wrapped transactions. " +
+          "Top-level SPL Token SetAuthority/CloseAccount not allowed in sealed transactions. " +
             "These operations could damage or destroy vault token accounts.",
         );
       }
       if (disc === 8 || disc === 15) {
         throw new Error(
-          "Top-level SPL Token Burn/BurnChecked not allowed in wrapped transactions. " +
+          "Top-level SPL Token Burn/BurnChecked not allowed in sealed transactions. " +
             "Delegate burn authority could destroy vault funds.",
         );
       }
@@ -605,19 +605,19 @@ export async function wrap(params: WrapParams): Promise<WrapResult> {
   // Step 10: Compose + compile + measure
   const blockhash = params.blockhash ?? (await blockhashCache.get(params.rpc));
 
-  // Resolve ALTs — Phalnx ALT + protocol ALTs (e.g. Jupiter route-specific)
+  // Resolve ALTs — Sigil ALT + protocol ALTs (e.g. Jupiter route-specific)
   let addressLookupTables = params.addressLookupTables;
   if (!addressLookupTables) {
-    const phalnxAlt = getPhalnxAltAddress(net);
-    const allAlts = mergeAltAddresses(phalnxAlt, params.protocolAltAddresses);
+    const sigilAlt = getSigilAltAddress(net);
+    const allAlts = mergeAltAddresses(sigilAlt, params.protocolAltAddresses);
     addressLookupTables = await altCache.resolve(params.rpc, allAlts);
 
-    // Verify Phalnx ALT contents — if stale cache causes mismatch, evict and retry once.
+    // Verify Sigil ALT contents — if stale cache causes mismatch, evict and retry once.
     // This self-heals after ALT extension without requiring manual cache invalidation.
     try {
-      verifyPhalnxAlt(
+      verifySigilAlt(
         addressLookupTables,
-        phalnxAlt,
+        sigilAlt,
         getExpectedAltContents(net),
       );
     } catch (e) {
@@ -625,15 +625,15 @@ export async function wrap(params: WrapParams): Promise<WrapResult> {
       altCache.invalidate();
       addressLookupTables = await altCache.resolve(params.rpc, allAlts);
       // Second attempt throws if still mismatched (real corruption, not staleness)
-      verifyPhalnxAlt(
+      verifySigilAlt(
         addressLookupTables,
-        phalnxAlt,
+        sigilAlt,
         getExpectedAltContents(net),
       );
     }
   }
 
-  const compiledTx = composePhalnxTransaction({
+  const compiledTx = composeSigilTransaction({
     feePayer: params.agent.address,
     validateIx: toInstruction(validateIx),
     defiInstructions: rewrittenDefiInstructions,
@@ -696,7 +696,7 @@ export async function wrap(params: WrapParams): Promise<WrapResult> {
     }
   }
 
-  // Known recipients: ATA addresses that legitimately receive tokens during Phalnx TXs.
+  // Known recipients: ATA addresses that legitimately receive tokens during Sigil TXs.
   // Drain detection compares against token account (ATA) addresses in balance deltas,
   // so we must add ATAs here — NOT wallet addresses (which would never match).
   const knownRecipients = new Set<string>();
@@ -724,9 +724,9 @@ export async function wrap(params: WrapParams): Promise<WrapResult> {
   };
 }
 
-// ─── PhalnxClient Types ──────────────────────────────────────────────────
+// ─── SigilClient Types ──────────────────────────────────────────────────
 
-export interface PhalnxClientConfig {
+export interface SigilClientConfig {
   rpc: Rpc<SolanaRpcApi>;
   vault: Address;
   agent: TransactionSigner;
@@ -740,13 +740,13 @@ export interface PhalnxClientConfig {
 }
 
 /**
- * Options for `client.wrap()`.
+ * Options for `client.seal()`.
  *
- * Note: `blockhash` is intentionally omitted — PhalnxClient manages its own
+ * Note: `blockhash` is intentionally omitted — SigilClient manages its own
  * BlockhashCache instance, which is what `invalidateCaches()` actually clears.
- * Use the standalone `wrap()` function if you need to supply a custom blockhash.
+ * Use the standalone `seal()` function if you need to supply a custom blockhash.
  */
-export interface ClientWrapOpts {
+export interface ClientSealOpts {
   tokenMint: Address;
   amount: bigint;
   actionType?: ActionType;
@@ -764,35 +764,35 @@ export interface ClientWrapOpts {
 
 export interface ExecuteResult {
   signature: string;
-  wrapResult: WrapResult;
+  sealResult: SealResult;
 }
 
-// ─── PhalnxClient ─────────────────────────────────────────────────────────
+// ─── SigilClient ─────────────────────────────────────────────────────────
 
 /**
  * Primary SDK entry point — stateful client that owns context and caches.
  *
- * Recommended over standalone wrap() for production use:
+ * Recommended over standalone seal() for production use:
  * - Holds vault, agent, network, and RPC — no state carrying between calls
  * - Blockhash and ALT caches are isolated per client instance
  * - invalidateCaches() clears instance caches that are actually used
  * - Convenience methods delegate to existing stateless functions
  */
-export class PhalnxClient {
+export class SigilClient {
   private readonly blockhashCacheInstance: BlockhashCache;
   private readonly altCacheInstance: AltCache;
-  private readonly onErrorCallback?: PhalnxClientConfig["onError"];
+  private readonly onErrorCallback?: SigilClientConfig["onError"];
   readonly rpc: Rpc<SolanaRpcApi>;
   readonly vault: Address;
   readonly agent: TransactionSigner;
   readonly network: "devnet" | "mainnet";
 
-  constructor(config: PhalnxClientConfig) {
-    if (!config.rpc) throw new Error("PhalnxClientConfig.rpc is required");
-    if (!config.vault) throw new Error("PhalnxClientConfig.vault is required");
-    if (!config.agent) throw new Error("PhalnxClientConfig.agent is required");
+  constructor(config: SigilClientConfig) {
+    if (!config.rpc) throw new Error("SigilClientConfig.rpc is required");
+    if (!config.vault) throw new Error("SigilClientConfig.vault is required");
+    if (!config.agent) throw new Error("SigilClientConfig.agent is required");
     if (!config.network)
-      throw new Error("PhalnxClientConfig.network is required");
+      throw new Error("SigilClientConfig.network is required");
 
     this.rpc = config.rpc;
     this.vault = config.vault;
@@ -804,23 +804,23 @@ export class PhalnxClient {
   }
 
   /**
-   * Wrap DeFi instructions with Phalnx security.
+   * Seal DeFi instructions with Sigil security.
    *
    * Pre-resolves blockhash and ALTs from instance caches, then delegates
-   * to the standalone wrap() function. This ensures invalidateCaches()
+   * to the standalone seal() function. This ensures invalidateCaches()
    * actually clears caches that are read (N-2 fix).
    */
-  async wrap(
+  async seal(
     instructions: Instruction[],
-    opts: ClientWrapOpts,
-  ): Promise<WrapResult> {
+    opts: ClientSealOpts,
+  ): Promise<SealResult> {
     // Parallelize blockhash + ALT resolution (both independent RPC calls)
     const altPromise = opts.addressLookupTables
       ? Promise.resolve(opts.addressLookupTables)
       : this.altCacheInstance.resolve(
           this.rpc,
           mergeAltAddresses(
-            getPhalnxAltAddress(normalizeNetwork(this.network)),
+            getSigilAltAddress(normalizeNetwork(this.network)),
             opts.protocolAltAddresses,
           ),
         );
@@ -830,28 +830,28 @@ export class PhalnxClient {
       altPromise,
     ]);
 
-    // Defense-in-depth: verify Phalnx ALT contents even when pre-resolved.
+    // Defense-in-depth: verify Sigil ALT contents even when pre-resolved.
     // On-chain constraints are the real security boundary, but this catches
     // stale ALT data or SDK-layer corruption before the transaction is sent.
     // If stale cache causes mismatch, evict and retry once (self-healing).
     if (!opts.addressLookupTables) {
       const net = normalizeNetwork(this.network);
-      const phalnxAlt = getPhalnxAltAddress(net);
+      const sigilAlt = getSigilAltAddress(net);
       const expected = getExpectedAltContents(net);
       try {
-        verifyPhalnxAlt(addressLookupTables, phalnxAlt, expected);
+        verifySigilAlt(addressLookupTables, sigilAlt, expected);
       } catch {
         this.altCacheInstance.invalidate();
-        const allAlts = mergeAltAddresses(phalnxAlt, opts.protocolAltAddresses);
+        const allAlts = mergeAltAddresses(sigilAlt, opts.protocolAltAddresses);
         addressLookupTables = await this.altCacheInstance.resolve(
           this.rpc,
           allAlts,
         );
-        verifyPhalnxAlt(addressLookupTables, phalnxAlt, expected);
+        verifySigilAlt(addressLookupTables, sigilAlt, expected);
       }
     }
 
-    return wrap({
+    return seal({
       rpc: this.rpc,
       vault: this.vault,
       agent: this.agent,
@@ -864,26 +864,26 @@ export class PhalnxClient {
   }
 
   /**
-   * Wrap + sign + send + confirm in one call.
+   * Seal + sign + send + confirm in one call.
    *
    * Uses the same signing pattern as TransactionExecutor.signSendConfirm()
    * (transaction-executor.ts:236-265).
    */
   async executeAndConfirm(
     instructions: Instruction[],
-    opts: ClientWrapOpts & { confirmOptions?: SendAndConfirmOptions },
+    opts: ClientSealOpts & { confirmOptions?: SendAndConfirmOptions },
   ): Promise<ExecuteResult> {
     try {
-      const result = await this.wrap(instructions, opts);
+      const result = await this.seal(instructions, opts);
       const encoded = await signAndEncode(this.agent, result.transaction);
       const signature = await sendAndConfirmTransaction(
         this.rpc,
         encoded,
         opts.confirmOptions,
       );
-      return { signature, wrapResult: result };
+      return { signature, sealResult: result };
     } catch (err) {
-      const sdkError = wrapToAgentError(err);
+      const sdkError = toSigilAgentError(err);
       this.onErrorCallback?.(sdkError, {
         action: opts.actionType?.toString() ?? "unknown",
         tokenMint: opts.tokenMint,

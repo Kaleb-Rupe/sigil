@@ -160,7 +160,7 @@ export type { PriorityLevel, PriorityFeeConfig } from "./priority-fees.js";
 export {
   simulateBeforeSend,
   detectDrainAttempt,
-  detectDrainFromWrapContext,
+  detectDrainFromSealContext,
   adjustCU,
   parseTokenBalance,
   RISK_FLAG_LARGE_OUTFLOW,
@@ -362,8 +362,8 @@ export type { CustodyAdapter } from "./custody-adapter.js";
 export {
   ON_CHAIN_ERROR_MAP,
   toAgentError,
-  wrapToAgentError,
-  PhalnxSdkError,
+  toSigilAgentError,
+  SigilSdkError,
   protocolEscalationError,
   parseOnChainErrorCode,
   isAgentError,
@@ -416,15 +416,15 @@ export type {
   ShieldedSignerOptions,
 } from "./shield.js";
 
-// ─── Wrap ──────────────────────────────────────────────────────────────────
-export { wrap, PhalnxClient, replaceAgentAtas } from "./wrap.js";
+// ─── Seal ──────────────────────────────────────────────────────────────────
+export { seal, SigilClient, replaceAgentAtas } from "./seal.js";
 export type {
-  WrapParams,
-  WrapResult,
-  PhalnxClientConfig,
-  ClientWrapOpts,
+  SealParams,
+  SealResult,
+  SigilClientConfig,
+  ClientSealOpts,
   ExecuteResult,
-} from "./wrap.js";
+} from "./seal.js";
 
 // ─── Create Vault ──────────────────────────────────────────────────────────
 export { createVault, createAndSendVault } from "./create-vault.js";

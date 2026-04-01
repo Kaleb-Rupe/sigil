@@ -60,7 +60,7 @@ export interface ExecuteTransactionParams {
   /** Resolved address lookup tables for transaction compression */
   addressLookupTables?: AddressesByLookupTableAddress;
   /** Vault monitoring context for drain detection during simulation.
-   *  Populated from WrapResult.vaultContext by the caller. */
+   *  Populated from SealResult.vaultContext by the caller. */
   vaultMonitoring?: {
     vaultAddress: string;
     monitorAccounts: string[];

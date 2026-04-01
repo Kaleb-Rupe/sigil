@@ -2142,13 +2142,13 @@ const SDK_ERROR_PATTERNS: SdkErrorPattern[] = [
   },
 ];
 
-// ─── PhalnxSdkError ──────────────────────────────────────────────────────────
+// ─── SigilSdkError ──────────────────────────────────────────────────────────
 
 /**
  * Error class that is BOTH an Error instance AND an AgentError.
  * Critical: extends Error so `instanceof Error` checks work in consumer code.
  */
-export class PhalnxSdkError extends Error implements AgentError {
+export class SigilSdkError extends Error implements AgentError {
   readonly code: string;
   readonly category: ErrorCategory;
   readonly retryable: boolean;
@@ -2158,7 +2158,7 @@ export class PhalnxSdkError extends Error implements AgentError {
 
   constructor(agentError: AgentError) {
     super(agentError.message);
-    this.name = "PhalnxSdkError";
+    this.name = "SigilSdkError";
     this.code = agentError.code;
     this.category = agentError.category;
     this.retryable = agentError.retryable;
@@ -2168,27 +2168,27 @@ export class PhalnxSdkError extends Error implements AgentError {
   }
 }
 
-// ─── wrapToAgentError ────────────────────────────────────────────────────────
+// ─── toSigilAgentError ────────────────────────────────────────────────────────
 
 /**
- * Convert any error thrown by wrap() or PhalnxClient methods into a structured AgentError.
- * Returns a PhalnxSdkError (extends Error) so instanceof Error checks still work.
+ * Convert any error thrown by seal() or SigilClient methods into a structured AgentError.
+ * Returns a SigilSdkError (extends Error) so instanceof Error checks still work.
  *
  * Processing order:
  * 1. Try on-chain error extraction via toAgentError() (numeric codes 6000-6070)
- * 2. Pattern-match SDK error messages (11 patterns from wrap.ts throw sites)
+ * 2. Pattern-match SDK error messages (11 patterns from seal.ts throw sites)
  * 3. Fallback to UNKNOWN/FATAL
  */
-export function wrapToAgentError(err: unknown): PhalnxSdkError {
+export function toSigilAgentError(err: unknown): SigilSdkError {
   // Try on-chain error extraction first
   const onChain = toAgentError(err);
-  if (onChain.code !== "UNKNOWN") return new PhalnxSdkError(onChain);
+  if (onChain.code !== "UNKNOWN") return new SigilSdkError(onChain);
 
   // Pattern-match SDK errors
   const message = err instanceof Error ? err.message : String(err);
   for (const p of SDK_ERROR_PATTERNS) {
     if (p.pattern.test(message)) {
-      return new PhalnxSdkError({
+      return new SigilSdkError({
         code: `SDK_${p.category}`,
         message,
         category: p.category,
@@ -2200,7 +2200,7 @@ export function wrapToAgentError(err: unknown): PhalnxSdkError {
   }
 
   // Fallback
-  return new PhalnxSdkError({
+  return new SigilSdkError({
     code: "UNKNOWN",
     message,
     category: "FATAL",
