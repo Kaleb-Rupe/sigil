@@ -4,7 +4,7 @@
  * Core 17-step flow for HTTP 402 Payment Required support.
  * Uses Kit TransactionSigner, zero web3.js dependency.
  *
- * x402 payments are simple SPL transfers — NOT Phalnx-composed transactions.
+ * x402 payments are simple SPL transfers — NOT Sigil-composed transactions.
  * Shield enforcement happens at the policy-bridge level, not the signer level.
  */
 

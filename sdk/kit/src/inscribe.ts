@@ -25,7 +25,7 @@ import {
 } from "./resolve-accounts.js";
 import { findVaultsByOwner } from "./state-resolver.js";
 import { fetchMaybeAgentVault } from "./generated/accounts/agentVault.js";
-import { PHALNX_PROGRAM_ADDRESS } from "./generated/programs/phalnx.js";
+import { SIGIL_PROGRAM_ADDRESS } from "./generated/programs/sigil.js";
 import { validateNetwork, type Network } from "./types.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -178,7 +178,7 @@ export function mapPoliciesToVaultParams(
 export async function findNextVaultId(
   rpc: Rpc<SolanaRpcApi>,
   owner: Address,
-  programAddress: Address = PHALNX_PROGRAM_ADDRESS,
+  programAddress: Address = SIGIL_PROGRAM_ADDRESS,
 ): Promise<bigint> {
   // Fast path: sequential probe for first 5 slots (common case)
   for (let i = 0n; i < 5n; i++) {

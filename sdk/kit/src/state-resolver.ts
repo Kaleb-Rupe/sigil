@@ -73,7 +73,7 @@ import {
   NUM_EPOCHS,
   OVERLAY_EPOCH_DURATION,
   OVERLAY_NUM_EPOCHS,
-  PHALNX_PROGRAM_ADDRESS,
+  SIGIL_PROGRAM_ADDRESS,
   PROTOCOL_TREASURY,
   ROLLING_WINDOW_SECONDS,
   U64_MAX,
@@ -747,7 +747,7 @@ export async function findVaultsByOwner(
   // Strategy A: getProgramAccounts with memcmp filter
   try {
     const accounts = await rpc
-      .getProgramAccounts(PHALNX_PROGRAM_ADDRESS, {
+      .getProgramAccounts(SIGIL_PROGRAM_ADDRESS, {
         dataSlice: { offset: VAULT_ID_OFFSET, length: 8 },
         filters: [
           { dataSize: BigInt(AGENT_VAULT_SIZE) },
@@ -835,7 +835,7 @@ export async function findEscrowsByVault(
 
   try {
     const accounts = await rpc
-      .getProgramAccounts(PHALNX_PROGRAM_ADDRESS, {
+      .getProgramAccounts(SIGIL_PROGRAM_ADDRESS, {
         filters: [
           { dataSize: BigInt(ESCROW_DEPOSIT_SIZE) },
           { memcmp: { offset: BigInt(8), bytes: vaultBase64 as Base64EncodedBytes, encoding: "base64" } },
@@ -876,7 +876,7 @@ export async function findSessionsByVault(
 
   try {
     const accounts = await rpc
-      .getProgramAccounts(PHALNX_PROGRAM_ADDRESS, {
+      .getProgramAccounts(SIGIL_PROGRAM_ADDRESS, {
         filters: [
           { dataSize: BigInt(SESSION_AUTHORITY_SIZE) },
           { memcmp: { offset: BigInt(8), bytes: vaultBase64 as Base64EncodedBytes, encoding: "base64" } },

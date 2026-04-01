@@ -35,7 +35,7 @@ import {
   type SpendLimit,
 } from "./policies.js";
 import { simulateBeforeSend } from "./simulation.js";
-import { PHALNX_PROGRAM_ADDRESS } from "./generated/programs/phalnx.js";
+import { SIGIL_PROGRAM_ADDRESS } from "./generated/programs/sigil.js";
 import { VALIDATE_AND_AUTHORIZE_DISCRIMINATOR } from "./generated/instructions/validateAndAuthorize.js";
 import { FINALIZE_SESSION_DISCRIMINATOR } from "./generated/instructions/finalizeSession.js";
 import type { AltCache } from "./alt-loader.js";
@@ -829,7 +829,7 @@ export function createShieldedSigner(
         if (options?.sessionContext) {
           checkSessionBinding(
             tx,
-            PHALNX_PROGRAM_ADDRESS,
+            SIGIL_PROGRAM_ADDRESS,
             options?.sessionBindingSeverity ?? "hard",
           );
         }
@@ -1011,13 +1011,13 @@ function checkSessionBinding(
     return;
   }
 
-  const phalnxIxs = msg.instructions.filter(
+  const sigilIxs = msg.instructions.filter(
     (ix: any) => msg.staticAccounts[ix.programAddressIndex] === programAddress,
   );
 
-  if (phalnxIxs.length === 0) {
+  if (sigilIxs.length === 0) {
     const message =
-      "[ShieldedSigner] No Phalnx instructions found in transaction";
+      "[ShieldedSigner] No Sigil instructions found in transaction";
     if (severity === "hard") {
       throw new ShieldDeniedError([{ rule: "session_binding", message }]);
     }
@@ -1025,8 +1025,8 @@ function checkSessionBinding(
     return;
   }
 
-  const firstData = phalnxIxs[0].data;
-  const lastData = phalnxIxs[phalnxIxs.length - 1].data;
+  const firstData = sigilIxs[0].data;
+  const lastData = sigilIxs[sigilIxs.length - 1].data;
 
   const hasValidate =
     firstData &&

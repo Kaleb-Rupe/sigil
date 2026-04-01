@@ -11,7 +11,7 @@
 
 import type { Address } from "@solana/kit";
 import type { ResolvedVaultState, ResolvedVaultStateForOwner } from "./state-resolver.js";
-import type { DecodedPhalnxEvent } from "./events.js";
+import type { DecodedSigilEvent } from "./events.js";
 import { VaultStatus } from "./generated/types/vaultStatus.js";
 import { getSpendingVelocity } from "./spending-analytics.js";
 import { describeEvent } from "./event-analytics.js";
@@ -531,10 +531,10 @@ const AUDIT_EVENTS: Record<string, AuditEntry["category"]> = {
  * Note on event field availability (verified against events.rs):
  * - 10 of 22 events have no `timestamp` field — fallback through `executes_at`, `applied_at`, then 0.
  * - 7+ events have neither `owner` nor `agent` — fallback through `settled_by`, `refunded_by`, `vault`.
- * - `txSignature` requires enrichment from transaction envelope (DecodedPhalnxEvent has no such field).
+ * - `txSignature` requires enrichment from transaction envelope (DecodedSigilEvent has no such field).
  */
 export function getAuditTrail(
-  events: DecodedPhalnxEvent[],
+  events: DecodedSigilEvent[],
   options?: {
     /** Filter to specific categories. If omitted, returns all. */
     categories?: AuditEntry["category"][];

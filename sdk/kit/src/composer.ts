@@ -1,5 +1,5 @@
 /**
- * Kit-native pipe() transaction composer for Phalnx.
+ * Kit-native pipe() transaction composer for Sigil.
  *
  * Builds atomic composed transactions:
  * [ComputeBudget, PriorityFee?, ValidateAndAuthorize, ...defiIxs, FinalizeSession]
@@ -54,7 +54,7 @@ export interface ComposeTransactionParams {
  * Transaction order: [ComputeBudget, PriorityFee?, Validate, ...DeFi, Finalize]
  * All instructions succeed or all revert atomically.
  */
-export function composePhalnxTransaction(
+export function composeSigilTransaction(
   params: ComposeTransactionParams,
 ): ReturnType<typeof compileTransaction> {
   const units =

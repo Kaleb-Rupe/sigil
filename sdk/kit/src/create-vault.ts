@@ -1,5 +1,5 @@
 /**
- * createVault() — Provision an on-chain Phalnx vault.
+ * createVault() — Provision an on-chain Sigil vault.
  *
  * Returns instructions (not a signed transaction) so the caller controls
  * transaction composition, signing, and sending.

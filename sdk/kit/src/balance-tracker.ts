@@ -1,5 +1,5 @@
 /**
- * Balance tracking and P&L computation for Phalnx vaults.
+ * Balance tracking and P&L computation for Sigil vaults.
  *
  * Two complementary approaches:
  * - `getVaultPnL()`: Lifetime P&L from on-chain cumulative counters (single RPC call)

@@ -6,7 +6,7 @@
  *
  * NOTE: This module imports node:fs and @solana/web3.js — do NOT re-export
  * from the barrel (index.ts) to avoid breaking browser bundlers.
- * Import directly: import { ... } from "@phalnx/kit/testing/devnet"
+ * Import directly: import { ... } from "@usesigil/kit/testing/devnet"
  */
 
 import {

@@ -1,5 +1,5 @@
 /**
- * Kit-native RPC helpers for Phalnx SDK.
+ * Kit-native RPC helpers for Sigil SDK.
  *
  * - BlockhashCache: Caches getLatestBlockhash with configurable TTL
  * - signAndEncode: Sign a compiled TX + encode to base64 wire format

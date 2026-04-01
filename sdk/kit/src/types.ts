@@ -1,5 +1,5 @@
 /**
- * Kit-native type constants + permission helpers for Phalnx.
+ * Kit-native type constants + permission helpers for Sigil.
  *
  * All types use Kit's `Address` (branded string) instead of web3.js `PublicKey`,
  * and `bigint` instead of `BN`.
@@ -8,7 +8,7 @@
 import type { Address, Instruction } from "@solana/kit";
 
 // Re-export the program address from generated code
-export { PHALNX_PROGRAM_ADDRESS } from "./generated/programs/phalnx.js";
+export { SIGIL_PROGRAM_ADDRESS } from "./generated/programs/sigil.js";
 
 // Re-export generated types
 export type { ActionType } from "./generated/types/actionType.js";

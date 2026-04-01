@@ -6,8 +6,8 @@
  */
 
 import type { Address, Rpc, SolanaRpcApi } from "@solana/kit";
-import type { DecodedPhalnxEvent, PhalnxEventName } from "./events.js";
-import { parseAndDecodePhalnxEvents } from "./events.js";
+import type { DecodedSigilEvent, SigilEventName } from "./events.js";
+import { parseAndDecodeSigilEvents } from "./events.js";
 import { formatUsd, formatAddress, formatTokenAmount } from "./formatting.js";
 import { resolveToken } from "./tokens.js";
 import { parseActionType, type Network } from "./types.js";
@@ -28,7 +28,7 @@ export type EventCategory =
 export interface VaultActivityItem {
   timestamp: number;
   txSignature: string;
-  eventType: PhalnxEventName;
+  eventType: SigilEventName;
   category: EventCategory;
   agent: Address | null;
   amount: bigint | null;
@@ -90,7 +90,7 @@ export function categorizeEvent(eventName: string): EventCategory {
  * Uses fintech language — no raw error codes or program IDs.
  */
 export function describeEvent(
-  decoded: DecodedPhalnxEvent,
+  decoded: DecodedSigilEvent,
   network: Network = "mainnet-beta",
 ): string {
   const f = decoded.fields;
@@ -215,7 +215,7 @@ export function describeEvent(
  * Main entry point for the activity feed.
  */
 export function buildActivityItem(
-  decoded: DecodedPhalnxEvent,
+  decoded: DecodedSigilEvent,
   txSignature: string,
   blockTime: number,
   network: Network = "mainnet-beta",
@@ -298,7 +298,7 @@ export async function getVaultActivity(
 
       if (!tx?.meta?.logMessages) continue;
 
-      const decoded = parseAndDecodePhalnxEvents([...tx.meta.logMessages]);
+      const decoded = parseAndDecodeSigilEvents([...tx.meta.logMessages]);
       for (const event of decoded) {
         items.push(
           buildActivityItem(

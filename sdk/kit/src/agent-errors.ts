@@ -80,12 +80,12 @@ export const ON_CHAIN_ERROR_MAP: Record<number, ErrorMapping> = {
       {
         action: "reactivate_vault",
         description: "Reactivate the vault if it is frozen",
-        tool: "phalnx_reactivate_vault",
+        tool: "sigil_reactivate_vault",
       },
       {
         action: "create_vault",
         description: "Create a new vault if this one is closed",
-        tool: "phalnx_create_vault",
+        tool: "sigil_create_vault",
       },
     ],
   },
@@ -99,12 +99,12 @@ export const ON_CHAIN_ERROR_MAP: Record<number, ErrorMapping> = {
         action: "check_agent_registration",
         description:
           "Verify the agent keypair is registered on the target vault",
-        tool: "phalnx_check_vault",
+        tool: "sigil_check_vault",
       },
       {
         action: "register_agent",
         description: "Ask the vault owner to register this agent",
-        tool: "phalnx_register_agent",
+        tool: "sigil_register_agent",
       },
     ],
   },
@@ -142,7 +142,7 @@ export const ON_CHAIN_ERROR_MAP: Record<number, ErrorMapping> = {
       {
         action: "check_policy",
         description: "Check which protocols the vault allows",
-        tool: "phalnx_check_vault",
+        tool: "sigil_check_vault",
       },
       {
         action: "change_protocol",
@@ -164,7 +164,7 @@ export const ON_CHAIN_ERROR_MAP: Record<number, ErrorMapping> = {
       {
         action: "check_limits",
         description: "Check the vault's maxTransactionSizeUsd policy",
-        tool: "phalnx_check_vault",
+        tool: "sigil_check_vault",
       },
     ],
   },
@@ -182,7 +182,7 @@ export const ON_CHAIN_ERROR_MAP: Record<number, ErrorMapping> = {
       {
         action: "check_spending",
         description: "Check remaining spending capacity",
-        tool: "phalnx_check_spending",
+        tool: "sigil_check_spending",
       },
       {
         action: "wait",
@@ -204,7 +204,7 @@ export const ON_CHAIN_ERROR_MAP: Record<number, ErrorMapping> = {
       {
         action: "check_limits",
         description: "Check the vault's maxLeverageBps policy",
-        tool: "phalnx_check_vault",
+        tool: "sigil_check_vault",
       },
     ],
   },
@@ -217,7 +217,7 @@ export const ON_CHAIN_ERROR_MAP: Record<number, ErrorMapping> = {
       {
         action: "close_position",
         description: "Close an existing position before opening a new one",
-        tool: "phalnx_close_position",
+        tool: "sigil_close_position",
       },
     ],
   },
@@ -230,7 +230,7 @@ export const ON_CHAIN_ERROR_MAP: Record<number, ErrorMapping> = {
       {
         action: "check_policy",
         description: "Verify canOpenPositions is enabled in vault policy",
-        tool: "phalnx_check_vault",
+        tool: "sigil_check_vault",
       },
     ],
   },
@@ -267,7 +267,7 @@ export const ON_CHAIN_ERROR_MAP: Record<number, ErrorMapping> = {
       {
         action: "close_positions",
         description: "Close all open positions before closing the vault",
-        tool: "phalnx_close_position",
+        tool: "sigil_close_position",
       },
     ],
   },
@@ -292,7 +292,7 @@ export const ON_CHAIN_ERROR_MAP: Record<number, ErrorMapping> = {
       {
         action: "check_agents",
         description: "Check existing agents on the vault",
-        tool: "phalnx_check_vault",
+        tool: "sigil_check_vault",
       },
     ],
   },
@@ -305,7 +305,7 @@ export const ON_CHAIN_ERROR_MAP: Record<number, ErrorMapping> = {
       {
         action: "register_agent",
         description: "Register an agent on the vault first",
-        tool: "phalnx_register_agent",
+        tool: "sigil_register_agent",
       },
     ],
   },
@@ -318,7 +318,7 @@ export const ON_CHAIN_ERROR_MAP: Record<number, ErrorMapping> = {
       {
         action: "check_status",
         description: "Check the vault's current status",
-        tool: "phalnx_check_vault",
+        tool: "sigil_check_vault",
       },
     ],
   },
@@ -331,7 +331,7 @@ export const ON_CHAIN_ERROR_MAP: Record<number, ErrorMapping> = {
       {
         action: "create_vault",
         description: "Create a new vault — closed vaults cannot be reopened",
-        tool: "phalnx_create_vault",
+        tool: "sigil_create_vault",
       },
     ],
   },
@@ -352,7 +352,7 @@ export const ON_CHAIN_ERROR_MAP: Record<number, ErrorMapping> = {
       {
         action: "check_balance",
         description: "Check vault token balances",
-        tool: "phalnx_check_vault",
+        tool: "sigil_check_vault",
       },
     ],
   },
@@ -468,7 +468,7 @@ export const ON_CHAIN_ERROR_MAP: Record<number, ErrorMapping> = {
       {
         action: "queue_update",
         description: "Queue the policy update through the timelock mechanism",
-        tool: "phalnx_update_policy",
+        tool: "sigil_update_policy",
         parameters: { use_timelock: true },
       },
     ],
@@ -494,7 +494,7 @@ export const ON_CHAIN_ERROR_MAP: Record<number, ErrorMapping> = {
       {
         action: "check_destinations",
         description: "Check the vault's allowedDestinations list",
-        tool: "phalnx_check_vault",
+        tool: "sigil_check_vault",
       },
       {
         action: "use_allowed_destination",
@@ -552,7 +552,7 @@ export const ON_CHAIN_ERROR_MAP: Record<number, ErrorMapping> = {
       {
         action: "check_positions",
         description: "Verify you have open positions before closing",
-        tool: "phalnx_check_vault",
+        tool: "sigil_check_vault",
       },
     ],
   },
@@ -615,7 +615,7 @@ export const ON_CHAIN_ERROR_MAP: Record<number, ErrorMapping> = {
       {
         action: "check_policy",
         description: "Check the vault's maxSlippageBps setting",
-        tool: "phalnx_check_vault",
+        tool: "sigil_check_vault",
       },
     ],
   },
@@ -695,7 +695,7 @@ export const ON_CHAIN_ERROR_MAP: Record<number, ErrorMapping> = {
       {
         action: "revoke_agent",
         description: "Revoke an existing agent before registering a new one",
-        tool: "phalnx_revoke_agent",
+        tool: "sigil_revoke_agent",
       },
     ],
   },
@@ -708,7 +708,7 @@ export const ON_CHAIN_ERROR_MAP: Record<number, ErrorMapping> = {
       {
         action: "check_permissions",
         description: "Check the agent's permission bitmask",
-        tool: "phalnx_check_vault",
+        tool: "sigil_check_vault",
       },
       {
         action: "request_permissions",
@@ -752,7 +752,7 @@ export const ON_CHAIN_ERROR_MAP: Record<number, ErrorMapping> = {
       {
         action: "refund_escrow",
         description: "Refund the expired escrow back to the source vault",
-        tool: "phalnx_refund_escrow",
+        tool: "sigil_refund_escrow",
       },
     ],
   },
@@ -769,7 +769,7 @@ export const ON_CHAIN_ERROR_MAP: Record<number, ErrorMapping> = {
       {
         action: "settle",
         description: "Settle the escrow if you are the destination agent",
-        tool: "phalnx_settle_escrow",
+        tool: "sigil_settle_escrow",
       },
     ],
   },
@@ -837,7 +837,7 @@ export const ON_CHAIN_ERROR_MAP: Record<number, ErrorMapping> = {
         action: "check_constraints",
         description:
           "Review the vault's instruction constraints to understand what is allowed",
-        tool: "phalnx_check_vault",
+        tool: "sigil_check_vault",
       },
       {
         action: "modify_instruction",
@@ -889,7 +889,7 @@ export const ON_CHAIN_ERROR_MAP: Record<number, ErrorMapping> = {
       {
         action: "check_spending",
         description: "Check the agent's current spend against their limit",
-        tool: "phalnx_check_spending",
+        tool: "sigil_check_spending",
       },
       {
         action: "wait",
@@ -908,7 +908,7 @@ export const ON_CHAIN_ERROR_MAP: Record<number, ErrorMapping> = {
       {
         action: "revoke_agent",
         description: "Revoke an unused agent to free an overlay slot",
-        tool: "phalnx_revoke_agent",
+        tool: "sigil_revoke_agent",
       },
     ],
   },
@@ -965,7 +965,7 @@ export const ON_CHAIN_ERROR_MAP: Record<number, ErrorMapping> = {
       {
         action: "check_constraints",
         description: "Review the vault's instruction constraints",
-        tool: "phalnx_check_vault",
+        tool: "sigil_check_vault",
       },
     ],
   },
@@ -1859,18 +1859,18 @@ export function getAllOnChainErrorCodes(): number[] {
  * Discriminated union for TypeScript switch exhaustiveness with typed context.
  *
  * Complements `ErrorCategory` (string literal union for agent decision-making).
- * Use `PhalnxErrorCategory` when you need typed access to error-specific fields
+ * Use `SigilErrorCategory` when you need typed access to error-specific fields
  * like `remaining` for spending errors or `protocol` for protocol errors.
  */
-export type PhalnxErrorCategory =
+export type SigilErrorCategory =
   | { type: "spending"; code: number; remaining: bigint; cap: bigint }
   | { type: "permission"; code: number; required: string }
   | { type: "protocol"; code: number; protocol: string }
   | { type: "vault"; code: number; status: string }
   | { type: "network"; code: number; retryable: boolean };
 
-/** Map from ErrorCategory string → PhalnxErrorCategory.type */
-const CATEGORY_TYPE_MAP: Record<ErrorCategory, PhalnxErrorCategory["type"]> = {
+/** Map from ErrorCategory string → SigilErrorCategory.type */
+const CATEGORY_TYPE_MAP: Record<ErrorCategory, SigilErrorCategory["type"]> = {
   SPENDING_CAP: "spending",
   PERMISSION: "permission",
   PROTOCOL_NOT_SUPPORTED: "protocol",
@@ -1884,7 +1884,7 @@ const CATEGORY_TYPE_MAP: Record<ErrorCategory, PhalnxErrorCategory["type"]> = {
 };
 
 /**
- * Convert an AgentError into a typed PhalnxErrorCategory for switch exhaustiveness.
+ * Convert an AgentError into a typed SigilErrorCategory for switch exhaustiveness.
  *
  * Extracts typed context from the AgentError.context bag into the appropriate
  * discriminated union variant. Returns the variant matching the error's category.
@@ -1917,7 +1917,7 @@ function safeBigInt(value: unknown): bigint {
   return 0n;
 }
 
-export function categorizeError(err: AgentError): PhalnxErrorCategory {
+export function categorizeError(err: AgentError): SigilErrorCategory {
   const code = parseInt(err.code, 10) || 0;
   const categoryType = CATEGORY_TYPE_MAP[err.category] ?? "network";
 

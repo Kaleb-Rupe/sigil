@@ -1,4 +1,4 @@
-// @phalnx/kit — Kit-native SDK for Phalnx
+// @usesigil/kit — Kit-native SDK for Sigil
 // ESM-only, zero web3.js dependency
 
 // ─── Generated Client ─────────────────────────────────────────────────────────
@@ -7,7 +7,7 @@ export * from "./generated/index.js";
 // ─── Type Constants + Permissions ─────────────────────────────────────────────
 export {
   // Program
-  PHALNX_PROGRAM_ADDRESS,
+  SIGIL_PROGRAM_ADDRESS,
   // Fee constants
   FEE_RATE_DENOMINATOR,
   PROTOCOL_FEE_RATE,
@@ -111,15 +111,15 @@ export type {
 
 // ─── ALT (Address Lookup Table) ──────────────────────────────────────────────
 export {
-  PHALNX_ALT_DEVNET,
-  PHALNX_ALT_MAINNET,
-  getPhalnxAltAddress,
+  SIGIL_ALT_DEVNET,
+  SIGIL_ALT_MAINNET,
+  getSigilAltAddress,
 } from "./alt-config.js";
 export { AltCache, mergeAltAddresses } from "./alt-loader.js";
 
 // ─── Transaction Composer ─────────────────────────────────────────────────────
 export {
-  composePhalnxTransaction,
+  composeSigilTransaction,
   validateTransactionSize,
   measureTransactionSize,
 } from "./composer.js";
@@ -127,16 +127,16 @@ export type { ComposeTransactionParams } from "./composer.js";
 
 // ─── Event Parser ─────────────────────────────────────────────────────────────
 export {
-  parsePhalnxEvents,
+  parseSigilEvents,
   filterEvents,
   getEventNames,
-  decodePhalnxEvent,
-  parseAndDecodePhalnxEvents,
+  decodeSigilEvent,
+  parseAndDecodeSigilEvents,
 } from "./events.js";
 export type {
-  PhalnxEvent,
-  PhalnxEventName,
-  DecodedPhalnxEvent,
+  SigilEvent,
+  SigilEventName,
+  DecodedSigilEvent,
 } from "./events.js";
 
 // ─── Priority Fees ────────────────────────────────────────────────────────────
@@ -375,7 +375,7 @@ export type {
   ErrorCategory,
   RecoveryAction,
   AgentError,
-  PhalnxErrorCategory,
+  SigilErrorCategory,
 } from "./agent-errors.js";
 
 // ─── Protocol Resolver ───────────────────────────────────────────────────────

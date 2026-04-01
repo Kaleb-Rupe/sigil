@@ -19,7 +19,7 @@ import type {
 import { getBase64EncodedWireTransaction } from "@solana/kit";
 
 import {
-  composePhalnxTransaction,
+  composeSigilTransaction,
   measureTransactionSize,
   MAX_TX_SIZE,
 } from "./composer.js";
@@ -33,7 +33,7 @@ import {
   type RiskFlag,
   type DrainThresholds,
 } from "./simulation.js";
-import { parsePhalnxEvents, type PhalnxEvent } from "./events.js";
+import { parseSigilEvents, type SigilEvent } from "./events.js";
 import {
   BlockhashCache,
   signAndEncode,
@@ -77,8 +77,8 @@ export interface ExecuteTransactionResult {
   unitsConsumed?: number;
   /** Transaction logs */
   logs?: string[];
-  /** Parsed Phalnx events */
-  events: PhalnxEvent[];
+  /** Parsed Sigil events */
+  events: SigilEvent[];
   /** Risk flag warnings (LARGE_OUTFLOW, UNKNOWN_RECIPIENT) — non-blocking */
   warnings?: RiskFlag[];
 }
@@ -143,7 +143,7 @@ export class TransactionExecutor {
     const computeUnits =
       params.computeUnits ?? estimateComposedCU(params.defiInstructions);
 
-    const compiledTx = composePhalnxTransaction({
+    const compiledTx = composeSigilTransaction({
       feePayer: params.feePayer,
       validateIx: params.validateIx,
       defiInstructions: params.defiInstructions,
@@ -184,12 +184,12 @@ export class TransactionExecutor {
    */
   async simulate(
     params: ExecuteTransactionParams,
-    compiledTx: ReturnType<typeof composePhalnxTransaction>,
+    compiledTx: ReturnType<typeof composeSigilTransaction>,
     estimatedCU: number,
     blockhash: { blockhash: string; lastValidBlockHeight: bigint },
   ): Promise<{
     simulation: SimulationResult;
-    recomposedTx?: ReturnType<typeof composePhalnxTransaction>;
+    recomposedTx?: ReturnType<typeof composeSigilTransaction>;
     finalCU: number;
   }> {
     const wireBase64 = getBase64EncodedWireTransaction(compiledTx);
@@ -215,7 +215,7 @@ export class TransactionExecutor {
     const adjustedCU = adjustCU(estimatedCU, simulation.unitsConsumed);
     if (adjustedCU !== estimatedCU) {
       // Re-compose with adjusted CU — reuse blockhash from initial compose
-      const recomposedTx = composePhalnxTransaction({
+      const recomposedTx = composeSigilTransaction({
         feePayer: params.feePayer,
         validateIx: params.validateIx,
         defiInstructions: params.defiInstructions,
@@ -235,7 +235,7 @@ export class TransactionExecutor {
    * Steps 11+12: Sign, send, and confirm the transaction.
    */
   async signSendConfirm(
-    compiledTx: ReturnType<typeof composePhalnxTransaction>,
+    compiledTx: ReturnType<typeof composeSigilTransaction>,
   ): Promise<{ signature: string; logs?: string[] }> {
     const wireBase64 = await signAndEncode(this.agent, compiledTx);
     const signature = await sendAndConfirmTransaction(
@@ -300,7 +300,7 @@ export class TransactionExecutor {
     const { signature } = await this.signSendConfirm(txToSign);
 
     // Parse events from simulation logs (best-effort)
-    const events = simLogs ? parsePhalnxEvents(simLogs) : [];
+    const events = simLogs ? parseSigilEvents(simLogs) : [];
 
     return {
       signature,

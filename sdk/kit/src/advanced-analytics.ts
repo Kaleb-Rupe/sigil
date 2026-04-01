@@ -14,7 +14,7 @@
  */
 
 import type { Address } from "@solana/kit";
-import type { DecodedPhalnxEvent } from "./events.js";
+import type { DecodedSigilEvent } from "./events.js";
 import type { SpendTracker } from "./generated/index.js";
 import type { EffectiveBudget } from "./state-resolver.js";
 import { EPOCH_DURATION } from "./types.js";
@@ -83,7 +83,7 @@ export interface CoverageReport {
  * Pairs ActionAuthorized → SessionFinalized events by agent.
  */
 export function getSlippageEfficiency(
-  events: DecodedPhalnxEvent[],
+  events: DecodedSigilEvent[],
 ): SlippageReport {
   const agentTrades = new Map<
     string,
@@ -223,7 +223,7 @@ export function getCapVelocity(
  * SOC 2 auditors require this metric.
  */
 export function getSessionDeviationRate(
-  events: DecodedPhalnxEvent[],
+  events: DecodedSigilEvent[],
 ): DeviationReport {
   const pairs: Array<{ agent: string; authorized: bigint; actual: bigint }> =
     [];
@@ -286,7 +286,7 @@ export function getSessionDeviationRate(
  * Measure how long vault funds sit idle between agent actions.
  */
 export function getIdleCapitalDuration(
-  events: DecodedPhalnxEvent[],
+  events: DecodedSigilEvent[],
   nowUnix: number,
 ): IdleCapitalReport {
   const tradeTimestamps: number[] = [];
@@ -334,7 +334,7 @@ export function getIdleCapitalDuration(
  * Time between permission grants and first use. <60s = suspicious.
  */
 export function getPermissionEscalationLatency(
-  events: DecodedPhalnxEvent[],
+  events: DecodedSigilEvent[],
 ): EscalationReport {
   const escalations: EscalationReport["escalations"] = [];
 
@@ -378,7 +378,7 @@ export function getPermissionEscalationLatency(
  * were properly finalized. Non-zero orphan rate = potential attack surface.
  */
 export function getInstructionCoverageRatio(
-  events: DecodedPhalnxEvent[],
+  events: DecodedSigilEvent[],
 ): CoverageReport {
   const authorized = new Map<string, number>();
   const finalized = new Map<string, number>();
@@ -439,7 +439,7 @@ const ACTION_NAMES = [
  */
 export function getPermissionUtilizationRate(
   state: { vault: { agents: Array<{ pubkey: Address; permissions: bigint }> } },
-  events: DecodedPhalnxEvent[],
+  events: DecodedSigilEvent[],
 ): PermissionUtilization {
   // Count which ActionTypes each agent has used
   const agentActionUsage = new Map<string, Set<string>>();

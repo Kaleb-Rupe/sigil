@@ -6,7 +6,7 @@
  */
 
 import type { Address } from "@solana/kit";
-import type { DecodedPhalnxEvent } from "./events.js";
+import type { DecodedSigilEvent } from "./events.js";
 import type { ResolvedVaultState, EffectiveBudget } from "./state-resolver.js";
 import { bytesToAddress } from "./state-resolver.js";
 import { permissionsToStrings, FULL_PERMISSIONS } from "./types.js";
@@ -238,7 +238,7 @@ export interface AgentErrorBreakdown {
  * Used for the Agent Detail page success rate metric.
  */
 export function getAgentErrorBreakdown(
-  events: DecodedPhalnxEvent[],
+  events: DecodedSigilEvent[],
   agentAddress: Address,
 ): AgentErrorBreakdown {
   let total = 0;
