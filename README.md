@@ -1,6 +1,6 @@
-# Phalnx
+# Sigil
 
-[![CI](https://github.com/Kaleb-Rupe/phalnx/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Kaleb-Rupe/phalnx/actions/workflows/ci.yml)
+[![CI](https://github.com/Kaleb-Rupe/sigil/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Kaleb-Rupe/sigil/actions/workflows/ci.yml)
 ![Tests](https://img.shields.io/badge/tests-1580-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 
@@ -12,18 +12,18 @@ Every AI agent on Solana today operates with unrestricted wallet access. Framewo
 
 ## The Solution
 
-Phalnx wraps your agent's wallet with on-chain policy enforcement. One call gives you client-side fast deny, TEE key custody, and on-chain vault enforcement — bundled as one product.
+Sigil wraps your agent's wallet with on-chain policy enforcement. One call gives you client-side fast deny, TEE key custody, and on-chain vault enforcement — bundled as one product.
 
 ```typescript
-import { wrap } from "@phalnx/kit";
+import { seal } from "@usesigil/kit";
 
-// wrap() sandwiches any DeFi instruction with Phalnx security
+// seal() sandwiches any DeFi instruction with Sigil security
 // policies enforced by Solana validators
 ```
 
 ### Security Model
 
-Phalnx provides three layers of protection in a single integration:
+Sigil provides three layers of protection in a single integration:
 
 1. **Client-side policy checks** — fast deny before transactions hit the network
 2. **TEE key custody** — agent private keys stored in hardware enclaves (Crossmint, Turnkey, Privy)
@@ -44,13 +44,13 @@ Phalnx provides three layers of protection in a single integration:
 
 ### How It Works
 
-Phalnx uses **instruction composition** to avoid Solana's 4-level CPI depth limit. Instead of wrapping DeFi calls inside the program, it sandwiches them in an atomic transaction:
+Sigil uses **instruction composition** to avoid Solana's 4-level CPI depth limit. Instead of wrapping DeFi calls inside the program, it sandwiches them in an atomic transaction:
 
 ```
 Transaction = [
-  ValidateAndAuthorize,   // Phalnx checks policy, creates session, delegates tokens
+  ValidateAndAuthorize,   // Sigil checks policy, creates session, delegates tokens
   DeFi instruction(s),    // Jupiter swap, Flash Trade open, etc.
-  FinalizeSession         // Phalnx records audit, revokes delegation
+  FinalizeSession         // Sigil records audit, revokes delegation
 ]
 ```
 
@@ -105,23 +105,23 @@ All instructions succeed or all revert atomically. The agent's signing key is va
 
 | Package                                                         | Description                                                          | npm                                                                                                                                   |
 | --------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| [`@phalnx/core`](./sdk/core)                                    | Pure TypeScript policy engine — zero blockchain dependencies         | [![npm](https://img.shields.io/npm/v/@phalnx/core)](https://www.npmjs.com/package/@phalnx/core)                                       |
-| [`@phalnx/kit`](./sdk/kit)                                      | Kit-native SDK — `wrap()` API, TEE custody, protocol-agnostic        | [![npm](https://img.shields.io/npm/v/@phalnx/kit)](https://www.npmjs.com/package/@phalnx/kit)                                         |
-| [`@phalnx/platform`](./sdk/platform)                            | Platform client — request TEE wallet provisioning via Solana Actions | [![npm](https://img.shields.io/npm/v/@phalnx/platform)](https://www.npmjs.com/package/@phalnx/platform)                               |
-| [`@phalnx/custody-crossmint`](./sdk/custody/crossmint)          | Crossmint TEE custody adapter — hardware-enclave signing             | [![npm](https://img.shields.io/npm/v/@phalnx/custody-crossmint)](https://www.npmjs.com/package/@phalnx/custody-crossmint)             |
+| [`@usesigil/core`](./sdk/core)                                    | Pure TypeScript policy engine — zero blockchain dependencies         | [![npm](https://img.shields.io/npm/v/@usesigil/core)](https://www.npmjs.com/package/@usesigil/core)                                       |
+| [`@usesigil/kit`](./sdk/kit)                                      | Kit-native SDK — `seal()` API, TEE custody, protocol-agnostic        | [![npm](https://img.shields.io/npm/v/@usesigil/kit)](https://www.npmjs.com/package/@usesigil/kit)                                         |
+| [`@usesigil/platform`](./sdk/platform)                            | Platform client — request TEE wallet provisioning via Solana Actions | [![npm](https://img.shields.io/npm/v/@usesigil/platform)](https://www.npmjs.com/package/@usesigil/platform)                               |
+| [`@usesigil/custody-crossmint`](./sdk/custody/crossmint)          | Crossmint TEE custody adapter — hardware-enclave signing             | [![npm](https://img.shields.io/npm/v/@usesigil/custody-crossmint)](https://www.npmjs.com/package/@usesigil/custody-crossmint)             |
 
 ## Quick Start
 
 ### Option A — Add to an Existing Project
 
 ```bash
-npm install @phalnx/kit
+npm install @usesigil/kit
 ```
 
 ```typescript
-import { wrap } from "@phalnx/kit";
+import { seal } from "@usesigil/kit";
 
-// wrap() sandwiches any DeFi instruction with Phalnx security
+// seal() sandwiches any DeFi instruction with Sigil security
 // policies enforced by Solana validators
 ```
 
@@ -138,11 +138,11 @@ import { wrap } from "@phalnx/kit";
 anchor build --no-idl
 
 # Generate IDL separately (requires nightly Rust — anchor-syn 0.32.1 bug)
-RUSTUP_TOOLCHAIN=nightly anchor idl build -o target/idl/phalnx.json
+RUSTUP_TOOLCHAIN=nightly anchor idl build -o target/idl/sigil.json
 
 # Run on-chain tests (445 LiteSVM tests — no validator needed)
 npx ts-mocha -p ./tsconfig.json -t 300000 \
-  tests/phalnx.ts tests/jupiter-integration.ts \
+  tests/sigil.ts tests/jupiter-integration.ts \
   tests/flash-trade-integration.ts tests/security-exploits.ts \
   tests/instruction-constraints.ts tests/escrow-integration.ts
 
@@ -151,7 +151,7 @@ pnpm -r run test
 
 # Lint
 npm run lint
-cargo fmt --check --manifest-path programs/phalnx/Cargo.toml
+cargo fmt --check --manifest-path programs/sigil/Cargo.toml
 ```
 
 ### Test Suites
@@ -168,12 +168,12 @@ cargo fmt --check --manifest-path programs/phalnx/Cargo.toml
 | Analytics counters (failed TX + per-agent TX count)  |       7 |
 | Devnet integration tests (real network)              |      69 |
 | Surfpool integration tests (local Surfnet)           |      59 |
-| Core policy engine (`@phalnx/core`)                  |      66 |
-| Platform client tests (`@phalnx/platform`)           |      17 |
+| Core policy engine (`@usesigil/core`)                  |      66 |
+| Platform client tests (`@usesigil/platform`)           |      17 |
 | Crossmint custody adapter                            |      29 |
-| Kit-native SDK (`@phalnx/kit`)                       |     880 |
-| Kit SDK devnet tests (`@phalnx/kit` devnet)          |       9 |
-| SAK plugin (`@phalnx/plugin-solana-agent-kit`)       |       6 |
+| Kit-native SDK (`@usesigil/kit`)                       |     880 |
+| Kit SDK devnet tests (`@usesigil/kit` devnet)          |       9 |
+| SAK plugin (`@usesigil/plugin-solana-agent-kit`)       |       6 |
 | Rust unit tests (cargo test)                         |      71 |
 | **Total**                                            | **1580** |
 

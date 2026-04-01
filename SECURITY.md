@@ -4,9 +4,9 @@
 
 | Package                   | Supported |
 | ------------------------- | --------- |
-| @phalnx/kit >= 0.1.0      | Yes       |
-| @phalnx/core >= 0.1.0     | Yes       |
-| On-chain program (phalnx) | Yes       |
+| @usesigil/kit >= 0.1.0      | Yes       |
+| @usesigil/core >= 0.1.0     | Yes       |
+| On-chain program (sigil) | Yes       |
 
 ## Reporting a Vulnerability
 
@@ -15,7 +15,7 @@
 Please report security issues via one of the following channels:
 
 - **Telegram:** [@MightyMags](https://t.me/MightyMags) (preferred for urgent issues)
-- **Email:** Open a [private security advisory](https://github.com/Kaleb-Rupe/phalnx/security/advisories/new) on this repository
+- **Email:** Open a [private security advisory](https://github.com/Kaleb-Rupe/sigil/security/advisories/new) on this repository
 
 Include as much detail as possible:
 
@@ -34,7 +34,7 @@ Include as much detail as possible:
 
 The following are in scope for security reports:
 
-- On-chain Anchor program (`programs/phalnx/`)
+- On-chain Anchor program (`programs/sigil/`)
 - Kit SDK transaction construction (`sdk/kit/`)
 - Session authority lifecycle
 - Fee calculation and distribution
@@ -51,7 +51,7 @@ No formal bug bounty program at this time. Significant findings may be rewarded 
 
 ## Program Verification
 
-The deployed Phalnx program can be verified against this source repository using [solana-verify](https://github.com/Ellipsis-Labs/solana-verifiable-build) (Ellipsis Labs):
+The deployed Sigil program can be verified against this source repository using [solana-verify](https://github.com/Ellipsis-Labs/solana-verifiable-build) (Ellipsis Labs):
 
 ### Prerequisites
 - `cargo install solana-verify`
@@ -66,8 +66,8 @@ npx tsx scripts/verify-program.ts --cluster devnet
 # Or directly with solana-verify CLI
 solana-verify verify-from-repo \
   --program-id 4ZeVCqnjUgUtFrHHPG7jELUxvJeoVGHhGNgPrhBPwrHL \
-  --library-name phalnx \
-  --mount-path programs/phalnx \
+  --library-name sigil \
+  --mount-path programs/sigil \
   --url https://api.devnet.solana.com
 ```
 

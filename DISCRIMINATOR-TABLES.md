@@ -1,7 +1,7 @@
-# Phalnx Discriminator Tables — Verified from Source
+# Sigil Discriminator Tables — Verified from Source
 
-> Companion to `WRAP-ARCHITECTURE-PLAN.md` v3
-> All bytes verified from: Jupiter (`programs/phalnx/src/instructions/integrations/jupiter.rs`),
+> Companion to `SEAL-ARCHITECTURE-PLAN.md` v3
+> All bytes verified from: Jupiter (`programs/sigil/src/instructions/integrations/jupiter.rs`),
 > Flash Trade (`sdk/kit/src/generated/protocols/flash-trade/instructions/*.ts`)
 
 ---
@@ -10,7 +10,7 @@
 
 ```rust
 use anchor_lang::prelude::*;
-use crate::errors::PhalnxError;
+use crate::errors::SigilError;
 use crate::state::{ActionType, JUPITER_PROGRAM, FLASH_TRADE_PROGRAM};
 
 #[derive(PartialEq)]
@@ -27,7 +27,7 @@ struct DiscriminatorEntry {
 
 const DISCRIMINATOR_MAP: &[DiscriminatorEntry] = &[
     // ═══ JUPITER V6 (4 entries, all Spending) ═══
-    // Source: programs/phalnx/src/instructions/integrations/jupiter.rs:9-19
+    // Source: programs/sigil/src/instructions/integrations/jupiter.rs:9-19
     DiscriminatorEntry {
         program_id: JUPITER_PROGRAM,
         discriminator: [229, 23, 203, 151, 122, 227, 173, 42],  // route
@@ -51,7 +51,7 @@ const DISCRIMINATOR_MAP: &[DiscriminatorEntry] = &[
 
     // ═══ FLASH TRADE — SPENDING (8 entries) ═══
     // Source: sdk/kit/src/generated/protocols/flash-trade/instructions/
-    // ActionType mapping: Canonical Spending Classification Table in WRAP-ARCHITECTURE-PLAN.md
+    // ActionType mapping: Canonical Spending Classification Table in SEAL-ARCHITECTURE-PLAN.md
 
     // openPosition → ActionType::OpenPosition (Spending, Increment)
     DiscriminatorEntry {
@@ -204,11 +204,11 @@ pub fn verify_action_type_consistency(
                 let actual_spending = entry.category == SpendingCategory::Spending;
                 if actual_spending && !declared_spending {
                     msg!("ActionType mismatch: instruction is spending but declared as non-spending");
-                    return Err(error!(PhalnxError::ActionTypeMismatch));
+                    return Err(error!(SigilError::ActionTypeMismatch));
                 }
                 if !actual_spending && declared_spending {
                     msg!("ActionType mismatch: instruction is non-spending but declared as spending");
-                    return Err(error!(PhalnxError::ActionTypeMismatch));
+                    return Err(error!(SigilError::ActionTypeMismatch));
                 }
                 return Ok(());
             }
@@ -229,7 +229,7 @@ pub fn verify_action_type_consistency(
     // Therefore: reject non-spending for ANY unmapped discriminator.
     if !declared_spending {
         msg!("Unknown discriminator on allowlisted program — non-spending declaration rejected");
-        return Err(error!(PhalnxError::ActionTypeMismatch));
+        return Err(error!(SigilError::ActionTypeMismatch));
     }
 
     Ok(())

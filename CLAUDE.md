@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-Phalnx is a Solana Anchor program (Rust) that sits between AI agent signing keys and DeFi protocols (Jupiter, Flash Trade). It provides PDA vaults with configurable permission policies, spending limits, and audit infrastructure. The developer is proficient in Rust and Anchor — write production-quality code.
+Sigil is a Solana Anchor program (Rust) that sits between AI agent signing keys and DeFi protocols (Jupiter, Flash Trade). It provides PDA vaults with configurable permission policies, spending limits, and audit infrastructure. The developer is proficient in Rust and Anchor — write production-quality code.
 
 **Program ID:** `4ZeVCqnjUgUtFrHHPG7jELUxvJeoVGHhGNgPrhBPwrHL`
 
@@ -26,7 +26,7 @@ Load a skill only when you need specific API specs, integration patterns, or sec
 | **vulnhunter** | 54KB | Vulnerability patterns, sharp edges, variant analysis | `.claude/skills/vulnhunter/` |
 | **code-recon** | 58KB | Architectural reviews, trust boundary mapping | `.claude/skills/code-recon/` |
 | **drift** | 137KB | Drift Protocol SDK, perps, spot trading | `.claude/skills/drift/` |
-| **pinocchio-dev** | 126KB | New greenfield programs only — NOT for phalnx | `.claude/skills/pinocchio-dev/` |
+| **pinocchio-dev** | 126KB | New greenfield programs only — NOT for sigil | `.claude/skills/pinocchio-dev/` |
 | **squads** | 213KB | Squads V4 multisig, Smart Account, Grid | `.claude/skills/squads/` |
 | **flash-trade** | 123KB | Flash Trade perps, position management, composability | `.claude/skills/flash-trade/` |
 | **solana-kit** | 114KB | @solana/kit modern SDK, tree-shakeable, zero-dependency | `.claude/skills/solana-kit/` |
@@ -63,7 +63,7 @@ npm run lint          # Check formatting (prettier)
 npm run lint:fix      # Fix formatting
 
 # Check Rust formatting
-cargo fmt --check --manifest-path programs/phalnx/Cargo.toml
+cargo fmt --check --manifest-path programs/sigil/Cargo.toml
 
 # On-chain tests (LiteSVM — no validator needed)
 npx ts-mocha -p ./tsconfig.json -t 300000 tests/<file>.ts
@@ -119,7 +119,7 @@ See `docs/ARCHITECTURE.md` for full account descriptions, ActionType classificat
 
 1. **CPI depth = 4 max.** Use instruction composition, never nested CPIs.
 2. **Compute budget = 1.4M CU.** Always set compute budget in composed transactions.
-3. **Checked math only.** Never `+`, `-`, `*`, `/` on u64. Always `.checked_add()` etc., return `PhalnxError::Overflow` on None. This is the most common audit finding — zero tolerance.
+3. **Checked math only.** Never `+`, `-`, `*`, `/` on u64. Always `.checked_add()` etc., return `SigilError::Overflow` on None. This is the most common audit finding — zero tolerance.
 4. **Bounded vectors.** No unbounded `Vec<T>` in on-chain accounts.
 5. **Every instruction emits an Anchor event** via `emit!()`. No exceptions.
 6. **Owner = full authority. Agent = execute only.** Agents cannot modify policies or withdraw.
@@ -140,7 +140,7 @@ See `docs/ARCHITECTURE.md` for full account descriptions, ActionType classificat
 
 These invariants are enforced by formal verification. **Code changes must not violate them.**
 
-Specs live in `programs/phalnx/src/certora/specs/`:
+Specs live in `programs/sigil/src/certora/specs/`:
 - `access_control.rs` — constants correctness, fee cap = 500, session expiry = 20 slots, rolling window = 86,400s, epoch buffer = 144 × 600 = 86,400, vector bounds (10/10)
 - `session_lifecycle.rs` — expiry ≥ current slot, expiry = saturating_add(20), sessions expire after window, valid at creation, saturates at u64::MAX
 - `spending_caps.rs` — decimal scaling preserves ordering, checked arithmetic overflow detection
@@ -149,7 +149,7 @@ Specs live in `programs/phalnx/src/certora/specs/`:
 
 ## Error Codes (6000–6070)
 
-71 error codes. Source of truth: `programs/phalnx/src/errors.rs`. See `docs/ERROR-CODES.md` for full table.
+71 error codes. Source of truth: `programs/sigil/src/errors.rs`. See `docs/ERROR-CODES.md` for full table.
 
 ---
 
@@ -161,7 +161,7 @@ Specs live in `programs/phalnx/src/certora/specs/`:
 - `require!()` for preconditions, `require_keys_eq!()` for pubkey comparisons
 - `pub(crate)` for internal visibility, `emit!()` on every instruction
 - `rustfmt` default formatting, max 100 char lines
-- `.ok_or(error!(PhalnxError::Overflow))?` for checked math
+- `.ok_or(error!(SigilError::Overflow))?` for checked math
 
 ### TypeScript
 - `BN` from `@coral-xyz/anchor` for on-chain numbers
@@ -177,19 +177,19 @@ Specs live in `programs/phalnx/src/certora/specs/`:
 
 On-chain program has 29 instructions, 9 PDA types, and is under active development (not frozen). Spending enforcement is **outcome-based**: `finalize_session` measures actual stablecoin balance delta (not declared amounts) for cap checks, with post-finalize instruction scan (error 6070) as defense-in-depth. See `ON-CHAIN-IMPLEMENTATION-PLAN.md` for on-chain findings and `scripts/test-counts.json` for test counts.
 
-### Wrap Architecture (Definitive Direction)
+### Seal Architecture (Definitive Direction)
 
-Phalnx is a **security wrapper**, not a DeFi SDK. The `wrap()` function takes arbitrary DeFi instructions from any source (Jupiter API, Solana Agent Kit, MCP servers) and sandwiches them with `validate_and_authorize` + `finalize_session`. `PhalnxClient` is the primary API — holds vault/agent/network context, delegates to `wrap()` with instance-level caches.
+Sigil is a **security wrapper**, not a DeFi SDK. The `seal()` function takes arbitrary DeFi instructions from any source (Jupiter API, Solana Agent Kit, MCP servers) and sandwiches them with `validate_and_authorize` + `finalize_session`. `SigilClient` is the primary API — holds vault/agent/network context, delegates to `seal()` with instance-level caches.
 
 **Phase 5 (SDK additions) — COMPLETE (all 10 steps):**
-- `PhalnxClient` promoted (5.3): stateful client with `wrap()`, `executeAndConfirm()`, `getPnL()`, `getVaultState()`, `getTokenBalances()`, `getAgentBudget()`, static `createVault()`
-- Test utilities (5.4): `@phalnx/kit/testing` subpath with `createMockRpc()`, `createMockVaultState()`, devnet helpers
+- `SigilClient` promoted (5.3): stateful client with `seal()`, `executeAndConfirm()`, `getPnL()`, `getVaultState()`, `getTokenBalances()`, `getAgentBudget()`, static `createVault()`
+- Test utilities (5.4): `@usesigil/kit/testing` subpath with `createMockRpc()`, `createMockVaultState()`, devnet helpers
 - Formatting (5.5): 11 functions in `formatting.ts` with full-precision defaults (6 decimals USD, full token decimals)
 - Vault presets (5.6): `presets.ts` with Jupiter/perps/lending/full-access templates
 - Owner transactions (5.7): `buildOwnerTransaction()` in `owner-transaction.ts`
 - Spending history (5.8): `getSpendingHistory()` in `state-resolver.ts` — 144-epoch circular buffer to chart-ready time series
 - Post-finalize scan (5.9): defense-in-depth instruction check after finalize, error 6070
-- SAK plugin (5.10): `packages/plugin-solana-agent-kit/` — thin adapter with swap/transfer/status actions via `PhalnxClient.executeAndConfirm()`
+- SAK plugin (5.10): `packages/plugin-solana-agent-kit/` — thin adapter with swap/transfer/status actions via `SigilClient.executeAndConfirm()`
 
 **Phase 6 (Analytics Data Layer) — COMPLETE (42 functions across 11 modules):**
 - `formatting.ts` (11): USD/percent/time/address/token display with full-precision defaults
@@ -204,7 +204,7 @@ Phalnx is a **security wrapper**, not a DeFi SDK. The `wrap()` function takes ar
 - `protocol-names.ts` (1): shared protocol name resolution
 - `math-utils.ts` (1): shared Herfindahl computation (bigint-safe)
 
-See `WRAP-DISCRIMINATOR-TABLES.md` for verified discriminator bytes.
+See `DISCRIMINATOR-TABLES.md` for verified discriminator bytes.
 
 ---
 
