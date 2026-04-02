@@ -92,7 +92,11 @@ pub fn handler(ctx: Context<CloseVault>) -> Result<()> {
     // Clean up pending_agent_perms PDAs (per-agent: [b"pending_agent_perms", vault, agent]).
     // MUST derive expected PDA and verify — never drain unvalidated accounts.
     // Skip past pending_policy account if it was consumed above.
-    let start_idx: usize = if ctx.accounts.policy.has_pending_policy { 1 } else { 0 };
+    let start_idx: usize = if ctx.accounts.policy.has_pending_policy {
+        1
+    } else {
+        0
+    };
     for agent_entry in vault.agents.iter() {
         let (expected_pda, _) = Pubkey::find_program_address(
             &[

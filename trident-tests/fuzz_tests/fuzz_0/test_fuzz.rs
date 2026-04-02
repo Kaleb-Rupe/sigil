@@ -127,7 +127,7 @@ impl FuzzTest {
             max_leverage_bps: 10_000,
             max_concurrent_positions: 5,
             developer_fee_rate: fee_rate,
-            timelock_duration: 0,
+            timelock_duration: 1800, // MIN_TIMELOCK_DURATION
             allowed_destinations: vec![],
             max_slippage_bps: 2500, // 25%
         };
@@ -264,9 +264,14 @@ impl FuzzTest {
             .trident
             .process_transaction(&[reg_ix], Some("RegisterAgent"));
 
-        // ── Step 6: UpdatePolicy with allowed_destinations ──
+        // ── Step 6: QueuePolicyUpdate with allowed_destinations, then apply ──
 
-        let policy_data = sigil::instruction::UpdatePolicy {
+        let (pending_policy, _) = Pubkey::find_program_address(
+            &[b"pending_policy", vault.as_ref()],
+            &program_id(),
+        );
+
+        let queue_data = sigil::instruction::QueuePolicyUpdate {
             daily_spending_cap_usd: None,
             max_transaction_size_usd: None,
             protocol_mode: None,
@@ -283,21 +288,45 @@ impl FuzzTest {
             protocol_caps: None,
         };
 
-        let policy_accounts = sigil::accounts::UpdatePolicy {
+        let queue_accounts = sigil::accounts::QueuePolicyUpdate {
             owner,
             vault,
             policy,
+            pending_policy,
+            system_program: anchor_lang::system_program::ID,
         };
 
-        let policy_ix = Instruction::new_with_bytes(
+        let queue_ix = Instruction::new_with_bytes(
             program_id(),
-            &policy_data.data(),
-            policy_accounts.to_account_metas(None),
+            &queue_data.data(),
+            queue_accounts.to_account_metas(None),
         );
 
         let _ = self
             .trident
-            .process_transaction(&[policy_ix], Some("UpdatePolicy+destinations"));
+            .process_transaction(&[queue_ix], Some("QueuePolicyUpdate+destinations"));
+
+        // Advance clock past 1800s timelock
+        self.trident.advance_clock(1801);
+
+        let apply_data = sigil::instruction::ApplyPendingPolicy {};
+
+        let apply_accounts = sigil::accounts::ApplyPendingPolicy {
+            owner,
+            vault,
+            policy,
+            pending_policy,
+        };
+
+        let apply_ix = Instruction::new_with_bytes(
+            program_id(),
+            &apply_data.data(),
+            apply_accounts.to_account_metas(None),
+        );
+
+        let _ = self
+            .trident
+            .process_transaction(&[apply_ix], Some("ApplyPendingPolicy+destinations"));
 
         // ── Step 7: Deposit funds for all 3 tokens ──
 
@@ -593,11 +622,11 @@ impl FuzzTest {
     }
 
     // ──────────────────────────────────────────────────────────────
-    // Flow: UpdatePolicy
+    // Flow: QueueAndApplyPolicy (replaces deleted UpdatePolicy)
     // ──────────────────────────────────────────────────────────────
 
     #[flow]
-    fn update_policy(&mut self) {
+    fn queue_and_apply_policy(&mut self) {
         let owner = unwrap_or_ret!(self.fuzz_accounts.owner.get(&mut self.trident));
         let vault = unwrap_or_ret!(self.fuzz_accounts.vault.get(&mut self.trident));
         let policy = unwrap_or_ret!(self.fuzz_accounts.policy.get(&mut self.trident));
@@ -607,7 +636,13 @@ impl FuzzTest {
         let pre_vault = self.snapshot_vault(&vault);
         let pre_policy = self.snapshot_policy(&policy);
 
-        let data = sigil::instruction::UpdatePolicy {
+        let (pending_policy, _) = Pubkey::find_program_address(
+            &[b"pending_policy", vault.as_ref()],
+            &program_id(),
+        );
+
+        // Queue
+        let queue_data = sigil::instruction::QueuePolicyUpdate {
             daily_spending_cap_usd: Some(new_cap),
             max_transaction_size_usd: Some(new_cap),
             protocol_mode: None,
@@ -624,21 +659,46 @@ impl FuzzTest {
             protocol_caps: None,
         };
 
-        let accounts = sigil::accounts::UpdatePolicy {
+        let queue_accounts = sigil::accounts::QueuePolicyUpdate {
             owner,
             vault,
             policy,
+            pending_policy,
+            system_program: anchor_lang::system_program::ID,
         };
 
-        let ix = Instruction::new_with_bytes(
+        let queue_ix = Instruction::new_with_bytes(
             program_id(),
-            &data.data(),
-            accounts.to_account_metas(None),
+            &queue_data.data(),
+            queue_accounts.to_account_metas(None),
         );
 
         let _ = self
             .trident
-            .process_transaction(&[ix], Some("UpdatePolicy"));
+            .process_transaction(&[queue_ix], Some("QueuePolicyUpdate"));
+
+        // Advance clock past timelock
+        self.trident.advance_clock(1801);
+
+        // Apply
+        let apply_data = sigil::instruction::ApplyPendingPolicy {};
+
+        let apply_accounts = sigil::accounts::ApplyPendingPolicy {
+            owner,
+            vault,
+            policy,
+            pending_policy,
+        };
+
+        let apply_ix = Instruction::new_with_bytes(
+            program_id(),
+            &apply_data.data(),
+            apply_accounts.to_account_metas(None),
+        );
+
+        let _ = self
+            .trident
+            .process_transaction(&[apply_ix], Some("ApplyPendingPolicy"));
 
         let post_vault = self.snapshot_vault(&vault);
         let post_policy = self.snapshot_policy(&policy);

@@ -249,9 +249,7 @@ pub mod sigil {
     }
 
     /// Apply a queued agent permissions update after timelock expires.
-    pub fn apply_agent_permissions_update(
-        ctx: Context<ApplyAgentPermissionsUpdate>,
-    ) -> Result<()> {
+    pub fn apply_agent_permissions_update(ctx: Context<ApplyAgentPermissionsUpdate>) -> Result<()> {
         instructions::apply_agent_permissions_update::handler(ctx)
     }
 

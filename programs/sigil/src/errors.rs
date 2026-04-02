@@ -87,7 +87,6 @@ pub enum SigilError {
 
     // TimelockActive removed — the 4 direct-mutation instructions that used it are deleted.
     // All mutations now route through queue/apply with mandatory timelock.
-
     #[msg("No timelock configured on this vault")]
     NoTimelockConfigured,
 

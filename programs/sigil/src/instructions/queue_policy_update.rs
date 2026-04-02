@@ -100,10 +100,7 @@ pub fn handler(
         );
     }
     if let Some(ref tl) = timelock_duration {
-        require!(
-            *tl >= MIN_TIMELOCK_DURATION,
-            SigilError::TimelockTooShort
-        );
+        require!(*tl >= MIN_TIMELOCK_DURATION, SigilError::TimelockTooShort);
     }
     if let Some(ref expiry) = session_expiry_slots {
         if *expiry > 0 {
