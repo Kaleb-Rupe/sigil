@@ -55,6 +55,7 @@ describe("instruction-constraints", () => {
   let overlayPda: PublicKey;
   let constraintsPda: PublicKey;
   let pendingConstraintsPda: PublicKey;
+  let pendingCloseConstraintsPda: PublicKey;
   let ownerUsdcAta: PublicKey;
   let vaultUsdcAta: PublicKey;
 
@@ -130,8 +131,12 @@ describe("instruction-constraints", () => {
       [Buffer.from("pending_constraints"), vaultPda.toBuffer()],
       program.programId,
     );
+    [pendingCloseConstraintsPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("pending_close_constraints"), vaultPda.toBuffer()],
+      program.programId,
+    );
 
-    // Initialize vault (protocolMode=0 = all allowed, no timelock)
+    // Initialize vault (protocolMode=0 = all allowed, timelock=1800)
     await program.methods
       .initializeVault(
         vaultId,
@@ -143,7 +148,7 @@ describe("instruction-constraints", () => {
         3,
         0, // no developer fee
         100, // maxSlippageBps
-        new BN(0), // no timelock
+        new BN(1800), // 1800s timelock (MIN_TIMELOCK_DURATION)
         [],
         [], // protocolCaps
       )
@@ -239,7 +244,7 @@ describe("instruction-constraints", () => {
       program.programId,
     );
     let builder = program.methods
-      .validateAndAuthorize(actionType, usdcMint, amount, targetProtocol, null)
+      .validateAndAuthorize(actionType, usdcMint, amount, targetProtocol, null, new BN(0))
       .accounts({
         agent: agent.publicKey,
         vault: vaultPda,
@@ -260,6 +265,72 @@ describe("instruction-constraints", () => {
       builder = builder.remainingAccounts(remainingAccounts);
     }
     return builder.instruction();
+  }
+
+  // Helper: queue constraints update + advance time + apply (replaces updateInstructionConstraints)
+  async function queueAndApplyConstraintsUpdate(
+    entries: any[],
+    strictMode: boolean,
+    vault: PublicKey,
+    policy: PublicKey,
+    constraints: PublicKey,
+    pendingConstraints: PublicKey,
+    timelockSeconds: number = 1800,
+  ) {
+    await program.methods
+      .queueConstraintsUpdate(entries, strictMode)
+      .accounts({
+        owner: owner.publicKey,
+        vault,
+        policy,
+        constraints,
+        pendingConstraints,
+        systemProgram: SystemProgram.programId,
+      } as any)
+      .rpc();
+    advanceTime(svm, timelockSeconds + 1);
+    await program.methods
+      .applyConstraintsUpdate()
+      .accounts({
+        owner: owner.publicKey,
+        vault,
+        policy,
+        constraints,
+        pendingConstraints,
+      } as any)
+      .rpc();
+  }
+
+  // Helper: queue close constraints + advance time + apply (replaces closeInstructionConstraints)
+  async function queueAndApplyCloseConstraints(
+    vault: PublicKey,
+    policy: PublicKey,
+    constraints: PublicKey,
+    pendingCloseConstraints: PublicKey,
+    timelockSeconds: number = 1800,
+  ) {
+    await program.methods
+      .queueCloseConstraints()
+      .accounts({
+        owner: owner.publicKey,
+        vault,
+        policy,
+        constraints,
+        pendingCloseConstraints,
+        systemProgram: SystemProgram.programId,
+      } as any)
+      .rpc();
+    advanceTime(svm, timelockSeconds + 1);
+    await program.methods
+      .applyCloseConstraints()
+      .accounts({
+        owner: owner.publicKey,
+        vault,
+        policy,
+        constraints,
+        pendingCloseConstraints,
+      } as any)
+      .rpc();
   }
 
   // =======================================================================
@@ -307,7 +378,7 @@ describe("instruction-constraints", () => {
       expect(policy.hasConstraints).to.equal(true);
     });
 
-    it("updates constraints (no timelock)", async () => {
+    it("updates constraints via queue+apply", async () => {
       const newEntries = [
         {
           programId: jupiterProgramId,
@@ -322,15 +393,14 @@ describe("instruction-constraints", () => {
         },
       ];
 
-      await program.methods
-        .updateInstructionConstraints(newEntries, false)
-        .accounts({
-          owner: owner.publicKey,
-          vault: vaultPda,
-          policy: policyPda,
-          constraints: constraintsPda,
-        } as any)
-        .rpc();
+      await queueAndApplyConstraintsUpdate(
+        newEntries,
+        false,
+        vaultPda,
+        policyPda,
+        constraintsPda,
+        pendingConstraintsPda,
+      );
 
       const constraintsAcct =
         await program.account.instructionConstraints.fetch(constraintsPda);
@@ -338,15 +408,12 @@ describe("instruction-constraints", () => {
     });
 
     it("closes constraints PDA and sets has_constraints=false", async () => {
-      await program.methods
-        .closeInstructionConstraints()
-        .accounts({
-          owner: owner.publicKey,
-          vault: vaultPda,
-          policy: policyPda,
-          constraints: constraintsPda,
-        } as any)
-        .rpc();
+      await queueAndApplyCloseConstraints(
+        vaultPda,
+        policyPda,
+        constraintsPda,
+        pendingCloseConstraintsPda,
+      );
 
       expect(accountExists(svm, constraintsPda)).to.equal(false);
 
@@ -389,15 +456,12 @@ describe("instruction-constraints", () => {
 
     it("backward compat: no constraints PDA + has_constraints=false works", async () => {
       // First close constraints to set has_constraints=false
-      await program.methods
-        .closeInstructionConstraints()
-        .accounts({
-          owner: owner.publicKey,
-          vault: vaultPda,
-          policy: policyPda,
-          constraints: constraintsPda,
-        } as any)
-        .rpc();
+      await queueAndApplyCloseConstraints(
+        vaultPda,
+        policyPda,
+        constraintsPda,
+        pendingCloseConstraintsPda,
+      );
 
       // Validate without remaining accounts — should succeed
       const validateIx = await buildValidateIx(
@@ -610,15 +674,12 @@ describe("instruction-constraints", () => {
     it("rejects >16 constraint entries → InvalidConstraintConfig", async () => {
       // Close existing constraints first (if they exist)
       if (accountExists(svm, constraintsPda)) {
-        await program.methods
-          .closeInstructionConstraints()
-          .accounts({
-            owner: owner.publicKey,
-            vault: vaultPda,
-            policy: policyPda,
-            constraints: constraintsPda,
-          } as any)
-          .rpc();
+        await queueAndApplyCloseConstraints(
+          vaultPda,
+          policyPda,
+          constraintsPda,
+          pendingCloseConstraintsPda,
+        );
       }
 
       const entries = [];
@@ -749,10 +810,12 @@ describe("instruction-constraints", () => {
       expect(Buffer.from(acct.entries[0].dataConstraints[0].value).length).to.equal(32);
 
       // Clean up for subsequent tests
-      await program.methods
-        .closeInstructionConstraints()
-        .accounts({ owner: owner.publicKey, vault: vaultPda, policy: policyPda, constraints: constraintsPda } as any)
-        .rpc();
+      await queueAndApplyCloseConstraints(
+        vaultPda,
+        policyPda,
+        constraintsPda,
+        pendingCloseConstraintsPda,
+      );
     });
 
     // Re-create constraints for remaining tests
@@ -831,7 +894,7 @@ describe("instruction-constraints", () => {
         program.programId,
       );
 
-      // Init vault with timelock = 60 seconds
+      // Init vault with timelock = 1800 seconds (MIN_TIMELOCK_DURATION)
       await program.methods
         .initializeVault(
           tlVaultId,
@@ -843,7 +906,7 @@ describe("instruction-constraints", () => {
           3,
           0,
           100,
-          new BN(60), // 60s timelock
+          new BN(1800), // 1800s timelock (MIN_TIMELOCK_DURATION)
           [],
           [], // protocolCaps
         )
@@ -886,54 +949,9 @@ describe("instruction-constraints", () => {
         .rpc();
     });
 
-    it("direct update rejected when timelock > 0 → TimelockActive", async () => {
-      try {
-        await program.methods
-          .updateInstructionConstraints(
-            [
-              {
-                programId: jupiterProgramId,
-                dataConstraints: [
-                  {
-                    offset: 0,
-                    operator: { eq: {} },
-                    value: Buffer.from([0x01]),
-                  },
-                ],
-                accountConstraints: [],
-              },
-            ],
-            false,
-          )
-          .accounts({
-            owner: owner.publicKey,
-            vault: tlVaultPda,
-            policy: tlPolicyPda,
-            constraints: tlConstraintsPda,
-          } as any)
-          .rpc();
-        expect.fail("Should have thrown");
-      } catch (err: any) {
-        expectSigilError(err.toString(), "TimelockActive");
-      }
-    });
-
-    it("close rejected when timelock > 0 → TimelockActive", async () => {
-      try {
-        await program.methods
-          .closeInstructionConstraints()
-          .accounts({
-            owner: owner.publicKey,
-            vault: tlVaultPda,
-            policy: tlPolicyPda,
-            constraints: tlConstraintsPda,
-          } as any)
-          .rpc();
-        expect.fail("Should have thrown");
-      } catch (err: any) {
-        expectSigilError(err.toString(), "TimelockActive");
-      }
-    });
+    // NOTE: "direct update rejected → TimelockActive" and "close rejected → TimelockActive"
+    // tests removed — updateInstructionConstraints and closeInstructionConstraints are deleted.
+    // All updates/closes now go through the queue+apply path.
 
     it("queue → apply after timelock expires", async () => {
       const newEntries = [
@@ -972,6 +990,7 @@ describe("instruction-constraints", () => {
           .accounts({
             owner: owner.publicKey,
             vault: tlVaultPda,
+            policy: tlPolicyPda,
             constraints: tlConstraintsPda,
             pendingConstraints: tlPendingConstraintsPda,
           } as any)
@@ -982,7 +1001,7 @@ describe("instruction-constraints", () => {
       }
 
       // Advance time past timelock
-      advanceTime(svm, 61);
+      advanceTime(svm, 1801);
 
       // Apply after timelock → success
       await program.methods
@@ -990,6 +1009,7 @@ describe("instruction-constraints", () => {
         .accounts({
           owner: owner.publicKey,
           vault: tlVaultPda,
+          policy: tlPolicyPda,
           constraints: tlConstraintsPda,
           pendingConstraints: tlPendingConstraintsPda,
         } as any)
@@ -1045,7 +1065,55 @@ describe("instruction-constraints", () => {
     });
 
     it("queue fails when timelock = 0 → NoTimelockConfigured", async () => {
-      // Use the main vault (no timelock)
+      // Create a separate zero-timelock vault to test this error
+      const noTlVaultId = new BN(403);
+      const [noTlVault] = PublicKey.findProgramAddressSync(
+        [Buffer.from("vault"), owner.publicKey.toBuffer(), noTlVaultId.toArrayLike(Buffer, "le", 8)],
+        program.programId,
+      );
+      const [noTlPolicy] = PublicKey.findProgramAddressSync(
+        [Buffer.from("policy"), noTlVault.toBuffer()],
+        program.programId,
+      );
+      const [noTlTracker] = PublicKey.findProgramAddressSync(
+        [Buffer.from("tracker"), noTlVault.toBuffer()],
+        program.programId,
+      );
+      const [noTlOverlay] = PublicKey.findProgramAddressSync(
+        [Buffer.from("agent_spend"), noTlVault.toBuffer(), Buffer.from([0])],
+        program.programId,
+      );
+      const [noTlConstraints] = PublicKey.findProgramAddressSync(
+        [Buffer.from("constraints"), noTlVault.toBuffer()],
+        program.programId,
+      );
+      const [noTlPending] = PublicKey.findProgramAddressSync(
+        [Buffer.from("pending_constraints"), noTlVault.toBuffer()],
+        program.programId,
+      );
+
+      await program.methods
+        .initializeVault(
+          noTlVaultId, new BN(500_000_000), new BN(100_000_000),
+          0, [], new BN(0) as any, 3, 0, 100,
+          new BN(0), // no timelock
+          [], [],
+        )
+        .accounts({
+          owner: owner.publicKey, vault: noTlVault, policy: noTlPolicy,
+          tracker: noTlTracker, agentSpendOverlay: noTlOverlay,
+          feeDestination: feeDestination.publicKey, systemProgram: SystemProgram.programId,
+        } as any)
+        .rpc();
+
+      await program.methods
+        .createInstructionConstraints(
+          [{ programId: jupiterProgramId, dataConstraints: [{ offset: 0, operator: { eq: {} }, value: Buffer.from([0x01]) }], accountConstraints: [] }],
+          false,
+        )
+        .accounts({ owner: owner.publicKey, vault: noTlVault, policy: noTlPolicy, constraints: noTlConstraints, systemProgram: SystemProgram.programId } as any)
+        .rpc();
+
       try {
         await program.methods
           .queueConstraintsUpdate(
@@ -1066,10 +1134,10 @@ describe("instruction-constraints", () => {
           )
           .accounts({
             owner: owner.publicKey,
-            vault: vaultPda,
-            policy: policyPda,
-            constraints: constraintsPda,
-            pendingConstraints: pendingConstraintsPda,
+            vault: noTlVault,
+            policy: noTlPolicy,
+            constraints: noTlConstraints,
+            pendingConstraints: noTlPending,
             systemProgram: SystemProgram.programId,
           } as any)
           .rpc();
@@ -1094,15 +1162,12 @@ describe("instruction-constraints", () => {
 
     it("empty data_constraints for a program → passthrough (no violation)", async () => {
       // Close and recreate with empty data constraints for Jupiter
-      await program.methods
-        .closeInstructionConstraints()
-        .accounts({
-          owner: owner.publicKey,
-          vault: vaultPda,
-          policy: policyPda,
-          constraints: constraintsPda,
-        } as any)
-        .rpc();
+      await queueAndApplyCloseConstraints(
+        vaultPda,
+        policyPda,
+        constraintsPda,
+        pendingCloseConstraintsPda,
+      );
 
       await program.methods
         .createInstructionConstraints(
@@ -1139,15 +1204,12 @@ describe("instruction-constraints", () => {
       // Close and recreate with constraints on a program that isn't in the TX
       const unrelatedProgram = Keypair.generate().publicKey;
 
-      await program.methods
-        .closeInstructionConstraints()
-        .accounts({
-          owner: owner.publicKey,
-          vault: vaultPda,
-          policy: policyPda,
-          constraints: constraintsPda,
-        } as any)
-        .rpc();
+      await queueAndApplyCloseConstraints(
+        vaultPda,
+        policyPda,
+        constraintsPda,
+        pendingCloseConstraintsPda,
+      );
 
       await program.methods
         .createInstructionConstraints(
@@ -1197,15 +1259,12 @@ describe("instruction-constraints", () => {
 
       // Close existing constraints so we can test init
       if (accountExists(svm, constraintsPda)) {
-        await program.methods
-          .closeInstructionConstraints()
-          .accounts({
-            owner: owner.publicKey,
-            vault: vaultPda,
-            policy: policyPda,
-            constraints: constraintsPda,
-          } as any)
-          .rpc();
+        await queueAndApplyCloseConstraints(
+          vaultPda,
+          policyPda,
+          constraintsPda,
+          pendingCloseConstraintsPda,
+        );
       }
 
       // Attacker's vault PDA derivation uses attacker.publicKey → ConstraintSeeds
@@ -1278,7 +1337,7 @@ describe("instruction-constraints", () => {
 
       try {
         await program.methods
-          .updateInstructionConstraints(
+          .queueConstraintsUpdate(
             [
               {
                 programId: jupiterProgramId,
@@ -1299,6 +1358,8 @@ describe("instruction-constraints", () => {
             vault: vaultPda,
             policy: policyPda,
             constraints: constraintsPda,
+            pendingConstraints: pendingConstraintsPda,
+            systemProgram: SystemProgram.programId,
           })
           .signers([attacker])
           .rpc();
@@ -1318,15 +1379,12 @@ describe("instruction-constraints", () => {
     before(async () => {
       // Close existing constraints if present
       if (accountExists(svm, constraintsPda)) {
-        await program.methods
-          .closeInstructionConstraints()
-          .accounts({
-            owner: owner.publicKey,
-            vault: vaultPda,
-            policy: policyPda,
-            constraints: constraintsPda,
-          } as any)
-          .rpc();
+        await queueAndApplyCloseConstraints(
+          vaultPda,
+          policyPda,
+          constraintsPda,
+          pendingCloseConstraintsPda,
+        );
       }
     });
 
@@ -1377,37 +1435,33 @@ describe("instruction-constraints", () => {
 
     it("per-discriminator OR: first entry passes", async () => {
       // Update constraints: first entry matches [0x01, 0x02]
-      await program.methods
-        .updateInstructionConstraints(
-          [
-            {
-              programId: jupiterProgramId,
-              dataConstraints: [
-                {
-                  offset: 0,
-                  operator: { eq: {} },
-                  value: Buffer.from([0x01, 0x02]),
-                },
-              ],
-              accountConstraints: [],
-            },
-            {
-              programId: jupiterProgramId,
-              dataConstraints: [
-                { offset: 0, operator: { eq: {} }, value: Buffer.from([0xff]) },
-              ],
-              accountConstraints: [],
-            },
-          ],
-          false,
-        )
-        .accounts({
-          owner: owner.publicKey,
-          vault: vaultPda,
-          policy: policyPda,
-          constraints: constraintsPda,
-        } as any)
-        .rpc();
+      await queueAndApplyConstraintsUpdate(
+        [
+          {
+            programId: jupiterProgramId,
+            dataConstraints: [
+              {
+                offset: 0,
+                operator: { eq: {} },
+                value: Buffer.from([0x01, 0x02]),
+              },
+            ],
+            accountConstraints: [],
+          },
+          {
+            programId: jupiterProgramId,
+            dataConstraints: [
+              { offset: 0, operator: { eq: {} }, value: Buffer.from([0xff]) },
+            ],
+            accountConstraints: [],
+          },
+        ],
+        false,
+        vaultPda,
+        policyPda,
+        constraintsPda,
+        pendingConstraintsPda,
+      );
 
       // Instruction data [0x01, 0x02] matches first entry → should pass
       const validateIx = await buildValidateIx(
@@ -1433,15 +1487,12 @@ describe("instruction-constraints", () => {
 
     it("recreate constraints after close", async () => {
       // Close and recreate (strict_mode not settable on rebrand branch)
-      await program.methods
-        .closeInstructionConstraints()
-        .accounts({
-          owner: owner.publicKey,
-          vault: vaultPda,
-          policy: policyPda,
-          constraints: constraintsPda,
-        } as any)
-        .rpc();
+      await queueAndApplyCloseConstraints(
+        vaultPda,
+        policyPda,
+        constraintsPda,
+        pendingCloseConstraintsPda,
+      );
 
       await program.methods
         .createInstructionConstraints(
@@ -1477,15 +1528,12 @@ describe("instruction-constraints", () => {
 
     it("zero-length constraint value rejected → InvalidConstraintConfig", async () => {
       // Close and try to create with empty value
-      await program.methods
-        .closeInstructionConstraints()
-        .accounts({
-          owner: owner.publicKey,
-          vault: vaultPda,
-          policy: policyPda,
-          constraints: constraintsPda,
-        } as any)
-        .rpc();
+      await queueAndApplyCloseConstraints(
+        vaultPda,
+        policyPda,
+        constraintsPda,
+        pendingCloseConstraintsPda,
+      );
 
       try {
         await program.methods
@@ -1582,24 +1630,20 @@ describe("instruction-constraints", () => {
         });
       }
 
-      await program.methods
-        .updateInstructionConstraints(
-          [
-            {
-              programId: jupiterProgramId,
-              dataConstraints,
-              accountConstraints: [],
-            },
-          ],
-          false,
-        )
-        .accounts({
-          owner: owner.publicKey,
-          vault: vaultPda,
-          policy: policyPda,
-          constraints: constraintsPda,
-        } as any)
-        .rpc();
+      await queueAndApplyConstraintsUpdate(
+        [
+          {
+            programId: jupiterProgramId,
+            dataConstraints,
+            accountConstraints: [],
+          },
+        ],
+        false,
+        vaultPda,
+        policyPda,
+        constraintsPda,
+        pendingConstraintsPda,
+      );
 
       const constraintsAcct =
         await program.account.instructionConstraints.fetch(constraintsPda);
@@ -1617,15 +1661,12 @@ describe("instruction-constraints", () => {
     it("creates constraints with GteSigned operator", async () => {
       // Close existing constraints first
       if (accountExists(svm, constraintsPda)) {
-        await program.methods
-          .closeInstructionConstraints()
-          .accounts({
-            owner: owner.publicKey,
-            vault: vaultPda,
-            policy: policyPda,
-            constraints: constraintsPda,
-          } as any)
-          .rpc();
+        await queueAndApplyCloseConstraints(
+          vaultPda,
+          policyPda,
+          constraintsPda,
+          pendingCloseConstraintsPda,
+        );
       }
 
       // GteSigned(-10 as i64 LE bytes) — minimum threshold of -10
@@ -1668,15 +1709,12 @@ describe("instruction-constraints", () => {
     });
 
     it("creates constraints with LteSigned operator", async () => {
-      await program.methods
-        .closeInstructionConstraints()
-        .accounts({
-          owner: owner.publicKey,
-          vault: vaultPda,
-          policy: policyPda,
-          constraints: constraintsPda,
-        } as any)
-        .rpc();
+      await queueAndApplyCloseConstraints(
+        vaultPda,
+        policyPda,
+        constraintsPda,
+        pendingCloseConstraintsPda,
+      );
 
       // LteSigned(1000 as i64 LE) — maximum threshold of 1000
       const thousand = Buffer.alloc(8);
@@ -1716,15 +1754,12 @@ describe("instruction-constraints", () => {
     });
 
     it("creates constraints with Bitmask operator", async () => {
-      await program.methods
-        .closeInstructionConstraints()
-        .accounts({
-          owner: owner.publicKey,
-          vault: vaultPda,
-          policy: policyPda,
-          constraints: constraintsPda,
-        } as any)
-        .rpc();
+      await queueAndApplyCloseConstraints(
+        vaultPda,
+        policyPda,
+        constraintsPda,
+        pendingCloseConstraintsPda,
+      );
 
       // Bitmask: require bits 0 and 2 set (0x05)
       await program.methods
@@ -1768,15 +1803,12 @@ describe("instruction-constraints", () => {
     it("GteSigned passthrough — constrained program not in TX", async () => {
       // Constraints exist for signedTestProgram, but no instruction from it
       // → passthrough, validate+finalize succeeds
-      await program.methods
-        .closeInstructionConstraints()
-        .accounts({
-          owner: owner.publicKey,
-          vault: vaultPda,
-          policy: policyPda,
-          constraints: constraintsPda,
-        } as any)
-        .rpc();
+      await queueAndApplyCloseConstraints(
+        vaultPda,
+        policyPda,
+        constraintsPda,
+        pendingCloseConstraintsPda,
+      );
 
       const negFive = Buffer.alloc(8);
       negFive.writeBigInt64LE(-5n);
@@ -1818,15 +1850,12 @@ describe("instruction-constraints", () => {
     });
 
     it("Bitmask passthrough — constrained program not in TX", async () => {
-      await program.methods
-        .closeInstructionConstraints()
-        .accounts({
-          owner: owner.publicKey,
-          vault: vaultPda,
-          policy: policyPda,
-          constraints: constraintsPda,
-        } as any)
-        .rpc();
+      await queueAndApplyCloseConstraints(
+        vaultPda,
+        policyPda,
+        constraintsPda,
+        pendingCloseConstraintsPda,
+      );
 
       await program.methods
         .createInstructionConstraints(
@@ -1865,15 +1894,12 @@ describe("instruction-constraints", () => {
     });
 
     it("Signed + Bitmask in OR entries — second entry passes", async () => {
-      await program.methods
-        .closeInstructionConstraints()
-        .accounts({
-          owner: owner.publicKey,
-          vault: vaultPda,
-          policy: policyPda,
-          constraints: constraintsPda,
-        } as any)
-        .rpc();
+      await queueAndApplyCloseConstraints(
+        vaultPda,
+        policyPda,
+        constraintsPda,
+        pendingCloseConstraintsPda,
+      );
 
       const negHundred = Buffer.alloc(8);
       negHundred.writeBigInt64LE(-100n);
@@ -1935,15 +1961,12 @@ describe("instruction-constraints", () => {
     });
 
     it("mixed unsigned + signed constraints AND", async () => {
-      await program.methods
-        .closeInstructionConstraints()
-        .accounts({
-          owner: owner.publicKey,
-          vault: vaultPda,
-          policy: policyPda,
-          constraints: constraintsPda,
-        } as any)
-        .rpc();
+      await queueAndApplyCloseConstraints(
+        vaultPda,
+        policyPda,
+        constraintsPda,
+        pendingCloseConstraintsPda,
+      );
 
       const posFifty = Buffer.alloc(8);
       posFifty.writeBigInt64LE(50n);
@@ -1994,15 +2017,12 @@ describe("instruction-constraints", () => {
     });
 
     it("all 7 operators in a single entry round-trip correctly", async () => {
-      await program.methods
-        .closeInstructionConstraints()
-        .accounts({
-          owner: owner.publicKey,
-          vault: vaultPda,
-          policy: policyPda,
-          constraints: constraintsPda,
-        } as any)
-        .rpc();
+      await queueAndApplyCloseConstraints(
+        vaultPda,
+        policyPda,
+        constraintsPda,
+        pendingCloseConstraintsPda,
+      );
 
       // Create entry with all 7 operators (max 8 per entry)
       await program.methods
@@ -2079,6 +2099,7 @@ describe("instruction-constraints", () => {
     let cvTracker: PublicKey;
     let cvOverlay: PublicKey;
     let cvConstraints: PublicKey;
+    let cvPendingCloseConstraints: PublicKey;
     let cvVaultAta: PublicKey;
     const cvAgent = Keypair.generate();
 
@@ -2108,8 +2129,12 @@ describe("instruction-constraints", () => {
         [Buffer.from("constraints"), cvVault.toBuffer()],
         program.programId,
       );
+      [cvPendingCloseConstraints] = PublicKey.findProgramAddressSync(
+        [Buffer.from("pending_close_constraints"), cvVault.toBuffer()],
+        program.programId,
+      );
 
-      // Init vault with protocolMode=0 (all protocols allowed)
+      // Init vault with protocolMode=0, timelock=1800 (MIN_TIMELOCK_DURATION)
       await program.methods
         .initializeVault(
           cvVaultId,
@@ -2121,7 +2146,7 @@ describe("instruction-constraints", () => {
           3,
           0,
           100,
-          new BN(0),
+          new BN(1800),
           [],
           [], // protocolCaps
         )
@@ -2193,6 +2218,7 @@ describe("instruction-constraints", () => {
           amount,
           targetProtocol,
           null,
+          new BN(0),
         )
         .accounts({
           agent: cvAgent.publicKey,
@@ -2290,15 +2316,12 @@ describe("instruction-constraints", () => {
       }
 
       // Clean up: close constraints for next test
-      await program.methods
-        .closeInstructionConstraints()
-        .accounts({
-          owner: owner.publicKey,
-          vault: cvVault,
-          policy: cvPolicy,
-          constraints: cvConstraints,
-        } as any)
-        .rpc();
+      await queueAndApplyCloseConstraints(
+        cvVault,
+        cvPolicy,
+        cvConstraints,
+        cvPendingCloseConstraints,
+      );
     });
 
     // C-7: UnconstrainedProgramBlocked via strict_mode=true
@@ -2350,15 +2373,12 @@ describe("instruction-constraints", () => {
       }
 
       // Clean up
-      await program.methods
-        .closeInstructionConstraints()
-        .accounts({
-          owner: owner.publicKey,
-          vault: cvVault,
-          policy: cvPolicy,
-          constraints: cvConstraints,
-        } as any)
-        .rpc();
+      await queueAndApplyCloseConstraints(
+        cvVault,
+        cvPolicy,
+        cvConstraints,
+        cvPendingCloseConstraints,
+      );
     });
 
     // H-5a: cancelConstraintsUpdate when none queued → account-not-found (Anchor error)
@@ -2422,7 +2442,7 @@ describe("instruction-constraints", () => {
         program.programId,
       );
 
-      // Init vault with timelock=60
+      // Init vault with timelock=1800 (MIN_TIMELOCK_DURATION)
       await program.methods
         .initializeVault(
           tlVaultId,
@@ -2434,7 +2454,7 @@ describe("instruction-constraints", () => {
           3,
           0,
           100,
-          new BN(60),
+          new BN(1800),
           [],
           [], // protocolCaps
         )

@@ -213,6 +213,7 @@ async function doComposedTx(
       amount,
       allowedProtocol,
       null,
+      new BN(0),
     )
     .accounts({
       agent: agent.publicKey,
@@ -1107,6 +1108,7 @@ describe("🔥 SIGIL DEVNET STRESS TEST — Real Tokens, Real Limits", function 
           new BN(0), // amount=0 for non-spending
           allowedProtocol,
           null,
+          new BN(0),
         )
         .accounts({
           agent: agentA.publicKey,

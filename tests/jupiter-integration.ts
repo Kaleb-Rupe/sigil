@@ -168,6 +168,7 @@ describe("jupiter-integration", () => {
         amount,
         targetProtocol,
         null,
+        new BN(0),
       )
       .accountsPartial({
         agent: agentKp.publicKey,

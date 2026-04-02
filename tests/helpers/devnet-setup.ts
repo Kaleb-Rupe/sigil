@@ -273,7 +273,7 @@ export async function createFullVault(
     maxPositions = 3,
     devFeeRate = 0,
     maxSlippageBps = 500,
-    timelockDuration = new BN(0),
+    timelockDuration = new BN(1800), // mandatory minimum: 30 min
     allowedDestinations = [],
     depositAmount = new BN(1_000_000_000),
     skipDeposit = false,
@@ -419,6 +419,7 @@ export interface AuthorizeOpts {
   protocolTreasuryAta?: PublicKey | null;
   feeDestinationAta?: PublicKey | null;
   outputStablecoinAccount?: PublicKey | null;
+  expectedPolicyVersion?: BN;
   remainingAccounts?: {
     pubkey: PublicKey;
     isWritable: boolean;
@@ -447,6 +448,7 @@ export async function buildAuthorizeIx(opts: AuthorizeOpts) {
     protocolTreasuryAta = null,
     feeDestinationAta = null,
     outputStablecoinAccount = null,
+    expectedPolicyVersion = new BN(0),
     remainingAccounts = [],
   } = opts;
   const [overlayPda] = PublicKey.findProgramAddressSync(
@@ -460,6 +462,7 @@ export async function buildAuthorizeIx(opts: AuthorizeOpts) {
       amount,
       protocol,
       leverageBps !== null ? (new BN(leverageBps) as any) : null,
+      expectedPolicyVersion,
     )
     .accounts({
       agent: agent.publicKey,

@@ -144,6 +144,7 @@ describe("flash-trade-integration", () => {
         amount,
         targetProtocol,
         leverageBps,
+        new BN(0),
       )
       .accountsPartial({
         agent: agentKp.publicKey,
@@ -288,7 +289,7 @@ describe("flash-trade-integration", () => {
         3, // max concurrent positions
         0, // developer fee rate
         100, // maxSlippageBps
-        new BN(0), // timelockDuration
+        new BN(1800), // timelockDuration (mandatory minimum: 30 min)
         [], // allowedDestinations
         [], // protocolCaps
       )
@@ -728,7 +729,7 @@ describe("flash-trade-integration", () => {
           3,
           0, // developer fee rate
           100, // maxSlippageBps
-          new BN(0),
+          new BN(1800), // timelockDuration (mandatory minimum: 30 min)
           [],
           [], // protocolCaps
         )
@@ -772,9 +773,14 @@ describe("flash-trade-integration", () => {
         })
         .rpc();
 
-      // Disable position opening
+      // Disable position opening via queue/apply (updatePolicy deleted)
+      const [disabledPendingPolicy] = PublicKey.findProgramAddressSync(
+        [Buffer.from("pending_policy"), disabledVault.toBuffer()],
+        program.programId,
+      );
+
       await program.methods
-        .updatePolicy(
+        .queuePolicyUpdate(
           null, // dailySpendingCapUsd
           null, // maxTransactionSizeUsd
           null, // protocolMode
@@ -794,7 +800,22 @@ describe("flash-trade-integration", () => {
           owner: owner.publicKey,
           vault: disabledVault,
           policy: disabledPolicy,
+          pendingPolicy: disabledPendingPolicy,
+          systemProgram: SystemProgram.programId,
         })
+        .rpc();
+
+      // Advance time past the 1800s timelock
+      advanceTime(svm, 1801);
+
+      await program.methods
+        .applyPendingPolicy()
+        .accounts({
+          owner: owner.publicKey,
+          vault: disabledVault,
+          policy: disabledPolicy,
+          pendingPolicy: disabledPendingPolicy,
+        } as any)
         .rpc();
 
       const policyState =
@@ -927,7 +948,7 @@ describe("flash-trade-integration", () => {
           3,
           0, // no dev fee
           100, // maxSlippageBps
-          new BN(0), // no timelock
+          new BN(1800), // timelockDuration (mandatory minimum: 30 min)
           [], // no destination allowlist
           [], // protocolCaps
         )

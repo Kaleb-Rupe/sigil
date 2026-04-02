@@ -171,7 +171,7 @@ describe("sigil", () => {
           3, // max_concurrent_positions
           0, // developer_fee_rate
           100, // maxSlippageBps (1%)
-          new BN(0), // timelockDuration
+          new BN(1800), // timelockDuration (MIN_TIMELOCK_DURATION)
           [], // allowedDestinations
           [], // protocolCaps
         )
@@ -231,7 +231,7 @@ describe("sigil", () => {
             1,
             0,
             100, // maxSlippageBps
-            new BN(0),
+            new BN(1800),
             [],
             [], // protocolCaps
           )
@@ -288,7 +288,7 @@ describe("sigil", () => {
             1,
             0,
             100, // maxSlippageBps
-            new BN(0),
+            new BN(1800),
             [],
             [], // protocolCaps
           )
@@ -451,7 +451,7 @@ describe("sigil", () => {
           1,
           0,
           100, // maxSlippageBps
-          new BN(0),
+          new BN(1800), // MIN_TIMELOCK_DURATION
           [],
           [], // protocolCaps
         )
@@ -485,12 +485,21 @@ describe("sigil", () => {
   });
 
   // =========================================================================
-  // update_policy
+  // queue/apply policy update (replaces deleted update_policy)
   // =========================================================================
-  describe("update_policy", () => {
-    it("updates individual policy fields", async () => {
+  describe("queue/apply policy update", () => {
+    let mainPendingPda: PublicKey;
+
+    before(() => {
+      [mainPendingPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("pending_policy"), vaultPda.toBuffer()],
+        program.programId,
+      );
+    });
+
+    it("updates individual policy fields via queue+apply", async () => {
       await program.methods
-        .updatePolicy(
+        .queuePolicyUpdate(
           new BN(200_000_000), // new daily cap: 200 USDC
           null, // keep max_transaction_size
           null, // keep protocol_mode
@@ -510,6 +519,21 @@ describe("sigil", () => {
           owner: owner.publicKey,
           vault: vaultPda,
           policy: policyPda,
+          pendingPolicy: mainPendingPda,
+          systemProgram: SystemProgram.programId,
+        } as any)
+        .rpc();
+
+      advanceTime(svm, 1801);
+
+      await program.methods
+        .applyPendingPolicy()
+        .accounts({
+          owner: owner.publicKey,
+          vault: vaultPda,
+          policy: policyPda,
+          tracker: trackerPda,
+          pendingPolicy: mainPendingPda,
         } as any)
         .rpc();
 
@@ -520,9 +544,13 @@ describe("sigil", () => {
     });
 
     it("rejects non-owner signer", async () => {
+      const [badPending] = PublicKey.findProgramAddressSync(
+        [Buffer.from("pending_policy"), vaultPda.toBuffer()],
+        program.programId,
+      );
       try {
         await program.methods
-          .updatePolicy(
+          .queuePolicyUpdate(
             new BN(999),
             null,
             null,
@@ -542,6 +570,8 @@ describe("sigil", () => {
             owner: unauthorizedUser.publicKey,
             vault: vaultPda,
             policy: policyPda,
+            pendingPolicy: badPending,
+            systemProgram: SystemProgram.programId,
           } as any)
           .signers([unauthorizedUser])
           .rpc();
@@ -558,7 +588,7 @@ describe("sigil", () => {
       );
       try {
         await program.methods
-          .updatePolicy(
+          .queuePolicyUpdate(
             null,
             null,
             null,
@@ -578,6 +608,8 @@ describe("sigil", () => {
             owner: owner.publicKey,
             vault: vaultPda,
             policy: policyPda,
+            pendingPolicy: mainPendingPda,
+            systemProgram: SystemProgram.programId,
           } as any)
           .rpc();
         expect.fail("Should have thrown");
@@ -633,7 +665,7 @@ describe("sigil", () => {
           1,
           0,
           100, // maxSlippageBps
-          new BN(0),
+          new BN(1800), // MIN_TIMELOCK_DURATION
           [],
           [], // protocolCaps
         )
@@ -752,7 +784,7 @@ describe("sigil", () => {
           1,
           0,
           100, // maxSlippageBps
-          new BN(0),
+          new BN(1800), // MIN_TIMELOCK_DURATION
           [],
           [], // protocolCaps
         )
@@ -958,6 +990,7 @@ describe("sigil", () => {
           amount,
           jupiterProgramId,
           null, // no leverage
+          new BN(0), // expectedPolicyVersion
         )
         .accountsPartial({
           agent: agent.publicKey,
@@ -1053,6 +1086,7 @@ describe("sigil", () => {
           amount,
           jupiterProgramId,
           null,
+          new BN(0),
         )
         .accountsPartial({
           agent: agent.publicKey,
@@ -1192,6 +1226,7 @@ describe("sigil", () => {
             new BN(1_000_000),
             jupiterProgramId,
             null,
+            new BN(0),
           )
           .accounts({
             agent: agent.publicKey,
@@ -1228,6 +1263,7 @@ describe("sigil", () => {
             new BN(1_000_000),
             fakeProtocol, // not in protocols
             null,
+            new BN(0),
           )
           .accounts({
             agent: agent.publicKey,
@@ -1264,6 +1300,7 @@ describe("sigil", () => {
             new BN(200_000_000), // would exceed max_transaction_size — but checked in finalize now
             jupiterProgramId,
             null,
+            new BN(0),
           )
           .accounts({
             agent: agent.publicKey,
@@ -1301,6 +1338,7 @@ describe("sigil", () => {
             new BN(100_000_000),
             jupiterProgramId,
             null,
+            new BN(0),
           )
           .accounts({
             agent: agent.publicKey,
@@ -1348,6 +1386,7 @@ describe("sigil", () => {
             new BN(1_000_000),
             jupiterProgramId,
             null,
+            new BN(0),
           )
           .accounts({
             agent: fakeAgent.publicKey,
@@ -1428,6 +1467,7 @@ describe("sigil", () => {
             new BN(1_000_000),
             jupiterProgramId,
             null,
+            new BN(0),
           )
           .accounts({
             agent: agent.publicKey,
@@ -1503,7 +1543,7 @@ describe("sigil", () => {
           1,
           0,
           100, // maxSlippageBps
-          new BN(0),
+          new BN(1800), // MIN_TIMELOCK_DURATION
           [],
           [], // protocolCaps
         )
@@ -1579,7 +1619,7 @@ describe("sigil", () => {
           1,
           0,
           100, // maxSlippageBps
-          new BN(0),
+          new BN(1800), // MIN_TIMELOCK_DURATION
           [],
           [], // protocolCaps
         )
@@ -1659,7 +1699,7 @@ describe("sigil", () => {
           3,
           30, // developer_fee_rate = 30 (0.3 BPS)
           100, // maxSlippageBps
-          new BN(0),
+          new BN(1800), // MIN_TIMELOCK_DURATION
           [],
           [], // protocolCaps
         )
@@ -1713,7 +1753,7 @@ describe("sigil", () => {
             1,
             501,
             100, // maxSlippageBps
-            new BN(0),
+            new BN(1800),
             [],
             [], // protocolCaps
           )
@@ -1733,10 +1773,15 @@ describe("sigil", () => {
       }
     });
 
-    it("update_policy changes developer_fee_rate 0→30 → stored", async () => {
+    it("queue/apply policy changes developer_fee_rate 0→30 → stored", async () => {
+      const [feePendingPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("pending_policy"), feeVaultPda.toBuffer()],
+        program.programId,
+      );
+
       // Use the fee vault created above, first set to 0
       await program.methods
-        .updatePolicy(
+        .queuePolicyUpdate(
           null,
           null,
           null,
@@ -1756,6 +1801,21 @@ describe("sigil", () => {
           owner: owner.publicKey,
           vault: feeVaultPda,
           policy: feePolicyPda,
+          pendingPolicy: feePendingPda,
+          systemProgram: SystemProgram.programId,
+        } as any)
+        .rpc();
+
+      advanceTime(svm, 1801);
+
+      await program.methods
+        .applyPendingPolicy()
+        .accounts({
+          owner: owner.publicKey,
+          vault: feeVaultPda,
+          policy: feePolicyPda,
+          tracker: feeTrackerPda,
+          pendingPolicy: feePendingPda,
         } as any)
         .rpc();
 
@@ -1764,7 +1824,7 @@ describe("sigil", () => {
 
       // Now update to 30
       await program.methods
-        .updatePolicy(
+        .queuePolicyUpdate(
           null,
           null,
           null,
@@ -1784,6 +1844,21 @@ describe("sigil", () => {
           owner: owner.publicKey,
           vault: feeVaultPda,
           policy: feePolicyPda,
+          pendingPolicy: feePendingPda,
+          systemProgram: SystemProgram.programId,
+        } as any)
+        .rpc();
+
+      advanceTime(svm, 1801);
+
+      await program.methods
+        .applyPendingPolicy()
+        .accounts({
+          owner: owner.publicKey,
+          vault: feeVaultPda,
+          policy: feePolicyPda,
+          tracker: feeTrackerPda,
+          pendingPolicy: feePendingPda,
         } as any)
         .rpc();
 
@@ -1791,10 +1866,14 @@ describe("sigil", () => {
       expect(policy.developerFeeRate).to.equal(30);
     });
 
-    it("update_policy with developer_fee_rate 501 → rejects", async () => {
+    it("queue policy with developer_fee_rate 501 → rejects", async () => {
+      const [feePendingPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("pending_policy"), feeVaultPda.toBuffer()],
+        program.programId,
+      );
       try {
         await program.methods
-          .updatePolicy(
+          .queuePolicyUpdate(
             null,
             null,
             null,
@@ -1814,6 +1893,8 @@ describe("sigil", () => {
             owner: owner.publicKey,
             vault: feeVaultPda,
             policy: feePolicyPda,
+            pendingPolicy: feePendingPda,
+            systemProgram: SystemProgram.programId,
           } as any)
           .rpc();
         expect.fail("Should have thrown");
@@ -1823,9 +1904,13 @@ describe("sigil", () => {
     });
 
     it("validate with developer_fee=0 → no developer fees collected", async () => {
+      const [feePendingPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("pending_policy"), feeVaultPda.toBuffer()],
+        program.programId,
+      );
       // Set developer fee to 0
       await program.methods
-        .updatePolicy(
+        .queuePolicyUpdate(
           null,
           null,
           null,
@@ -1845,6 +1930,21 @@ describe("sigil", () => {
           owner: owner.publicKey,
           vault: feeVaultPda,
           policy: feePolicyPda,
+          pendingPolicy: feePendingPda,
+          systemProgram: SystemProgram.programId,
+        } as any)
+        .rpc();
+
+      advanceTime(svm, 1801);
+
+      await program.methods
+        .applyPendingPolicy()
+        .accounts({
+          owner: owner.publicKey,
+          vault: feeVaultPda,
+          policy: feePolicyPda,
+          tracker: feeTrackerPda,
+          pendingPolicy: feePendingPda,
         } as any)
         .rpc();
 
@@ -1901,6 +2001,7 @@ describe("sigil", () => {
           new BN(10_000_000),
           jupiterProgramId,
           null,
+          new BN(0),
         )
         .accountsPartial({
           agent: agent.publicKey,
@@ -1949,9 +2050,13 @@ describe("sigil", () => {
     });
 
     it("validate with developer_fee=500 → developer fees collected on vault", async () => {
+      const [feePendingPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("pending_policy"), feeVaultPda.toBuffer()],
+        program.programId,
+      );
       // Set developer fee to 500 (max, 5 BPS)
       await program.methods
-        .updatePolicy(
+        .queuePolicyUpdate(
           null,
           null,
           null,
@@ -1971,6 +2076,21 @@ describe("sigil", () => {
           owner: owner.publicKey,
           vault: feeVaultPda,
           policy: feePolicyPda,
+          pendingPolicy: feePendingPda,
+          systemProgram: SystemProgram.programId,
+        } as any)
+        .rpc();
+
+      advanceTime(svm, 1801);
+
+      await program.methods
+        .applyPendingPolicy()
+        .accounts({
+          owner: owner.publicKey,
+          vault: feeVaultPda,
+          policy: feePolicyPda,
+          tracker: feeTrackerPda,
+          pendingPolicy: feePendingPda,
         } as any)
         .rpc();
 
@@ -2009,6 +2129,7 @@ describe("sigil", () => {
           new BN(10_000_000),
           jupiterProgramId,
           null,
+          new BN(0),
         )
         .accountsPartial({
           agent: agent.publicKey,
@@ -2077,6 +2198,7 @@ describe("sigil", () => {
           new BN(10_000_000),
           jupiterProgramId,
           null,
+          new BN(0),
         )
         .accountsPartial({
           agent: agent.publicKey,
@@ -2155,7 +2277,7 @@ describe("sigil", () => {
           1,
           500,
           100, // maxSlippageBps
-          new BN(0),
+          new BN(1800), // MIN_TIMELOCK_DURATION
           [],
           [], // protocolCaps
         )
@@ -2238,7 +2360,7 @@ describe("sigil", () => {
           3,
           0,
           100, // maxSlippageBps
-          new BN(0),
+          new BN(1800), // MIN_TIMELOCK_DURATION
           [],
           [], // protocolCaps
         )
@@ -2292,6 +2414,7 @@ describe("sigil", () => {
           new BN(10_000_000),
           jupiterProgramId,
           null,
+          new BN(0),
         )
         .accountsPartial({
           agent: lifecycleAgent.publicKey,
@@ -2357,6 +2480,7 @@ describe("sigil", () => {
           new BN(5_000_000),
           jupiterProgramId,
           null,
+          new BN(0),
         )
         .accountsPartial({
           agent: lifecycleAgent.publicKey,
@@ -2412,6 +2536,7 @@ describe("sigil", () => {
             new BN(5_000_000),
             jupiterProgramId,
             null,
+            new BN(0),
           )
           .accountsPartial({
             agent: lifecycleAgent.publicKey,
@@ -2496,7 +2621,7 @@ describe("sigil", () => {
           1,
           0,
           100, // maxSlippageBps
-          new BN(0),
+          new BN(1800), // MIN_TIMELOCK_DURATION
           [],
           [], // protocolCaps
         )
@@ -2592,6 +2717,7 @@ describe("sigil", () => {
             new BN(1_000_000),
             jupiterProgramId,
             null,
+            new BN(0),
           )
           .accounts({
             agent: agent.publicKey,
@@ -2657,7 +2783,7 @@ describe("sigil", () => {
           1,
           0,
           100, // maxSlippageBps
-          new BN(0),
+          new BN(1800), // MIN_TIMELOCK_DURATION
           [],
           [], // protocolCaps
         )
@@ -2749,7 +2875,7 @@ describe("sigil", () => {
           1,
           0,
           100, // maxSlippageBps
-          new BN(0),
+          new BN(1800), // MIN_TIMELOCK_DURATION
           [],
           [], // protocolCaps
         )
@@ -2855,7 +2981,7 @@ describe("sigil", () => {
           1,
           0,
           100, // maxSlippageBps
-          new BN(0),
+          new BN(1800), // MIN_TIMELOCK_DURATION
           [],
           [], // protocolCaps
         )
@@ -2900,6 +3026,7 @@ describe("sigil", () => {
             new BN(1_000_000),
             jupiterProgramId,
             null,
+            new BN(0),
           )
           .accounts({
             agent: agent.publicKey,
@@ -2985,7 +3112,7 @@ describe("sigil", () => {
           3,
           0,
           100, // maxSlippageBps
-          new BN(0),
+          new BN(1800), // MIN_TIMELOCK_DURATION
           [],
           [], // protocolCaps
         )
@@ -3049,6 +3176,7 @@ describe("sigil", () => {
             new BN(1_000_000), // 1 USDC each
             jupiterProgramId,
             null,
+            new BN(0),
           )
           .accountsPartial({
             agent: ringAgent.publicKey,
@@ -3148,7 +3276,7 @@ describe("sigil", () => {
           3,
           0, // developer_fee_rate = 0
           100, // maxSlippageBps
-          new BN(0),
+          new BN(1800), // MIN_TIMELOCK_DURATION
           [],
           [], // protocolCaps
         )
@@ -3214,6 +3342,7 @@ describe("sigil", () => {
           new BN(1), // 1 lamport
           jupiterProgramId,
           null,
+          new BN(0),
         )
         .accountsPartial({
           agent: feeEdgeAgent.publicKey,
@@ -3280,6 +3409,7 @@ describe("sigil", () => {
           new BN(4_999),
           jupiterProgramId,
           null,
+          new BN(0),
         )
         .accountsPartial({
           agent: feeEdgeAgent.publicKey,
@@ -3330,6 +3460,7 @@ describe("sigil", () => {
           new BN(5_000),
           jupiterProgramId,
           null,
+          new BN(0),
         )
         .accountsPartial({
           agent: feeEdgeAgent.publicKey,
@@ -3411,7 +3542,7 @@ describe("sigil", () => {
         program.programId,
       );
 
-      // Create vault WITH timelock (60 seconds)
+      // Create vault WITH timelock (1800 seconds = MIN_TIMELOCK_DURATION)
       [tlOverlay] = PublicKey.findProgramAddressSync(
         [Buffer.from("agent_spend"), tlVaultPda.toBuffer(), Buffer.from([0])],
         program.programId,
@@ -3427,7 +3558,7 @@ describe("sigil", () => {
           3,
           0,
           100, // maxSlippageBps
-          new BN(60), // 60 second timelock
+          new BN(1800), // MIN_TIMELOCK_DURATION (30 minutes)
           [],
           [], // protocolCaps
         )
@@ -3449,37 +3580,6 @@ describe("sigil", () => {
           agentSpendOverlay: tlOverlay,
         } as any)
         .rpc();
-    });
-
-    it("immediate update_policy blocked when timelock > 0", async () => {
-      try {
-        await program.methods
-          .updatePolicy(
-            new BN(999),
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null, // hasProtocolCaps
-            null, // protocolCaps
-          )
-          .accounts({
-            owner: owner.publicKey,
-            vault: tlVaultPda,
-            policy: tlPolicyPda,
-          } as any)
-          .rpc();
-        expect.fail("Should have thrown");
-      } catch (err: any) {
-        expectSigilError(err.toString(), "TimelockActive");
-      }
     });
 
     it("queue policy update succeeds when timelock > 0", async () => {
@@ -3537,8 +3637,8 @@ describe("sigil", () => {
     });
 
     it("apply succeeds after timelock expires", async () => {
-      // Advance time past timelock (60 seconds + buffer)
-      advanceTime(svm, 61);
+      // Advance time past timelock (1800 seconds + buffer)
+      advanceTime(svm, 1801);
 
       await program.methods
         .applyPendingPolicy()
@@ -3690,8 +3790,7 @@ describe("sigil", () => {
         .rpc();
     });
 
-    it("queue fails when timelock = 0 (NoTimelockConfigured)", async () => {
-      // Create a vault with timelock = 0
+    it("initializeVault rejects timelock below MIN_TIMELOCK_DURATION", async () => {
       const noTlVaultId = new BN(601);
       const [noTlVault] = PublicKey.findProgramAddressSync(
         [
@@ -3709,75 +3808,45 @@ describe("sigil", () => {
         [Buffer.from("tracker"), noTlVault.toBuffer()],
         program.programId,
       );
-      const [noTlPending] = PublicKey.findProgramAddressSync(
-        [Buffer.from("pending_policy"), noTlVault.toBuffer()],
-        program.programId,
-      );
       const [noTlOverlay] = PublicKey.findProgramAddressSync(
         [Buffer.from("agent_spend"), noTlVault.toBuffer(), Buffer.from([0])],
         program.programId,
       );
 
-      await program.methods
-        .initializeVault(
-          noTlVaultId,
-          new BN(1000),
-          new BN(1000),
-          0,
-          [],
-          new BN(0) as any,
-          1,
-          0,
-          100, // maxSlippageBps
-          new BN(0),
-          [],
-          [], // protocolCaps
-        )
-        .accounts({
-          owner: owner.publicKey,
-          vault: noTlVault,
-          policy: noTlPolicy,
-          tracker: noTlTracker,
-          agentSpendOverlay: noTlOverlay,
-          feeDestination: feeDestination.publicKey,
-          systemProgram: SystemProgram.programId,
-        } as any)
-        .rpc();
-
       try {
         await program.methods
-          .queuePolicyUpdate(
-            new BN(999),
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null, // hasProtocolCaps
-            null, // protocolCaps
+          .initializeVault(
+            noTlVaultId,
+            new BN(1000),
+            new BN(1000),
+            0,
+            [],
+            new BN(0) as any,
+            1,
+            0,
+            100, // maxSlippageBps
+            new BN(0), // below MIN_TIMELOCK_DURATION
+            [],
+            [], // protocolCaps
           )
           .accounts({
             owner: owner.publicKey,
             vault: noTlVault,
             policy: noTlPolicy,
-            pendingPolicy: noTlPending,
+            tracker: noTlTracker,
+            agentSpendOverlay: noTlOverlay,
+            feeDestination: feeDestination.publicKey,
             systemProgram: SystemProgram.programId,
           } as any)
           .rpc();
         expect.fail("Should have thrown");
       } catch (err: any) {
-        expectSigilError(err.toString(), "NoTimelockConfigured");
+        expectSigilError(err.toString(), "TimelockTooShort");
       }
     });
 
     it("changing timelock_duration itself goes through queue", async () => {
-      // Queue a timelock change from 60 to 120
+      // Queue a timelock change from 1800 to 3600
       await program.methods
         .queuePolicyUpdate(
           null,
@@ -3789,7 +3858,7 @@ describe("sigil", () => {
           null,
           null,
           null,
-          new BN(120), // new timelock_duration
+          new BN(3600), // new timelock_duration
           null,
           null,
           null, // hasProtocolCaps
@@ -3804,7 +3873,7 @@ describe("sigil", () => {
         } as any)
         .rpc();
 
-      advanceTime(svm, 61);
+      advanceTime(svm, 1801);
 
       await program.methods
         .applyPendingPolicy()
@@ -3818,11 +3887,11 @@ describe("sigil", () => {
         .rpc();
 
       const policy = await program.account.policyConfig.fetch(tlPolicyPda);
-      expect(policy.timelockDuration.toNumber()).to.equal(120);
+      expect(policy.timelockDuration.toNumber()).to.equal(3600);
     });
 
-    it("setting timelock to 0 via queue (disabling)", async () => {
-      // Queue timelock disable (set to 0)
+    it("lowering timelock back to MIN via queue", async () => {
+      // Queue timelock change from 3600 back to 1800 (MIN_TIMELOCK_DURATION)
       await program.methods
         .queuePolicyUpdate(
           null,
@@ -3834,7 +3903,7 @@ describe("sigil", () => {
           null,
           null,
           null,
-          new BN(0), // disable timelock
+          new BN(1800), // back to MIN_TIMELOCK_DURATION
           null,
           null,
           null, // hasProtocolCaps
@@ -3849,7 +3918,7 @@ describe("sigil", () => {
         } as any)
         .rpc();
 
-      advanceTime(svm, 121);
+      advanceTime(svm, 3601);
 
       await program.methods
         .applyPendingPolicy()
@@ -3863,11 +3932,11 @@ describe("sigil", () => {
         .rpc();
 
       const policy = await program.account.policyConfig.fetch(tlPolicyPda);
-      expect(policy.timelockDuration.toNumber()).to.equal(0);
+      expect(policy.timelockDuration.toNumber()).to.equal(1800);
 
-      // Now immediate update should work
+      // Verify further updates still require queue/apply
       await program.methods
-        .updatePolicy(
+        .queuePolicyUpdate(
           new BN(999_000_000),
           null,
           null,
@@ -3887,6 +3956,21 @@ describe("sigil", () => {
           owner: owner.publicKey,
           vault: tlVaultPda,
           policy: tlPolicyPda,
+          pendingPolicy: tlPendingPda,
+          systemProgram: SystemProgram.programId,
+        } as any)
+        .rpc();
+
+      advanceTime(svm, 1801);
+
+      await program.methods
+        .applyPendingPolicy()
+        .accounts({
+          owner: owner.publicKey,
+          vault: tlVaultPda,
+          policy: tlPolicyPda,
+          tracker: tlTrackerPda,
+          pendingPolicy: tlPendingPda,
         } as any)
         .rpc();
 
@@ -3895,32 +3979,8 @@ describe("sigil", () => {
     });
 
     it("revoke_agent bypasses timelock (emergency)", async () => {
-      // Re-enable timelock
-      await program.methods
-        .updatePolicy(
-          null,
-          null,
-          null,
-          null,
-          null,
-          null,
-          null,
-          null,
-          null,
-          new BN(60),
-          null,
-          null,
-          null, // hasProtocolCaps
-          null, // protocolCaps
-        )
-        .accounts({
-          owner: owner.publicKey,
-          vault: tlVaultPda,
-          policy: tlPolicyPda,
-        } as any)
-        .rpc();
-
-      // Revoke agent should work immediately (no timelock)
+      // Timelock is 1800 from previous test — revoke should still work immediately
+      // Revoke agent should work immediately (no timelock needed for emergency ops)
       await program.methods
         .revokeAgent(tlAgent.publicKey)
         .accounts({
@@ -3989,7 +4049,7 @@ describe("sigil", () => {
           3,
           0,
           100, // maxSlippageBps
-          new BN(0), // no timelock
+          new BN(1800), // MIN_TIMELOCK_DURATION
           [allowedDest.publicKey], // only allow transfers to this address
           [], // protocolCaps
         )
@@ -4134,7 +4194,7 @@ describe("sigil", () => {
           3,
           0,
           100, // maxSlippageBps
-          new BN(0),
+          new BN(1800), // MIN_TIMELOCK_DURATION
           [], // empty allowlist
           [], // protocolCaps
         )
@@ -4237,7 +4297,7 @@ describe("sigil", () => {
             1,
             0,
             100, // maxSlippageBps
-            new BN(0),
+            new BN(1800), // MIN_TIMELOCK_DURATION
             tooMany,
             [], // protocolCaps
           )
@@ -4377,7 +4437,7 @@ describe("sigil", () => {
           3,
           500, // developer_fee_rate = 500 (5 BPS)
           100, // maxSlippageBps
-          new BN(0),
+          new BN(1800), // MIN_TIMELOCK_DURATION
           [],
           [], // protocolCaps
         )
@@ -4515,7 +4575,7 @@ describe("sigil", () => {
           3,
           0,
           100,
-          new BN(0),
+          new BN(1800), // MIN_TIMELOCK_DURATION
           [],
           [], // protocolCaps
         )
@@ -4606,6 +4666,7 @@ describe("sigil", () => {
           new BN(1_000_000),
           jupiterProgramId,
           null,
+          new BN(0),
         )
         .accounts({
           agent: agent.publicKey,
@@ -4667,6 +4728,7 @@ describe("sigil", () => {
           new BN(1_000_000),
           jupiterProgramId,
           null,
+          new BN(0),
         )
         .accounts({
           agent: agent.publicKey,
@@ -4821,7 +4883,7 @@ describe("sigil", () => {
       expect(vault.status).to.have.property("active");
     });
 
-    it("update agent permissions (owner-only)", async () => {
+    it("update agent permissions via queue+apply (owner-only)", async () => {
       // Register a fresh agent for this test
       const updAgent = Keypair.generate();
       airdropSol(svm, updAgent.publicKey, LAMPORTS_PER_SOL);
@@ -4834,13 +4896,39 @@ describe("sigil", () => {
         } as any)
         .rpc();
 
-      // Update permissions to full
+      // Derive pending agent perms PDA: seeds = ["pending_agent_perms", vault, agent]
+      const [pendingAgentPermsPda] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("pending_agent_perms"),
+          maVault.toBuffer(),
+          updAgent.publicKey.toBuffer(),
+        ],
+        program.programId,
+      );
+
+      // Queue permissions update
       await program.methods
-        .updateAgentPermissions(updAgent.publicKey, FULL_PERMISSIONS, new BN(0))
+        .queueAgentPermissionsUpdate(updAgent.publicKey, FULL_PERMISSIONS, new BN(0))
         .accounts({
           owner: owner.publicKey,
           vault: maVault,
           policy: maPolicy,
+          pendingAgentPerms: pendingAgentPermsPda,
+          systemProgram: SystemProgram.programId,
+        } as any)
+        .rpc();
+
+      advanceTime(svm, 1801);
+
+      // Apply pending permissions update
+      await program.methods
+        .applyAgentPermissionsUpdate()
+        .accounts({
+          owner: owner.publicKey,
+          vault: maVault,
+          policy: maPolicy,
+          pendingAgentPerms: pendingAgentPermsPda,
+          agentSpendOverlay: maOverlay,
         } as any)
         .rpc();
 
@@ -4935,7 +5023,7 @@ describe("sigil", () => {
           3,
           0,
           100,
-          new BN(0),
+          new BN(1800), // MIN_TIMELOCK_DURATION
           [], // empty destination allowlist = allow any
           [], // protocolCaps
         )
@@ -5238,7 +5326,7 @@ describe("sigil", () => {
           3,
           0, // no dev fee
           100, // maxSlippageBps
-          new BN(0),
+          new BN(1800), // MIN_TIMELOCK_DURATION
           [], // no dest restrictions
           [new BN(100_000_000), new BN(200_000_000)], // protocolCaps: [100 USDC, 200 USDC]
         )
@@ -5279,7 +5367,7 @@ describe("sigil", () => {
       );
 
       const validateIx = await program.methods
-        .validateAndAuthorize({ swap: {} }, usdcMint, amount, protocol, null)
+        .validateAndAuthorize({ swap: {} }, usdcMint, amount, protocol, null, new BN(0))
         .accountsPartial({
           agent: protoCapAgent.publicKey,
           vault: pcVault,
@@ -5342,9 +5430,14 @@ describe("sigil", () => {
     });
 
     it("cap of 0 means unlimited per-protocol", async () => {
+      const [pcPendingPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("pending_policy"), pcVault.toBuffer()],
+        program.programId,
+      );
+
       // Update protocolA cap to 0 (unlimited)
       await program.methods
-        .updatePolicy(
+        .queuePolicyUpdate(
           null,
           null,
           null,
@@ -5364,6 +5457,22 @@ describe("sigil", () => {
           owner: protoCapOwner.publicKey,
           vault: pcVault,
           policy: pcPolicy,
+          pendingPolicy: pcPendingPda,
+          systemProgram: SystemProgram.programId,
+        } as any)
+        .signers([protoCapOwner])
+        .rpc();
+
+      advanceTime(svm, 1801);
+
+      await program.methods
+        .applyPendingPolicy()
+        .accounts({
+          owner: protoCapOwner.publicKey,
+          vault: pcVault,
+          policy: pcPolicy,
+          tracker: pcTracker,
+          pendingPolicy: pcPendingPda,
         } as any)
         .signers([protoCapOwner])
         .rpc();
@@ -5374,7 +5483,7 @@ describe("sigil", () => {
 
       // Restore caps
       await program.methods
-        .updatePolicy(
+        .queuePolicyUpdate(
           null,
           null,
           null,
@@ -5394,13 +5503,29 @@ describe("sigil", () => {
           owner: protoCapOwner.publicKey,
           vault: pcVault,
           policy: pcPolicy,
+          pendingPolicy: pcPendingPda,
+          systemProgram: SystemProgram.programId,
+        } as any)
+        .signers([protoCapOwner])
+        .rpc();
+
+      advanceTime(svm, 1801);
+
+      await program.methods
+        .applyPendingPolicy()
+        .accounts({
+          owner: protoCapOwner.publicKey,
+          vault: pcVault,
+          policy: pcPolicy,
+          tracker: pcTracker,
+          pendingPolicy: pcPendingPda,
         } as any)
         .signers([protoCapOwner])
         .rpc();
     });
 
     it("window expiry resets per-protocol spend", async () => {
-      // Advance time by 24h+ (144 epochs × 600s = 86400s)
+      // Advance time by 24h+ (144 epochs x 600s = 86400s)
       advanceTime(svm, 87000);
 
       // After window expiry, protocolA spend resets to 0. Can spend up to cap again.
@@ -5409,9 +5534,14 @@ describe("sigil", () => {
     });
 
     it("caps disabled means no per-protocol checks", async () => {
+      const [pcPendingPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("pending_policy"), pcVault.toBuffer()],
+        program.programId,
+      );
+
       // Disable per-protocol caps
       await program.methods
-        .updatePolicy(
+        .queuePolicyUpdate(
           null,
           null,
           null,
@@ -5431,6 +5561,22 @@ describe("sigil", () => {
           owner: protoCapOwner.publicKey,
           vault: pcVault,
           policy: pcPolicy,
+          pendingPolicy: pcPendingPda,
+          systemProgram: SystemProgram.programId,
+        } as any)
+        .signers([protoCapOwner])
+        .rpc();
+
+      advanceTime(svm, 1801);
+
+      await program.methods
+        .applyPendingPolicy()
+        .accounts({
+          owner: protoCapOwner.publicKey,
+          vault: pcVault,
+          policy: pcPolicy,
+          tracker: pcTracker,
+          pendingPolicy: pcPendingPda,
         } as any)
         .signers([protoCapOwner])
         .rpc();
@@ -5441,7 +5587,7 @@ describe("sigil", () => {
 
       // Re-enable caps for next test
       await program.methods
-        .updatePolicy(
+        .queuePolicyUpdate(
           null,
           null,
           null,
@@ -5461,16 +5607,36 @@ describe("sigil", () => {
           owner: protoCapOwner.publicKey,
           vault: pcVault,
           policy: pcPolicy,
+          pendingPolicy: pcPendingPda,
+          systemProgram: SystemProgram.programId,
+        } as any)
+        .signers([protoCapOwner])
+        .rpc();
+
+      advanceTime(svm, 1801);
+
+      await program.methods
+        .applyPendingPolicy()
+        .accounts({
+          owner: protoCapOwner.publicKey,
+          vault: pcVault,
+          policy: pcPolicy,
+          tracker: pcTracker,
+          pendingPolicy: pcPendingPda,
         } as any)
         .signers([protoCapOwner])
         .rpc();
     });
 
     it("protocol_caps length mismatch rejects (ProtocolCapsMismatch)", async () => {
+      const [pcPendingPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("pending_policy"), pcVault.toBuffer()],
+        program.programId,
+      );
       // Try to set protocol_caps with wrong length (1 cap for 2 protocols)
       try {
         await program.methods
-          .updatePolicy(
+          .queuePolicyUpdate(
             null,
             null,
             null,
@@ -5490,6 +5656,8 @@ describe("sigil", () => {
             owner: protoCapOwner.publicKey,
             vault: pcVault,
             policy: pcPolicy,
+            pendingPolicy: pcPendingPda,
+            systemProgram: SystemProgram.programId,
           } as any)
           .signers([protoCapOwner])
           .rpc();
@@ -5535,7 +5703,7 @@ describe("sigil", () => {
             3,
             0,
             100,
-            new BN(0),
+            new BN(1800),
             [],
             [new BN(100_000_000)], // caps with ALL mode → mismatch
           )
@@ -5609,7 +5777,7 @@ describe("sigil", () => {
           1,
           0,
           100,
-          new BN(0),
+          new BN(1800), // MIN_TIMELOCK_DURATION
           [],
           [],
         )
@@ -5833,7 +6001,7 @@ describe("sigil", () => {
           1,
           0,
           100,
-          new BN(0),
+          new BN(1800), // MIN_TIMELOCK_DURATION
           [],
           [],
         )

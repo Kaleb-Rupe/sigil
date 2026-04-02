@@ -485,7 +485,7 @@ const SIGIL_ERROR_NAMES: Record<number, string> = {
   6024: "Overflow",
   6025: "InvalidTokenAccount",
   6026: "TimelockNotExpired",
-  6027: "TimelockActive",
+  // 6027: "TimelockActive" -- removed (instruction deleted in TOCTOU fix)
   6028: "NoTimelockConfigured",
   6029: "DestinationNotAllowed",
   6030: "TooManyDestinations",
@@ -529,6 +529,11 @@ const SIGIL_ERROR_NAMES: Record<number, string> = {
   6068: "AgentAlreadyPaused",
   6069: "AgentNotPaused",
   6070: "UnauthorizedPostFinalizeInstruction",
+  6071: "UnexpectedBalanceDecrease",
+  6072: "TimelockTooShort",
+  6073: "PolicyVersionMismatch",
+  6074: "PendingAgentPermsExists",
+  6075: "PendingCloseConstraintsExists",
 };
 
 /**
@@ -752,7 +757,7 @@ export async function setupVaultWithAgent(
     vaultFunding = 1_000_000_000,
     agentPermissions = FULL_PERMISSIONS_BN,
     agentSpendingLimit = new BN(0),
-    timelockDuration = new BN(0),
+    timelockDuration = new BN(1800), // MIN_TIMELOCK_DURATION: 30 minutes
     allowedDestinations = [],
     developerFeeRate = 0,
     maxSlippageBps = 100,

@@ -139,6 +139,7 @@ describe("jupiter-lend-integration", () => {
         amount,
         targetProtocol,
         null, // no leverage for lend
+        new BN(0), // expectedPolicyVersion
       )
       .accountsPartial({
         agent: agentKp.publicKey,
