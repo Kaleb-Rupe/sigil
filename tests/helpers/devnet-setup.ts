@@ -419,6 +419,8 @@ export interface AuthorizeOpts {
   protocolTreasuryAta?: PublicKey | null;
   feeDestinationAta?: PublicKey | null;
   outputStablecoinAccount?: PublicKey | null;
+  mockSpendDestination?: PublicKey | null;
+  mockSpendDevFeeRate?: number;
   expectedPolicyVersion?: BN;
   remainingAccounts?: {
     pubkey: PublicKey;
@@ -430,6 +432,10 @@ export interface AuthorizeOpts {
 /**
  * Build a validate_and_authorize instruction (not sent — use authorizeAndFinalize
  * to compose with finalize into a single atomic transaction).
+ *
+ * If expectedPolicyVersion is not provided, reads the current version from the
+ * policy account on-chain. This ensures tests that queue+apply policy changes
+ * automatically use the correct version.
  */
 export async function buildAuthorizeIx(opts: AuthorizeOpts) {
   const {
@@ -448,9 +454,18 @@ export async function buildAuthorizeIx(opts: AuthorizeOpts) {
     protocolTreasuryAta = null,
     feeDestinationAta = null,
     outputStablecoinAccount = null,
-    expectedPolicyVersion = new BN(0),
     remainingAccounts = [],
   } = opts;
+
+  // Read current policy version from on-chain state if not explicitly provided.
+  // This ensures tests that queue+apply policy changes automatically use the
+  // correct version on subsequent validateAndAuthorize calls.
+  let policyVersion = opts.expectedPolicyVersion;
+  if (policyVersion === undefined) {
+    const policyAccount = await program.account.policyConfig.fetch(policyPda);
+    policyVersion = (policyAccount as any).policyVersion ?? new BN(0);
+  }
+
   const [overlayPda] = PublicKey.findProgramAddressSync(
     [Buffer.from("agent_spend"), vaultPda.toBuffer(), Buffer.from([0])],
     program.programId,
@@ -462,7 +477,7 @@ export async function buildAuthorizeIx(opts: AuthorizeOpts) {
       amount,
       protocol,
       leverageBps !== null ? (new BN(leverageBps) as any) : null,
-      expectedPolicyVersion,
+      policyVersion,
     )
     .accounts({
       agent: agent.publicKey,
