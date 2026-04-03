@@ -124,7 +124,7 @@ describe("Kit SDK Devnet — Vault Lifecycle", function () {
       owner,
       vault: vault.vaultAddress,
       dailySpendingCapUsd: newCap,
-      maxTransactionSizeUsd: null,
+      maxTransactionAmountUsd: null,
       protocolMode: null,
       protocols: null,
       maxLeverageBps: null,
