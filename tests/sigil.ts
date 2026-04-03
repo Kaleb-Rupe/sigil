@@ -2136,7 +2136,7 @@ describe("sigil", () => {
           new BN(10_000_000),
           jupiterProgramId,
           null,
-          await pv(),
+          await pv(feePolicyPda),
         )
         .accountsPartial({
           agent: agent.publicKey,
@@ -2205,7 +2205,7 @@ describe("sigil", () => {
           new BN(10_000_000),
           jupiterProgramId,
           null,
-          await pv(),
+          await pv(feePolicyPda),
         )
         .accountsPartial({
           agent: agent.publicKey,
@@ -3832,7 +3832,7 @@ describe("sigil", () => {
             1,
             0,
             100, // maxSlippageBps
-            new BN(1800), // below MIN_TIMELOCK_DURATION
+            new BN(0), // below MIN_TIMELOCK_DURATION — should fail
             [],
             [], // protocolCaps
           )

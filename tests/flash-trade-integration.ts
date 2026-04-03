@@ -137,6 +137,10 @@ describe("flash-trade-integration", () => {
       program.programId,
     );
 
+    // Read current policy version (may have been bumped by queue+apply)
+    const polAcct = await program.account.policyConfig.fetch(policy);
+    const currentVersion = (polAcct as any).policyVersion ?? new BN(0);
+
     const validateIx = await program.methods
       .validateAndAuthorize(
         actionType,
@@ -144,7 +148,7 @@ describe("flash-trade-integration", () => {
         amount,
         targetProtocol,
         leverageBps,
-        new BN(0),
+        currentVersion,
       )
       .accountsPartial({
         agent: agentKp.publicKey,
