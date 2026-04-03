@@ -140,8 +140,8 @@ describe("events", () => {
   });
 
   describe("getEventNames", () => {
-    it("returns 31 names", () => {
-      expect(getEventNames()).to.have.length(31);
+    it("returns 33 names", () => {
+      expect(getEventNames()).to.have.length(33);
     });
 
     it("includes known names", () => {
@@ -390,7 +390,7 @@ describe("events", () => {
       }
       // The runtime sync assertion in events.ts would have thrown at import time
       // if any entry was missing, so reaching this point proves completeness
-      expect(discriminatorNames.size).to.equal(31);
+      expect(discriminatorNames.size).to.equal(33);
     });
   });
 });
